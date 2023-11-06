@@ -2,7 +2,7 @@ pragma solidity ^0.8.17;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {TimeLockTx, IGovernorV3} from "./interfaces/IGovernorV3.sol";
-import {ITimeLock} from "./interfaces/ITimeLock.sol";
+import {ITimeLock} from "./interfaces/ITimelock.sol";
 
 enum TxAction {
     Execute,
