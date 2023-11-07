@@ -15,12 +15,10 @@ contract Create2Factory is Ownable {
 
     function callExternal(address target, bytes calldata data) external onlyOwner {
         target.functionCall(data, "Call to external contract failed");
-        require(success, "External call failed");
     }
 
     function callExternalWithValue(address target, bytes calldata data, uint256 value) external onlyOwner {
         target.functionCallWithValue(data, value, "Call to external contract failed");
-        require(success, "External call failed");
     }
 
     function deploy(bytes32 salt, bytes calldata bytecode) external onlyOwner {
