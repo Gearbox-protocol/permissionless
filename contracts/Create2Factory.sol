@@ -1,24 +1,25 @@
-// SPDX-License-Identifier: BUSL-1.1
-// Gearbox. Generalized leverage protocol that allows to take leverage and then use it across other DeFi protocols and platforms in a composable way.
-// (c) Gearbox Holdings, 2023
+// SPDX-License-Identifier: MIT
+// Gearbox Protocol. Generalized leverage for DeFi protocols
+// (c) Gearbox Foundation, 2023.
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/utils/Create2.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
-pragma solidity 0.8.17;
-
-/// @title Create2Factory
+/// @title Create2 factory
 /// @notice Deploys contract from bytecode and salt using create2
 contract Create2Factory is Ownable {
     using Address for address;
 
+    constructor() Ownable(msg.sender) {}
+
     function callExternal(address target, bytes calldata data) external onlyOwner {
-        target.functionCall(data, "Call to external contract failed");
+        target.functionCall(data);
     }
 
     function callExternalWithValue(address target, bytes calldata data) external payable onlyOwner {
-        target.functionCallWithValue(data, msg.value, "Call to external contract failed");
+        target.functionCallWithValue(data, msg.value);
     }
 
     function deploy(bytes32 salt, bytes calldata bytecode) external onlyOwner {
