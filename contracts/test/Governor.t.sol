@@ -5,17 +5,17 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {GovernorV3} from "../GovernorV3.sol";
+import {Governor} from "../Governor.sol";
 
-import {IGovernorV3} from "../interfaces/IGovernorV3.sol";
+import {IGovernor} from "../interfaces/IGovernor.sol";
 import {ITimeLock} from "../interfaces/ITimeLock.sol";
 
 contract TargetMock {
     fallback() external payable {}
 }
 
-contract GovernorV3Test is Test {
-    GovernorV3 governor;
+contract GovernorTest is Test {
+    Governor governor;
 
     address timeLock;
     uint256 delay;
@@ -38,7 +38,7 @@ contract GovernorV3Test is Test {
         queueAdmin0 = makeAddr("queueAdmin0");
         queueAdmin1 = makeAddr("queueAdmin1");
 
-        governor = new GovernorV3(timeLock, queueAdmin0, vetoAdmin);
+        governor = new Governor(timeLock, queueAdmin0, vetoAdmin);
 
         vm.prank(timeLock);
         ITimeLock(timeLock).setPendingAdmin(address(governor));
@@ -67,21 +67,21 @@ contract GovernorV3Test is Test {
     }
 
     function test_GOV_02_constructor_reverts_on_zero_admins() public {
-        vm.expectRevert(IGovernorV3.AdminCantBeZeroAddressException.selector);
-        new GovernorV3(timeLock, address(0), vetoAdmin);
+        vm.expectRevert(IGovernor.AdminCantBeZeroAddressException.selector);
+        new Governor(timeLock, address(0), vetoAdmin);
 
-        vm.expectRevert(IGovernorV3.AdminCantBeZeroAddressException.selector);
-        new GovernorV3(timeLock, queueAdmin0, address(0));
+        vm.expectRevert(IGovernor.AdminCantBeZeroAddressException.selector);
+        new Governor(timeLock, queueAdmin0, address(0));
     }
 
     function test_GOV_03_constructor_works_as_expected() public {
         vm.expectEmit(true, true, true, true);
-        emit IGovernorV3.AddQueueAdmin(queueAdmin0);
+        emit IGovernor.AddQueueAdmin(queueAdmin0);
 
         vm.expectEmit(true, true, true, true);
-        emit IGovernorV3.UpdateVetoAdmin(vetoAdmin);
+        emit IGovernor.UpdateVetoAdmin(vetoAdmin);
 
-        governor = new GovernorV3(timeLock, queueAdmin0, vetoAdmin);
+        governor = new Governor(timeLock, queueAdmin0, vetoAdmin);
 
         assertEq(governor.timeLock(), timeLock, "Timelock");
         assertEq(governor.vetoAdmin(), vetoAdmin, "Veto admin");
@@ -89,28 +89,28 @@ contract GovernorV3Test is Test {
     }
 
     function test_GOV_04_external_functions_have_correct_access_rights() public {
-        vm.expectRevert(IGovernorV3.CallerNotQueueAdminException.selector);
+        vm.expectRevert(IGovernor.CallerNotQueueAdminException.selector);
         governor.queueTransaction(address(0), 0, "", "", block.timestamp + delay);
 
-        vm.expectRevert(IGovernorV3.CallerNotQueueAdminException.selector);
+        vm.expectRevert(IGovernor.CallerNotQueueAdminException.selector);
         governor.startBatch(0);
 
-        vm.expectRevert(IGovernorV3.CallerNotVetoAdminException.selector);
+        vm.expectRevert(IGovernor.CallerNotVetoAdminException.selector);
         governor.cancelTransaction(address(0), 0, "", "", 0);
 
-        vm.expectRevert(IGovernorV3.CallerNotVetoAdminException.selector);
-        governor.cancelBatch(new IGovernorV3.TxParams[](0));
+        vm.expectRevert(IGovernor.CallerNotVetoAdminException.selector);
+        governor.cancelBatch(new IGovernor.TxParams[](0));
 
-        vm.expectRevert(IGovernorV3.CallerNotTimelockException.selector);
+        vm.expectRevert(IGovernor.CallerNotTimelockException.selector);
         governor.addQueueAdmin(address(0));
 
-        vm.expectRevert(IGovernorV3.CallerNotTimelockException.selector);
+        vm.expectRevert(IGovernor.CallerNotTimelockException.selector);
         governor.removeQueueAdmin(address(0));
 
-        vm.expectRevert(IGovernorV3.CallerNotTimelockException.selector);
+        vm.expectRevert(IGovernor.CallerNotTimelockException.selector);
         governor.updateVetoAdmin(address(0));
 
-        vm.expectRevert(IGovernorV3.CallerNotQueueAdminException.selector);
+        vm.expectRevert(IGovernor.CallerNotQueueAdminException.selector);
         governor.claimTimeLockOwnership();
     }
 
@@ -124,7 +124,7 @@ contract GovernorV3Test is Test {
         vm.prank(queueAdmin0);
         governor.queueTransaction(target0, 123, "signature", "data", eta);
 
-        vm.expectRevert(IGovernorV3.TransactionAlreadyQueuedException.selector);
+        vm.expectRevert(IGovernor.TransactionAlreadyQueuedException.selector);
         vm.prank(queueAdmin0);
         governor.queueTransaction(target0, 123, "signature", "data", eta);
     }
@@ -148,7 +148,7 @@ contract GovernorV3Test is Test {
         vm.prank(queueAdmin0);
         governor.startBatch(123);
 
-        vm.expectRevert(IGovernorV3.BatchAlreadyStartedException.selector);
+        vm.expectRevert(IGovernor.BatchAlreadyStartedException.selector);
 
         vm.prank(queueAdmin1);
         governor.startBatch(456);
@@ -156,7 +156,7 @@ contract GovernorV3Test is Test {
 
     function test_GOV_08_startBatch_works_as_expected() public {
         vm.expectEmit(true, true, true, true);
-        emit IGovernorV3.QueueBatch(queueAdmin0, block.number);
+        emit IGovernor.QueueBatch(queueAdmin0, block.number);
 
         vm.prank(queueAdmin0);
         governor.startBatch(uint80(block.timestamp + delay));
@@ -174,7 +174,7 @@ contract GovernorV3Test is Test {
         vm.prank(queueAdmin0);
         governor.startBatch(uint80(eta));
 
-        vm.expectRevert(IGovernorV3.CallerNotBatchInitiatorException.selector);
+        vm.expectRevert(IGovernor.CallerNotBatchInitiatorException.selector);
 
         vm.prank(queueAdmin1);
         governor.queueTransaction(target0, 123, "signature", "data", eta);
@@ -186,7 +186,7 @@ contract GovernorV3Test is Test {
         vm.prank(queueAdmin0);
         governor.startBatch(uint80(eta));
 
-        vm.expectRevert(IGovernorV3.ETAMistmatchException.selector);
+        vm.expectRevert(IGovernor.ETAMistmatchException.selector);
 
         vm.prank(queueAdmin0);
         governor.queueTransaction(target0, 123, "signature", "data", eta + 1);
@@ -233,11 +233,11 @@ contract GovernorV3Test is Test {
         governor.queueTransaction(target0, 123, "signature", "data", eta);
         vm.stopPrank();
 
-        vm.expectRevert(IGovernorV3.CantPerformActionOutsideBatchException.selector);
+        vm.expectRevert(IGovernor.CantPerformActionOutsideBatchException.selector);
         vm.prank(vetoAdmin);
         governor.cancelTransaction(target0, 123, "signature", "data", eta);
 
-        vm.expectRevert(IGovernorV3.CantPerformActionOutsideBatchException.selector);
+        vm.expectRevert(IGovernor.CantPerformActionOutsideBatchException.selector);
         governor.executeTransaction(target0, 123, "signature", "data", eta);
     }
 
@@ -277,60 +277,60 @@ contract GovernorV3Test is Test {
         vm.warp(eta);
 
         // empty batch
-        IGovernorV3.TxParams[] memory txs;
-        vm.expectRevert(IGovernorV3.IncorrectBatchException.selector);
+        IGovernor.TxParams[] memory txs;
+        vm.expectRevert(IGovernor.IncorrectBatchException.selector);
         vm.prank(vetoAdmin);
         governor.cancelBatch(txs);
 
-        vm.expectRevert(IGovernorV3.IncorrectBatchException.selector);
+        vm.expectRevert(IGovernor.IncorrectBatchException.selector);
         governor.executeBatch(txs);
 
         // missing tx
-        txs = new IGovernorV3.TxParams[](1);
-        txs[0] = IGovernorV3.TxParams(target0, 123, "signature", "data", eta);
-        vm.expectRevert(IGovernorV3.IncorrectBatchException.selector);
+        txs = new IGovernor.TxParams[](1);
+        txs[0] = IGovernor.TxParams(target0, 123, "signature", "data", eta);
+        vm.expectRevert(IGovernor.IncorrectBatchException.selector);
         vm.prank(vetoAdmin);
         governor.cancelBatch(txs);
 
-        vm.expectRevert(IGovernorV3.IncorrectBatchException.selector);
+        vm.expectRevert(IGovernor.IncorrectBatchException.selector);
         governor.executeBatch{value: 123}(txs);
 
         // extra tx
-        txs = new IGovernorV3.TxParams[](3);
-        txs[0] = IGovernorV3.TxParams(target0, 123, "signature", "data", eta);
-        txs[1] = IGovernorV3.TxParams(target1, 123, "signature", "data", eta);
-        txs[2] = IGovernorV3.TxParams(target0, 123, "signature", "baddata", eta);
-        vm.expectRevert(IGovernorV3.IncorrectBatchException.selector);
+        txs = new IGovernor.TxParams[](3);
+        txs[0] = IGovernor.TxParams(target0, 123, "signature", "data", eta);
+        txs[1] = IGovernor.TxParams(target1, 123, "signature", "data", eta);
+        txs[2] = IGovernor.TxParams(target0, 123, "signature", "baddata", eta);
+        vm.expectRevert(IGovernor.IncorrectBatchException.selector);
         vm.prank(vetoAdmin);
         governor.cancelBatch(txs);
 
-        vm.expectRevert(IGovernorV3.IncorrectBatchException.selector);
+        vm.expectRevert(IGovernor.IncorrectBatchException.selector);
         governor.executeBatch{value: 369}(txs);
 
         // wrong tx
-        txs = new IGovernorV3.TxParams[](2);
-        txs[0] = IGovernorV3.TxParams(target0, 123, "signature", "data", eta);
-        txs[1] = IGovernorV3.TxParams(target1, 123, "signature", "baddata", eta);
+        txs = new IGovernor.TxParams[](2);
+        txs[0] = IGovernor.TxParams(target0, 123, "signature", "data", eta);
+        txs[1] = IGovernor.TxParams(target1, 123, "signature", "baddata", eta);
 
         bytes32 txHash = _getTxHash(target1, 123, "signature", "baddata", eta);
-        vm.expectRevert(abi.encodeWithSelector(IGovernorV3.UnexpectedTransactionException.selector, txHash));
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.UnexpectedTransactionException.selector, txHash));
         vm.prank(vetoAdmin);
         governor.cancelBatch(txs);
 
-        vm.expectRevert(abi.encodeWithSelector(IGovernorV3.UnexpectedTransactionException.selector, txHash));
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.UnexpectedTransactionException.selector, txHash));
         governor.executeBatch{value: 246}(txs);
 
         // wrong tx order
-        txs = new IGovernorV3.TxParams[](2);
-        txs[0] = IGovernorV3.TxParams(target1, 123, "signature", "data", eta);
-        txs[1] = IGovernorV3.TxParams(target0, 123, "signature", "data", eta);
+        txs = new IGovernor.TxParams[](2);
+        txs[0] = IGovernor.TxParams(target1, 123, "signature", "data", eta);
+        txs[1] = IGovernor.TxParams(target0, 123, "signature", "data", eta);
         txHash = _getTxHash(target1, 123, "signature", "data", eta);
 
-        vm.expectRevert(abi.encodeWithSelector(IGovernorV3.UnexpectedTransactionException.selector, txHash));
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.UnexpectedTransactionException.selector, txHash));
         vm.prank(vetoAdmin);
         governor.cancelBatch(txs);
 
-        vm.expectRevert(abi.encodeWithSelector(IGovernorV3.UnexpectedTransactionException.selector, txHash));
+        vm.expectRevert(abi.encodeWithSelector(IGovernor.UnexpectedTransactionException.selector, txHash));
         governor.executeBatch{value: 246}(txs);
     }
 
@@ -347,15 +347,15 @@ contract GovernorV3Test is Test {
         vm.warp(eta);
         vm.roll(block.number + 42);
 
-        IGovernorV3.TxParams[] memory txs = new IGovernorV3.TxParams[](2);
-        txs[0] = IGovernorV3.TxParams(target0, 123, "signature", "data", eta);
-        txs[1] = IGovernorV3.TxParams(target1, 123, "signature", "data", eta);
+        IGovernor.TxParams[] memory txs = new IGovernor.TxParams[](2);
+        txs[0] = IGovernor.TxParams(target0, 123, "signature", "data", eta);
+        txs[1] = IGovernor.TxParams(target1, 123, "signature", "data", eta);
 
         uint256 snap = vm.snapshot();
 
         // cancellation
         vm.expectEmit(true, true, true, true);
-        emit IGovernorV3.CancelBatch(vetoAdmin, batchBlock);
+        emit IGovernor.CancelBatch(vetoAdmin, batchBlock);
 
         vm.expectCall(timeLock, abi.encodeCall(ITimeLock.cancelTransaction, (target0, 123, "signature", "data", eta)));
         vm.expectCall(timeLock, abi.encodeCall(ITimeLock.cancelTransaction, (target1, 123, "signature", "data", eta)));
@@ -380,7 +380,7 @@ contract GovernorV3Test is Test {
         // execution
 
         vm.expectEmit(true, true, true, true);
-        emit IGovernorV3.ExecuteBatch(address(this), batchBlock);
+        emit IGovernor.ExecuteBatch(address(this), batchBlock);
 
         vm.expectCall(timeLock, abi.encodeCall(ITimeLock.executeTransaction, (target0, 123, "signature", "data", eta)));
         vm.expectCall(timeLock, abi.encodeCall(ITimeLock.executeTransaction, (target1, 123, "signature", "data", eta)));
@@ -410,7 +410,7 @@ contract GovernorV3Test is Test {
         governor.removeQueueAdmin(queueAdmin1);
         assertEq(governor.queueAdmins(), _toDyn([queueAdmin0]));
 
-        vm.expectRevert(IGovernorV3.CantRemoveLastQueueAdminException.selector);
+        vm.expectRevert(IGovernor.CantRemoveLastQueueAdminException.selector);
         governor.removeQueueAdmin(queueAdmin0);
 
         vm.stopPrank();
@@ -424,7 +424,7 @@ contract GovernorV3Test is Test {
         governor.queueTransaction(address(governor), 0, "addQueueAdmin(address)", abi.encode(newQueueAdmin), eta);
 
         vm.expectEmit(true, true, true, true);
-        emit IGovernorV3.AddQueueAdmin(newQueueAdmin);
+        emit IGovernor.AddQueueAdmin(newQueueAdmin);
 
         vm.warp(eta);
         governor.executeTransaction(address(governor), 0, "addQueueAdmin(address)", abi.encode(newQueueAdmin), eta);
@@ -437,7 +437,7 @@ contract GovernorV3Test is Test {
         governor.queueTransaction(address(governor), 0, "removeQueueAdmin(address)", abi.encode(newQueueAdmin), eta);
 
         vm.expectEmit(true, true, true, true);
-        emit IGovernorV3.RemoveQueueAdmin(newQueueAdmin);
+        emit IGovernor.RemoveQueueAdmin(newQueueAdmin);
 
         vm.warp(eta);
         governor.executeTransaction(address(governor), 0, "removeQueueAdmin(address)", abi.encode(newQueueAdmin), eta);
@@ -453,7 +453,7 @@ contract GovernorV3Test is Test {
         governor.queueTransaction(address(governor), 0, "updateVetoAdmin(address)", abi.encode(newVetoAdmin), eta);
 
         vm.expectEmit(true, true, true, true);
-        emit IGovernorV3.UpdateVetoAdmin(newVetoAdmin);
+        emit IGovernor.UpdateVetoAdmin(newVetoAdmin);
 
         vm.warp(eta);
         governor.executeTransaction(address(governor), 0, "updateVetoAdmin(address)", abi.encode(newVetoAdmin), eta);

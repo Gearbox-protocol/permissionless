@@ -4,26 +4,29 @@
 pragma solidity ^0.8.20;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {IGovernorV3} from "./interfaces/IGovernorV3.sol";
+import {IGovernor} from "./interfaces/IGovernor.sol";
 import {ITimeLock} from "./interfaces/ITimeLock.sol";
 
-/// @title Governor V3
-contract GovernorV3 is IGovernorV3 {
+/// @title Governor
+/// @notice Extends Uniswap's timelock contract with batch queueing/execution and reworked permissions model where,
+///         instead of a single admin to perform all actions, there are multiple queue admins, a single veto admin,
+///         and permissionless execution
+contract Governor is IGovernor {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     address public immutable override timeLock;
 
     /// @dev Set of queue admins
     EnumerableSet.AddressSet internal _queueAdminsSet;
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     address public override vetoAdmin;
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     mapping(uint256 batchBlock => BatchInfo) public override batchInfo;
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     mapping(bytes32 txHash => BatchedTxInfo) public override batchedTxInfo;
 
     /// @dev Ensures that function can only be called by the timelock contract
@@ -54,7 +57,7 @@ contract GovernorV3 is IGovernorV3 {
         _updateVetoAdmin(_vetoAdmin);
     }
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function queueAdmins() external view override returns (address[] memory) {
         return _queueAdminsSet.values();
     }
@@ -63,7 +66,7 @@ contract GovernorV3 is IGovernorV3 {
     // ACTIONS //
     // ------- //
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function queueTransaction(
         address target,
         uint256 value,
@@ -86,14 +89,14 @@ contract GovernorV3 is IGovernorV3 {
         ITimeLock(timeLock).queueTransaction(target, value, signature, data, eta);
     }
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function startBatch(uint80 eta) external override queueAdminOnly {
         if (batchInfo[block.number].initiator != address(0)) revert BatchAlreadyStartedException();
         batchInfo[block.number] = BatchInfo({initiator: msg.sender, length: 0, eta: eta});
         emit QueueBatch(msg.sender, block.number);
     }
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function executeTransaction(
         address target,
         uint256 value,
@@ -104,13 +107,13 @@ contract GovernorV3 is IGovernorV3 {
         return _transactionAction(target, value, signature, data, eta, TxAction.Execute);
     }
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function executeBatch(TxParams[] calldata txs) external payable override {
         uint256 batchBlock = _batchAction(txs, TxAction.Execute);
         emit ExecuteBatch(msg.sender, batchBlock);
     }
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function cancelTransaction(
         address target,
         uint256 value,
@@ -121,7 +124,7 @@ contract GovernorV3 is IGovernorV3 {
         _transactionAction(target, value, signature, data, eta, TxAction.Cancel);
     }
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function cancelBatch(TxParams[] calldata txs) external override vetoAdminOnly {
         uint256 batchBlock = _batchAction(txs, TxAction.Cancel);
         emit CancelBatch(msg.sender, batchBlock);
@@ -131,12 +134,12 @@ contract GovernorV3 is IGovernorV3 {
     // CONFIGURATION //
     // ------------- //
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function addQueueAdmin(address admin) external override timeLockOnly {
         _addQueueAdmin(admin);
     }
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function removeQueueAdmin(address admin) external override timeLockOnly {
         if (_queueAdminsSet.contains(admin)) {
             if (_queueAdminsSet.length() == 1) revert CantRemoveLastQueueAdminException();
@@ -145,12 +148,12 @@ contract GovernorV3 is IGovernorV3 {
         }
     }
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function updateVetoAdmin(address admin) external override timeLockOnly {
         _updateVetoAdmin(admin);
     }
 
-    /// @inheritdoc IGovernorV3
+    /// @inheritdoc IGovernor
     function claimTimeLockOwnership() external override queueAdminOnly {
         ITimeLock(timeLock).acceptAdmin();
     }
