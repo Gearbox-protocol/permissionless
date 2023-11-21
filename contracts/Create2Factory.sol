@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Gearbox Protocol. Generalized leverage for DeFi protocols
 // (c) Gearbox Foundation, 2023.
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.17;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
@@ -11,8 +11,6 @@ import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 /// @notice Deploys contract from bytecode and salt using create2
 contract Create2Factory is Ownable {
     using Address for address;
-
-    constructor() Ownable(msg.sender) {}
 
     function callExternal(address target, bytes calldata data) external onlyOwner {
         target.functionCall(data);
