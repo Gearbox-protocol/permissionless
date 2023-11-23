@@ -24,10 +24,10 @@ contract Governor is IGovernor {
     address public override vetoAdmin;
 
     /// @inheritdoc IGovernor
-    mapping(uint256 batchBlock => BatchInfo) public override batchInfo;
+    mapping(uint256 => BatchInfo) public override batchInfo;
 
     /// @inheritdoc IGovernor
-    mapping(bytes32 txHash => BatchedTxInfo) public override batchedTxInfo;
+    mapping(bytes32 => BatchedTxInfo) public override batchedTxInfo;
 
     /// @dev Ensures that function can only be called by the timelock contract
     modifier timeLockOnly() {
