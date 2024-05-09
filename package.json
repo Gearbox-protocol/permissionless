@@ -10,7 +10,11 @@
     ],
     "license": "MIT",
     "devDependencies": {
+        "@1inch/solidity-utils": "2.4.0",
+        "@chainlink/contracts": "0.4.0",
+        "@gearbox-protocol/core-v2": "^1.19.0-base.17",
         "@gearbox-protocol/core-v3": "^1.50.0-next.7",
+        "@gearbox-protocol/sdk-gov": "^2.1.0",
         "@openzeppelin/contracts": "4.9.3",
         "ds-test": "https://github.com/dapphub/ds-test",
         "forge-std": "https://github.com/foundry-rs/forge-std.git#v1.7.2"
