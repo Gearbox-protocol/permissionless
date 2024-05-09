@@ -2,6 +2,11 @@
 # yarn lockfile v1
 
 
+"@gearbox-protocol/core-v3@^1.50.0-next.7":
+  version "1.50.0-next.7"
+  resolved "https://registry.yarnpkg.com/@gearbox-protocol/core-v3/-/core-v3-1.50.0-next.7.tgz#420a1b0a305508432f725e10466d9eb1c72b522d"
+  integrity sha512-UGzkSY2mBc1zjAhoG15xAgYmVsRw2z/zhLfAHj8mMQMnfDzY5yNw0x5IzFWVWE1UwZJXdQgnb0U4sqjFwdkCTQ==
+
 "@openzeppelin/contracts@4.9.3":
   version "4.9.3"
   resolved "https://registry.yarnpkg.com/@openzeppelin/contracts/-/contracts-4.9.3.tgz#00d7a8cf35a475b160b3f0293a6403c511099364"

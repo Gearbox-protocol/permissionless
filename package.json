@@ -10,6 +10,7 @@
     ],
     "license": "MIT",
     "devDependencies": {
+        "@gearbox-protocol/core-v3": "^1.50.0-next.7",
         "@openzeppelin/contracts": "4.9.3",
         "ds-test": "https://github.com/dapphub/ds-test",
         "forge-std": "https://github.com/foundry-rs/forge-std.git#v1.7.2"
