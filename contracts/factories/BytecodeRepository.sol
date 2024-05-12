@@ -79,4 +79,22 @@ contract BytecodeRepository is IBytecodeRepository {
             }
         }
     }
+
+    function getAddress(string memory contactType, uint256 _version, bytes memory constructorParams, bytes32 salt)
+        external
+        view
+        override
+        returns (address)
+    {
+        bytes32 _hash = computeBytecodeHash(contactType, _version);
+
+        bytes memory bytecode = _bytecode[_hash];
+        if (bytecode.length == 0) {
+            revert BytecodeNotFound(_hash);
+        }
+
+        bytes memory bytecodeWithParams = abi.encodePacked(bytecode, constructorParams);
+
+        return Create2.computeAddress(salt, keccak256(bytecodeWithParams));
+    }
 }

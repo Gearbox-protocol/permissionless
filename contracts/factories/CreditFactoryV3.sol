@@ -4,15 +4,20 @@
 pragma solidity ^0.8.17;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {IVersion} from "@gearbox-protocol/core-v2/contracts/interfaces/IVersion.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/IVersion.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
+import {CreditManagerV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditManagerV3.sol";
+import {IBytecodeRepository} from "./IBytecodeRepository.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
 import {AP_CREDIT_MANAGER, AP_CREDIT_FACADE, AP_CREDIT_CONFIGURATOR} from "./ContractLiterals.sol";
+import {IBytecodeRepository} from "./IBytecodeRepository.sol";
 
 contract CreditFactoryV3 is AbstractFactory, IVersion {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
+
+    constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
 
     function deployCreditManager(
         address _pool,
@@ -34,13 +39,13 @@ contract CreditFactoryV3 is AbstractFactory, IVersion {
         address _degenNFT,
         bool _expirable,
         uint256 _version,
-        bytes32 salt
+        bytes32 _salt
     ) external returns (address) {
-        bytes memory constructorParams = abi.encode(_pool, _accountFactory, _priceOracle, _pool, _name);
+        bytes memory constructorParams = abi.encode(_creditManager, _degenNFT, _expirable);
         return IBytecodeRepository(bytecodeRepository).deploy(AP_CREDIT_FACADE, _version, constructorParams, _salt);
     }
 
-    function deployCreditConfigurator(address _creditManager, address _creditFacade, uint256 _version, bytes32 salt)
+    function deployCreditConfigurator(address _creditManager, address _creditFacade, uint256 _version, bytes32 _salt)
         external
         returns (address)
     {
@@ -48,12 +53,11 @@ contract CreditFactoryV3 is AbstractFactory, IVersion {
         address creditConfiguratorAddr = IBytecodeRepository(bytecodeRepository).getAddress(
             AP_CREDIT_CONFIGURATOR, _version, constructorParams, _salt
         );
-        if (ICreditManagerV3(creditManager).creditConfigurator() == address(this)) {
-            creditManager.setConfigurator(creditConfiguratorAddr);
+        if (ICreditManagerV3(_creditManager).creditConfigurator() == address(this)) {
+            CreditManagerV3(_creditManager).setCreditConfigurator(creditConfiguratorAddr);
         }
 
-        return IBytecodeRepository(bytecodeRepository).deploy(
-            AP_CREDIT_CONFIGURATOR, _creditManager, _creditFacade, _version, constructorParams, _salt
-        );
+        return
+            IBytecodeRepository(bytecodeRepository).deploy(AP_CREDIT_CONFIGURATOR, _version, constructorParams, _salt);
     }
 }

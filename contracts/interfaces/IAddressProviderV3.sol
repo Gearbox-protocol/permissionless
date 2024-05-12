@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
-import {IVersion} from "@gearbox-protocol/core-v2/contracts/interfaces/IVersion.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/IVersion.sol";
 
 uint256 constant NO_VERSION_CONTROL = 0;
 
@@ -41,7 +41,9 @@ interface IAddressProviderV3 is IAddressProviderV3Events, IVersion {
 
     function addresses(string memory key, uint256 _version) external view returns (address);
 
-    function getAddressOrRevert(string memory key, uint256 _version) external view returns (address result);
+    function getAddressOrRevert(string memory key, uint256 _version) external view returns (address);
+
+    function getLaterstAddressOrRevert(string memory key) external view returns (address);
 
     function setAddress(string memory key, address value, bool saveVersion) external;
 
@@ -54,4 +56,6 @@ interface IAddressProviderV3 is IAddressProviderV3Events, IVersion {
     function isMarketConfigurator(address riskCurator) external view returns (bool);
 
     function registerCreditManager(address creditManager) external;
+
+    function addCreditManager(address) external;
 }

@@ -17,9 +17,11 @@ import {
 import {ACLNonReentrantTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLNonReentrantTrait.sol";
 import {PriceFeedValidationTrait} from "@gearbox-protocol/core-v3/contracts/traits/PriceFeedValidationTrait.sol";
 
+import {IBytecodeRepository} from "./IBytecodeRepository.sol";
+
 import {AbstractFactory} from "./AbstractFactory.sol";
 
-contract PriceOracleFactoryV3 is AbstractFactory, ACLNonReentrantTrait, PriceFeedValidationTrait {
+contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice Contract version
@@ -32,7 +34,7 @@ contract PriceOracleFactoryV3 is AbstractFactory, ACLNonReentrantTrait, PriceFee
 
     /// @notice Constructor
     /// @param addressProvider Address provider contract address
-    constructor(address addressProvider) ACLNonReentrantTrait(addressProvider) {}
+    constructor(address addressProvider) AbstractFactory(addressProvider) {}
 
     function deployPriceOracle(address _acl, uint256 _version, bytes32 _salt) external returns (address) {
         bytes memory constructorParams = abi.encode(_acl);

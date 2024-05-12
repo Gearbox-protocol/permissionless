@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
-import {IVersion} from "@gearbox-protocol/core-v2/contracts/interfaces/IVersion.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/IVersion.sol";
 
 interface IBytecodeRepositoryEvents {}
 
@@ -11,5 +11,10 @@ interface IBytecodeRepositoryEvents {}
 interface IBytecodeRepository is IBytecodeRepositoryEvents, IVersion {
     function deploy(string memory contactType, uint256 version, bytes memory constructorParams, bytes32 salt)
         external
+        returns (address);
+
+    function getAddress(string memory contactType, uint256 _version, bytes memory constructorParams, bytes32 salt)
+        external
+        view
         returns (address);
 }

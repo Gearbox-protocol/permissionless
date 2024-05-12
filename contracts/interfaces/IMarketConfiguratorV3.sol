@@ -3,9 +3,9 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
-import {IContractsRegister} from "@gearbox-protocol/core-v2/contracts/interfaces/IContractsRegister.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/IVersion.sol";
 
-interface IMarketConfiguratorV3 is IContractsRegister {
+interface IMarketConfiguratorV3 is IVersion {
     /// @notice Risc curator who manages these markets
     function owner() external view returns (address);
 
@@ -14,7 +14,9 @@ interface IMarketConfiguratorV3 is IContractsRegister {
 
     function addressProvider() external view returns (address);
 
-    function acl() external view returns (address);
+    // function acl() external view returns (address);
+
+    function contractsRegister() external view returns (address);
 
     function interestModelFactory() external view returns (address);
 
