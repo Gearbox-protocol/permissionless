@@ -3,45 +3,39 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
-import {ContractsRegisterTrait} from "@gearbox-protocol/core-v3/contracts/traits/ContractsRegisterTrait.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
+import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 
-abstract contract ContractRegisterOwnerTrait is ContractsRegisterTrait {
+contract ContractsRegister is ACLTrait, IContractsRegister {
     using EnumerableSet for EnumerableSet.AddressSet;
+
+    /// @notice Contract version
+    uint256 public constant override version = 3_10;
 
     EnumerableSet.AddressSet internal _pools;
     EnumerableSet.AddressSet internal _creditManagers;
 
-    constructor(address) ContractsRegisterTrait(address(this)) {}
+    constructor(address _acl) ACLTrait(_acl) {}
 
-    /// @dev Whether given address is a registered pool
-    function _isRegisteredPool(address addr) internal view override returns (bool) {
-        return _pools.contains(addr);
-    }
-
-    /// @dev Whether given address is a registered credit manager
-    function _isRegisteredCreditManager(address addr) internal view override returns (bool) {
-        return _creditManagers.contains(addr);
-    }
-
-    function _addPool(address pool) internal {
+    function addPool(address pool) external override configuratorOnly {
         _pools.add(pool);
     }
 
-    function _removePool(address pool) internal {
+    function removePool(address pool) external override configuratorOnly {
         _pools.remove(pool);
     }
 
-    function _addCreditManager(address creditManager) internal {
+    function addCreditManager(address creditManager) external override configuratorOnly {
         _creditManagers.add(creditManager);
     }
 
-    function _removeCreditManager(address creditManager) internal {
+    function removeCreditManager(address creditManager) external override configuratorOnly {
         _creditManagers.remove(creditManager);
     }
 
     /// @dev Returns the array of registered pools
-    function pools() external view returns (address[] memory) {
+    function getPools() external view returns (address[] memory) {
         return _pools.values();
     }
 
@@ -51,7 +45,7 @@ abstract contract ContractRegisterOwnerTrait is ContractsRegisterTrait {
     }
 
     /// @dev Returns the array of registered Credit Managers
-    function creditManagers() external view returns (address[] memory) {
+    function getCreditManagers() external view returns (address[] memory) {
         return _creditManagers.values();
     }
 

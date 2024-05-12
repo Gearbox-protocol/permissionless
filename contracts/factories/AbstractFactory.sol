@@ -12,7 +12,7 @@ abstract contract AbstractFactory is APOwnerTrait {
     error CallerIsNotMarketConfiguratorException();
 
     modifier marketConfiguratorOnly() {
-        if (IAddressProviderV3(_addressProvider).isMarketConfigurator(msg.sender)) {
+        if (IAddressProviderV3(addressProvider).isMarketConfigurator(msg.sender)) {
             revert CallerIsNotMarketConfiguratorException();
         }
         _;

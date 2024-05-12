@@ -3,15 +3,18 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
-import {IVersion} from "@gearbox-protocol/core-v2/contracts/interfaces/IVersion.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/IVersion.sol";
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {AP_POOL, AP_POOL_QUOTA_KEEPER, AP_POOL_RATE_KEEPER} from "./ContractLiterals.sol";
+import {AP_POOL, AP_POOL_QUOTA_KEEPER, AP_POOL_RATE_KEEPER, AP_DEGEN_NFT} from "./ContractLiterals.sol";
 import {MarketConfigurator} from "./MarketConfigurator.sol";
 import {IBytecodeRepository} from "./IBytecodeRepository.sol";
 
 contract PoolFactoryV3 is AbstractFactory, IVersion {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
+
+    constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
 
     function deploy(
         address underlying,
@@ -28,7 +31,7 @@ contract PoolFactoryV3 is AbstractFactory, IVersion {
 
         /// @notice tries to deploy version for specific (fee) token
         try IBytecodeRepository(bytecodeRepository).deploy(
-            string.concat(AP_POOL, "_", underlying), _version, constructorParams, _salt
+            string.concat(AP_POOL, "_", IERC20Metadata(underlying).symbol()), _version, constructorParams, _salt
         ) returns (address deployedContract) {
             return deployedContract;
         } catch {}

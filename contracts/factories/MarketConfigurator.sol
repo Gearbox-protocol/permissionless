@@ -3,10 +3,8 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {ACL} from "@gearbox-protocol/core-v2/contracts/core/ACL.sol";
-import {ControllerTimelockV3} from "@gearbox-protocol/core-v3/contracts/governance/ControllerTimelockV3.sol";
 
 import {PriceOracleFactoryV3} from "../factories/PriceOracleFactoryV3.sol";
 import {InterestModelFactory} from "../factories/InterestModelFactory.sol";
@@ -25,13 +23,18 @@ import {
 } from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
-import {IContractsRegister} from "@gearbox-protocol/core-v2/contracts/interfaces/IContractsRegister.sol";
+import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 
-import {ContractRegisterOwnerTrait} from "./ContractRegisterOwnerTrait.sol";
+import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
+import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
+import {IACL} from "../interfaces/IACL.sol";
+
+import {ACLOwner} from "./ACLOwner.sol";
 
 import {
+    AP_ACCOUNT_FACTORY,
     AP_POOL,
     AP_POOL_QUOTA_KEEPER,
     AP_POOL_RATE_KEEPER,
@@ -41,8 +44,11 @@ import {
     AP_CREDIT_CONFIGURATOR
 } from "./ContractLiterals.sol";
 
-contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegisterOwnerTrait {
+contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
     using EnumerableSet for EnumerableSet.AddressSet;
+
+    /// @notice Contract version
+    uint256 public constant override version = 3_10;
 
     error InterestModelNotAllowedException(address);
 
@@ -80,7 +86,8 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
     address public immutable override addressProvider;
 
     address public override treasury;
-    address public override acl;
+
+    address public immutable override contractsRegister;
 
     address public override interestModelFactory;
     address public override poolFactory;
@@ -89,14 +96,20 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
     address public override adapterFactory;
     address public override controller;
 
-    mapping(string => uint256) public latestVersion;
+    mapping(string => uint256) public latestVersions;
 
-    constructor(address _addressProvider, address _owner, address _treasury, string memory _name, address _vetoAdmin)
-        ContractRegisterOwnerTrait(address(this))
-    {
+    constructor(
+        address _addressProvider,
+        address _acl,
+        address _contractsRegister,
+        address _treasury,
+        string memory _name,
+        address _vetoAdmin
+    ) ACLTrait(_acl) {
         addressProvider = _addressProvider;
-        _transferOwnership(_owner);
-        acl = address(new ACL());
+        acl = _acl;
+
+        contractsRegister = _contractsRegister;
         name = _name;
         treasury = _treasury;
 
@@ -113,12 +126,15 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
         string memory rateKeeperType,
         string calldata _name,
         string calldata _symbol
-    ) external onlyOwner {
+    ) external configuratorOnly {
+        bytes32 salt = bytes32(uint256(uint160(address(this))));
+
         if (InterestModelFactory(interestModelFactory).isRegisteredInterestModel(interestModel)) {
             revert InterestModelNotAllowedException(interestModel);
         }
-        address pool =
-            PoolFactoryV3(poolFactory).deploy(underlying, totalLimit, _name, _symbol, latestVersions[AP_POOL], salt);
+        address pool = PoolFactoryV3(poolFactory).deploy(
+            underlying, interestModel, totalLimit, _name, _symbol, latestVersions[AP_POOL], salt
+        );
 
         address pqk = PoolFactoryV3(poolFactory).deployPoolQuotaKeeper(pool, latestVersions[AP_POOL_QUOTA_KEEPER], salt);
 
@@ -126,16 +142,17 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
             PoolFactoryV3(poolFactory).deployPoolQuotaKeeper(pool, latestVersions[AP_POOL_RATE_KEEPER], salt);
         //    IPoolV3.setPoolQuotaKeeper(address newPoolQuotaKeeper)
 
-        _addPool(pool);
+        IContractsRegister(contractsRegister).addPool(pool);
+
         PoolV3(pool).setController(controller);
 
         priceOracles[pool] =
-            PriceOracleFactoryV3(priceOracleFactory).deployPriceOracle(acl, latestVersion[AP_PRICE_ORACLE]);
+            PriceOracleFactoryV3(priceOracleFactory).deployPriceOracle(acl, latestVersions[AP_PRICE_ORACLE], salt);
 
         emit CreateMarket(pool, underlying, _name, _symbol);
     }
 
-    function removeMarket(address pool) external onlyOwner {
+    function removeMarket(address pool) external configuratorOnly {
         if (IPoolV3(pool).totalBorrowed() != 0) revert CantRemoveNonEmptyMarket();
         address[] memory cms = IPoolV3(pool).creditManagers();
         uint256 len = cms.length;
@@ -147,11 +164,11 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
 
         IPoolV3(pool).setTotalDebtLimit(0);
         IPoolV3(pool).setWithdrawFee(0);
-        _removePool(pool);
+        IContractsRegister(contractsRegister).removePool(pool);
         emit RemoveMarket(pool);
     }
 
-    function updateInterestRateModel(address pool, address interestModel) external onlyOwner {
+    function updateInterestRateModel(address pool, address interestModel) external configuratorOnly {
         // Check that pool is realted to here
         if (InterestModelFactory(interestModelFactory).isRegisteredInterestModel(interestModel)) {
             revert InterestModelNotAllowedException(interestModel);
@@ -162,32 +179,35 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
     //
     // CREDIT MANAGER
     //
-    function deployCreditManager(address pool, address _degenNFT, string memory _name, bytes32 _salt)
+    function deployCreditManager(address pool, address _degenNFT, uint40 expirationDate, string memory _name)
         external
-        onlyOwner
+        configuratorOnly
     {
         if (_degenNFTs.contains(_degenNFT)) {
             revert DegenNFTNotExistsException(_degenNFT);
         }
 
-        address creditManager = CreditFactory(creditFactory).deployCreditManager(
+        bytes32 salt = bytes32(uint256(uint160(address(this))));
+
+        address creditManager = CreditFactoryV3(creditFactory).deployCreditManager(
             pool,
             IAddressProviderV3(addressProvider).getLaterstAddressOrRevert(AP_ACCOUNT_FACTORY),
             priceOracles[pool],
-            _pool,
             _name,
-            latestVersion[AP_CREDIT_MANAGER], // TODO: Fee token case(?)
-            _salt
+            latestVersions[AP_CREDIT_MANAGER], // TODO: Fee token case(?)
+            salt
         );
 
-        _addCreditManager(creditManager);
+        IAddressProviderV3(addressProvider).addCreditManager(creditManager);
 
-        address creditFacade = CreditFactory(creditFactory).deployCreditFacade(
-            creditManager, _degenNFT, _expirable, latestVersion[AP_CREDIT_FACADE], salt
+        bool expirable = expirationDate != 0;
+
+        address creditFacade = CreditFactoryV3(creditFactory).deployCreditFacade(
+            creditManager, _degenNFT, expirable, latestVersions[AP_CREDIT_FACADE], salt
         );
 
-        address creditConfigurator = CreditFactory(creditFactory).deployCreditConfigurator(
-            creditManager, creditFacade, latestVersion[AP_CREDIT_CONFIGURATOR], salt
+        address creditConfigurator = CreditFactoryV3(creditFactory).deployCreditConfigurator(
+            creditManager, creditFacade, latestVersions[AP_CREDIT_CONFIGURATOR], salt
         );
 
         address[] memory emergencyLiquidators = _emergencyLiquidators.values();
@@ -196,7 +216,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
         uint256 len = emergencyLiquidators.length;
         unchecked {
             for (uint256 i; i < len; ++i) {
-                _creditConfigurator(newCreditManager).addEmergencyLiquidator(emergencyLiquidators[i]);
+                _creditConfigurator(creditManager).addEmergencyLiquidator(emergencyLiquidators[i]);
             }
         }
 
@@ -205,18 +225,26 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
         IAddressProviderV3(addressProvider).addCreditManager(creditManager);
     }
 
-    function updateCreditFacade(uint256 version, address creditManager) external onlyOwner {
+    function updateCreditFacade(address creditManager, address _degenNFT, bool _expirable, uint256 _version)
+        external
+        configuratorOnly
+    {
+        bytes32 salt = bytes32(uint256(uint160(address(this))));
         // Check that credit manager is reristered
         ICreditConfiguratorV3 creditConfigurator = _creditConfigurator(creditManager);
-        address newCreditFacade = CreditFactoryV3(creditFactory).deployCreditFacade(creditManager, version);
+        address newCreditFacade =
+            CreditFactoryV3(creditFactory).deployCreditFacade(creditManager, _degenNFT, _expirable, _version, salt);
         creditConfigurator.setCreditFacade(newCreditFacade, true);
     }
 
-    function updateCreditConfigurator(address creditManager, uint256 _version, bytes32 _salt) external onlyOwner {
+    function updateCreditConfigurator(address creditManager, uint256 _version, bytes32 _salt)
+        external
+        configuratorOnly
+    {
         // Check that credit manager is reristered
         ICreditConfiguratorV3 creditConfigurator = _creditConfigurator(creditManager);
-        address newCreditConfigurator = CreditFactory(creditFactory).deployCreditConfigurator(
-            creditManager, ICreditManagerV3(creditManager).creditFacade(), _version, salt
+        address newCreditConfigurator = CreditFactoryV3(creditFactory).deployCreditConfigurator(
+            creditManager, ICreditManagerV3(creditManager).creditFacade(), _version, _salt
         );
 
         creditConfigurator.upgradeCreditConfigurator(newCreditConfigurator);
@@ -225,12 +253,15 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
     //
     // CREDIT MANAGER
     //
-    function addCollateralToken(address creditManager, address token, uint16 liquidationThreshold) external onlyOwner {
+    function addCollateralToken(address creditManager, address token, uint16 liquidationThreshold)
+        external
+        configuratorOnly
+    {
         _creditConfigurator(creditManager).addCollateralToken(token, liquidationThreshold);
     }
 
     // function setBotList(uint256 newVersion)
-    function addEmergencyLiquidator(address pool, address liquidator) external onlyOwner {
+    function addEmergencyLiquidator(address pool, address liquidator) external configuratorOnly {
         address[] memory cms = IPoolV3(pool).creditManagers();
         uint256 len = cms.length;
         unchecked {
@@ -240,7 +271,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
         }
     }
 
-    function removeEmergencyLiquidator(address pool, address liquidator) external onlyOwner {
+    function removeEmergencyLiquidator(address pool, address liquidator) external configuratorOnly {
         address[] memory cms = IPoolV3(pool).creditManagers();
         uint256 len = cms.length;
         unchecked {
@@ -250,20 +281,23 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
         }
     }
 
-    function deployDegenNFT() external onlyOwner {
-        address degenNFT = CreditFactory(creditFactory).deployCreditConfigurator(acl, contractsRegister);
-        if (_degenNFTs.contains(degenNFT)) {
-            revert DeployAddressCollisionException(degenNFT);
-        }
-        _degenNFTs.add(degenNFT);
+    function deployDegenNFT() external configuratorOnly {
+        // address degenNFT = CreditFactoryV3(creditFactory).deployDegenNFT(acl(), contractsRegister);
+        // if (_degenNFTs.contains(degenNFT)) {
+        //     revert DeployAddressCollisionException(degenNFT);
+        // }
+        // _degenNFTs.add(degenNFT);
 
-        emit DeployDegenNFT(degenNFT);
+        // emit DeployDegenNFT(degenNFT);
     }
 
     //
     // PRICE ORACLE
     //
-    function setPriceFeedFromStore(address pool, address token, address priceFeed, bool trusted) external onlyOwner {
+    function setPriceFeedFromStore(address pool, address token, address priceFeed, bool trusted)
+        external
+        configuratorOnly
+    {
         // Check that pool exists
         if (!PriceOracleFactoryV3(priceOracleFactory).isRegisteredOracle(token, priceFeed)) {
             revert PriceFeedIsNotAllowedException(token, priceFeed);
@@ -276,7 +310,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
         emit SetPriceFeedFromStore(token, priceFeed, trusted);
     }
 
-    function setReservePriceFeedFromStore(address pool, address token, address priceFeed) external onlyOwner {
+    function setReservePriceFeedFromStore(address pool, address token, address priceFeed) external configuratorOnly {
         // Check that pool exists
         if (!PriceOracleFactoryV3(priceOracleFactory).isRegisteredOracle(token, priceFeed)) {
             revert PriceFeedIsNotAllowedException(token, priceFeed);
@@ -289,11 +323,13 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
         emit SetReservePriceFeedFromStore(token, priceFeed);
     }
 
-    function changePriceOracle(address pool, uint256 version) external onlyOwner {
-        // Check that prices for all tokens exists
+    function changePriceOracle(address pool) external configuratorOnly {
+        bytes32 salt = bytes32(uint256(uint160(address(this))));
 
+        // Check that prices for all tokens exists
         address oldOracle = priceOracles[pool];
-        address newPriceOracle = PriceOracleFactoryV3(priceOracleFactory).deployPriceOracle(version);
+        address newPriceOracle =
+            PriceOracleFactoryV3(priceOracleFactory).deployPriceOracle(acl, latestVersions[AP_PRICE_ORACLE], salt);
         address[] memory collateralTokens = IPoolQuotaKeeperV3(IPoolV3(pool).poolQuotaKeeper()).quotedTokens();
         uint256 len = collateralTokens.length;
 
@@ -322,7 +358,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
     /// @dev Adds new adapter from factory to credit manager
     function addAdapter(address creditManager, address target, uint256 _version, bytes calldata specificParams)
         external
-        onlyOwner
+        configuratorOnly
     {
         address newAdapter =
             AdapterFactoryV3(adapterFactory).deployAdapter(creditManager, target, _version, specificParams);
@@ -340,8 +376,18 @@ contract MarketConfigurator is Ownable2Step, IMarketConfiguratorV3, ContractRegi
         return ICreditConfiguratorV3(ICreditManagerV3(creditManager).creditConfigurator());
     }
 
-    function setName(string calldata _newName) external onlyOwner {
+    function setName(string calldata _newName) external configuratorOnly {
         name = _newName;
         emit SetName(_newName);
+    }
+
+    //
+    function pools() external view returns (address[] memory) {
+        return IContractsRegister(acl).getPools();
+    }
+
+    //
+    function owner() external view returns (address) {
+        return IACL(acl).owner();
     }
 }
