@@ -8,7 +8,7 @@ import {PolicyManagerV3, Policy} from "../PolicyManagerV3.sol";
 contract PolicyManagerV3Harness is PolicyManagerV3 {
     constructor(address _addressProvider) PolicyManagerV3(_addressProvider) {}
 
-    function checkPolicy(bytes32 policyID, uint256 newValue) external returns (bool) {
+    function checkPolicy(string memory policyID, uint256 newValue) external returns (bool) {
         return _checkPolicy(policyID, newValue);
     }
 }

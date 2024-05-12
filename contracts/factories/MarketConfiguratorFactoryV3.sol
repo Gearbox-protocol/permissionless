@@ -9,7 +9,7 @@ import {MarketConfigurator} from "./MarketConfigurator.sol";
 import {ACL} from "../primitives/ACL.sol";
 import {ContractsRegister} from "../primitives/ContractsRegister.sol";
 import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
-import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/IVersion.sol";
+import {IVersion} from "@gearbox-protocol/core-v2/contracts/interfaces/IVersion.sol";
 
 import {IBytecodeRepository} from "./IBytecodeRepository.sol";
 import {AP_MARKET_CONFIGURATOR} from "./ContractLiterals.sol";

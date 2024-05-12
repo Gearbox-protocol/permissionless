@@ -10,14 +10,14 @@ import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v2/contracts/libraries/C
 import {AddressProviderV3ACLMock} from
     "@gearbox-protocol/core-v3/contracts/test/mocks/core/AddressProviderV3ACLMock.sol";
 import "@gearbox-protocol/core-v3/contracts/test/lib/constants.sol";
+import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
 contract PolicyManagerV3UnitTest is Test {
     AddressProviderV3ACLMock public addressProvider;
 
     PolicyManagerV3Harness public policyManager;
 
-    event SetPolicy(bytes32 indexed policyHash, bool enabled);
-    event SetGroup(address indexed contractAddress, string indexed group);
+    event SetPolicy(string indexed policyID, bool enabled);
 
     function setUp() public {
         vm.prank(CONFIGURATOR);

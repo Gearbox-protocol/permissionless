@@ -3,6 +3,8 @@
 // (c) Gearbox Foundation, 2023.
 pragma solidity ^0.8.17;
 
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+
 import {PolicyManagerV3} from "./PolicyManagerV3.sol";
 import {IControllerTimelockV3, QueuedTransactionData} from "./interfaces/IControllerTimelockV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
@@ -300,7 +302,7 @@ contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
     function setTokenLimit(address pool, address token, uint96 limit) external override {
         address poolQuotaKeeper = IPoolV3(pool).poolQuotaKeeper();
 
-        if (!_checkPolicy("forbidAdapter", uint256(limit))) {
+        if (!_checkPolicy("setTokenLimit", uint256(limit))) {
             revert ParameterChecksFailedException(); // U: [CT-11]
         }
 
@@ -308,7 +310,7 @@ contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
             target: poolQuotaKeeper,
             signature: "setTokenLimit(address,uint96)",
             data: abi.encode(token, limit),
-            delay: _getPolicyDelay("forbidAdapter"),
+            delay: _getPolicyDelay("setTokenLimit"),
             sanityCheckCallData: abi.encodeCall(this.getTokenLimit, (poolQuotaKeeper, token))
         }); // U: [CT-11]
     }
@@ -355,7 +357,7 @@ contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
     function setTotalDebtLimit(address pool, uint256 newLimit) external override {
         uint256 totalDebtLimitOld = getTotalDebtLimit(pool);
 
-        if (!_checkPolicy("totalDebtLimit", uint256(newLimit))) {
+        if (!_checkPolicy("setTotalDebtLimit", uint256(newLimit))) {
             revert ParameterChecksFailedException(); // U: [CT-13]
         }
 
@@ -363,7 +365,7 @@ contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
             target: pool,
             signature: "setTotalDebtLimit(uint256)",
             data: abi.encode(newLimit),
-            delay: _getPolicyDelay("totalDebtLimit"),
+            delay: _getPolicyDelay("setTotalDebtLimit"),
             sanityCheckCallData: abi.encodeCall(this.getTotalDebtLimit, (pool))
         }); // U: [CT-13]
     }
@@ -379,7 +381,7 @@ contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
     /// @param pool Pool to update the limit for
     /// @param newFee The new value of the fee in bp
     function setWithdrawFee(address pool, uint256 newFee) external override {
-        if (!_checkPolicy("withdrawFee", newFee)) {
+        if (!_checkPolicy("setWithdrawFee", newFee)) {
             revert ParameterChecksFailedException(); // U: [CT-14]
         }
 
@@ -387,7 +389,7 @@ contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
             target: pool,
             signature: "setWithdrawFee(uint256)",
             data: abi.encode(newFee),
-            delay: _getPolicyDelay("withdrawFee"),
+            delay: _getPolicyDelay("setWithdrawFee"),
             sanityCheckCallData: abi.encodeCall(this.getWithdrawFee, (pool))
         }); // U: [CT-14]
     }
@@ -482,7 +484,7 @@ contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
         external
         override
     {
-        bytes32 policyID = string(abi.encodePacked("setPriceFeed_", token));
+        string memory policyID = string(abi.encodePacked("setPriceFeed_", Strings.toHexString(token)));
 
         uint256 priceFeedHash = uint256(keccak256(abi.encode(priceFeed, stalenessPeriod)));
 
