@@ -5,7 +5,7 @@ pragma solidity ^0.8.17;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import {IVersion} from "@gearbox-protocol/core-v2/contracts/interfaces/IVersion.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 contract InterestModelFactory is IVersion {

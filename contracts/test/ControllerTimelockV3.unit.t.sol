@@ -19,7 +19,7 @@ import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.
 import {PoolV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolV3.sol";
 import {PoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolQuotaKeeperV3.sol";
 import {GaugeV3} from "@gearbox-protocol/core-v3/contracts/pool/GaugeV3.sol";
-import {ILPPriceFeedV2} from "@gearbox-protocol/core-v2/contracts/interfaces/ILPPriceFeedV2.sol";
+import {ILPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/interfaces/ILPPriceFeed.sol";
 import {IControllerTimelockV3Events} from "../interfaces/IControllerTimelockV3.sol";
 import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
@@ -191,7 +191,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events {
     function test_U_CT_02_setLPPriceFeedLimiter_works_correctly() public {
         address lpPriceFeed = address(new GeneralMock());
 
-        vm.mockCall(lpPriceFeed, abi.encodeWithSelector(ILPPriceFeedV2.lowerBound.selector), abi.encode(5));
+        vm.mockCall(lpPriceFeed, abi.encodeWithSelector(ILPPriceFeed.lowerBound.selector), abi.encode(5));
 
         string memory policyID = "setLPPriceFeedLimiter";
 
@@ -245,7 +245,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events {
 
         assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getPriceFeedLowerBound, (lpPriceFeed)));
 
-        vm.expectCall(lpPriceFeed, abi.encodeWithSelector(ILPPriceFeedV2.setLimiter.selector, 7));
+        vm.expectCall(lpPriceFeed, abi.encodeWithSelector(ILPPriceFeed.setLimiter.selector, 7));
 
         vm.warp(block.timestamp + 1 days);
 

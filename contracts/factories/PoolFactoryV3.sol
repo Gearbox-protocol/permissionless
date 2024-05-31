@@ -4,7 +4,7 @@
 pragma solidity ^0.8.17;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IVersion} from "@gearbox-protocol/core-v2/contracts/interfaces/IVersion.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {AbstractFactory} from "./AbstractFactory.sol";
 import {AP_POOL, AP_POOL_QUOTA_KEEPER, AP_POOL_RATE_KEEPER, AP_DEGEN_NFT} from "./ContractLiterals.sol";
 import {MarketConfigurator} from "./MarketConfigurator.sol";

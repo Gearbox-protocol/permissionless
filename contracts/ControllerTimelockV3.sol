@@ -13,7 +13,7 @@ import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.so
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.sol";
 import {IPriceOracleV3, PriceFeedParams} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
-import {ILPPriceFeedV2} from "@gearbox-protocol/core-v2/contracts/interfaces/ILPPriceFeedV2.sol";
+import {ILPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/interfaces/ILPPriceFeed.sol";
 
 /// @title Controller timelock V3
 /// @notice Controller timelock is a governance contract that allows special actors less trusted than Gearbox Governance
@@ -120,7 +120,7 @@ contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
 
     /// @dev Retrieves current lower bound for a price feed
     function getPriceFeedLowerBound(address priceFeed) public view returns (uint256) {
-        return ILPPriceFeedV2(priceFeed).lowerBound();
+        return ILPPriceFeed(priceFeed).lowerBound();
     }
 
     /// @notice Queues a transaction to set a new max debt per block multiplier
