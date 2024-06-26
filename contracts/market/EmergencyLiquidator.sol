@@ -54,7 +54,7 @@ contract EmergencyLiquidator is ACLNonReentrantTrait, IEmergencyLiquidatorExcept
     ///         whitelisted addresses
     bool public whitelistedOnlyWithLoss;
 
-    constructor(address _addressProvider) ACLNonReentrantTrait(_addressProvider) {}
+    constructor(address _acl) ACLNonReentrantTrait(_acl) {}
 
     modifier whitelistedOnly() {
         if (!isWhitelisted[msg.sender]) revert CallerNotWhitelistedException();

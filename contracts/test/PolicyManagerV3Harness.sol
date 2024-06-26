@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2023.
 pragma solidity ^0.8.17;
 
-import {PolicyManagerV3, Policy} from "../PolicyManagerV3.sol";
+import {PolicyManagerV3, Policy} from "../market/PolicyManagerV3.sol";
 
 contract PolicyManagerV3Harness is PolicyManagerV3 {
     constructor(address _addressProvider) PolicyManagerV3(_addressProvider) {}

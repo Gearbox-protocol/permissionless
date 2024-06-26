@@ -5,14 +5,14 @@ pragma solidity ^0.8.17;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {MarketConfigurator} from "./MarketConfigurator.sol";
-import {ACL} from "../primitives/ACL.sol";
-import {ContractsRegister} from "../primitives/ContractsRegister.sol";
+import {MarketConfigurator} from "../market/MarketConfigurator.sol";
+import {ACL} from "../market/ACL.sol";
+import {ContractsRegister} from "../market/ContractsRegister.sol";
 import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
-import {IBytecodeRepository} from "./IBytecodeRepository.sol";
-import {AP_MARKET_CONFIGURATOR} from "./ContractLiterals.sol";
+import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
+import {AP_MARKET_CONFIGURATOR} from "../libraries/ContractLiterals.sol";
 
 interface IAdapterDeployer {
     function deploy(address creditManager, address target, bytes calldata specificParams) external returns (address);
@@ -24,7 +24,7 @@ contract MarketConfiguratorFactoryV3 is AbstractFactory, IVersion {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
 
-    uint256 latestMCversion;
+    uint256 public latestMCversion;
 
     /// @notice Contract version
     error CantRemoveMarketConfiguratorWithExistingPoolsException();

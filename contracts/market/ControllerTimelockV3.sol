@@ -6,7 +6,7 @@ pragma solidity ^0.8.17;
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 import {PolicyManagerV3} from "./PolicyManagerV3.sol";
-import {IControllerTimelockV3, QueuedTransactionData} from "./interfaces/IControllerTimelockV3.sol";
+import {IControllerTimelockV3, QueuedTransactionData} from "../interfaces/IControllerTimelockV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
@@ -43,9 +43,9 @@ contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
     mapping(bytes32 => QueuedTransactionData) public override queuedTransactions;
 
     /// @notice Constructor
-    /// @param _addressProvider Address of the address provider
+    /// @param _acl ACL address
     /// @param _vetoAdmin Admin that can cancel transactions
-    constructor(address _addressProvider, address _vetoAdmin) PolicyManagerV3(_addressProvider) {
+    constructor(address _acl, address _vetoAdmin) PolicyManagerV3(_acl) {
         vetoAdmin = _vetoAdmin;
     }
 

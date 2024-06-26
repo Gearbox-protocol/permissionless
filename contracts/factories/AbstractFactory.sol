@@ -4,7 +4,8 @@
 pragma solidity ^0.8.17;
 
 import {APOwnerTrait} from "../traits/APOwnerTrait.sol";
-import {IAddressProviderV3, AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL} from "../interfaces/IAddressProviderV3.sol";
+import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
+import {AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
 
 abstract contract AbstractFactory is APOwnerTrait {
     address immutable bytecodeRepository;

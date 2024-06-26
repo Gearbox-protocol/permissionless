@@ -3,8 +3,8 @@
 // (c) Gearbox Foundation, 2023.
 pragma solidity ^0.8.17;
 
-import {ControllerTimelockV3} from "../ControllerTimelockV3.sol";
-import {Policy} from "../PolicyManagerV3.sol";
+import {ControllerTimelockV3} from "../market/ControllerTimelockV3.sol";
+import {Policy} from "../market/PolicyManagerV3.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 import {GeneralMock} from "@gearbox-protocol/core-v3/contracts/test/mocks/GeneralMock.sol";

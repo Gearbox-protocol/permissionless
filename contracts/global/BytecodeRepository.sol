@@ -5,7 +5,7 @@ pragma solidity ^0.8.17;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
-import {IBytecodeRepository} from "./IBytecodeRepository.sol";
+import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
 struct BytecodeInfo {
     string contractType;

@@ -17,7 +17,7 @@ import {
 import {ACLNonReentrantTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLNonReentrantTrait.sol";
 import {PriceFeedValidationTrait} from "@gearbox-protocol/core-v3/contracts/traits/PriceFeedValidationTrait.sol";
 
-import {IBytecodeRepository} from "./IBytecodeRepository.sol";
+import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
 

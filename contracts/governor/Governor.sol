@@ -4,8 +4,8 @@
 pragma solidity ^0.8.17;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {IGovernor} from "./interfaces/IGovernor.sol";
-import {ITimeLock} from "./interfaces/ITimeLock.sol";
+import {IGovernor} from "../interfaces/IGovernor.sol";
+import {ITimeLock} from "../interfaces/ITimeLock.sol";
 
 /// @title Governor
 /// @notice Extends Uniswap's timelock contract with batch queueing/execution and reworked permissions model where,
@@ -52,6 +52,7 @@ contract Governor is IGovernor {
     }
 
     /// @dev Ensures that function can't be called by contracts unless explicitly allowed
+    /// TODO: change regarding EIP-7702!
     modifier allowedCallerTypeOnly() {
         if (!isExecutionByContractsAllowed && msg.sender != tx.origin) revert CallerMustNotBeContractException();
         _;

@@ -7,11 +7,11 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {CreditManagerV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditManagerV3.sol";
-import {IBytecodeRepository} from "./IBytecodeRepository.sol";
+import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {AP_CREDIT_MANAGER, AP_CREDIT_FACADE, AP_CREDIT_CONFIGURATOR} from "./ContractLiterals.sol";
-import {IBytecodeRepository} from "./IBytecodeRepository.sol";
+import {AP_CREDIT_MANAGER, AP_CREDIT_FACADE, AP_CREDIT_CONFIGURATOR} from "../libraries/ContractLiterals.sol";
+import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
 contract CreditFactoryV3 is AbstractFactory, IVersion {
     /// @notice Contract version

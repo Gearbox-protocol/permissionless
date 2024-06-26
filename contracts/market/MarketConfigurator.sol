@@ -31,7 +31,7 @@ import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
 import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 import {IACL} from "../interfaces/IACL.sol";
 
-import {ACLOwner} from "./ACLOwner.sol";
+import {ACL} from "./ACL.sol";
 
 import {
     AP_ACCOUNT_FACTORY,
@@ -42,7 +42,8 @@ import {
     AP_CREDIT_MANAGER,
     AP_CREDIT_FACADE,
     AP_CREDIT_CONFIGURATOR
-} from "./ContractLiterals.sol";
+} from "../libraries/ContractLiterals.sol";
+import {ControllerTimelockV3} from "./ControllerTimelockV3.sol";
 
 contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -107,13 +108,18 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
         address _vetoAdmin
     ) ACLTrait(_acl) {
         addressProvider = _addressProvider;
-        acl = _acl;
 
         contractsRegister = _contractsRegister;
         name = _name;
         treasury = _treasury;
 
-        // controller = new ControllerTimelockV3(_vetoAdmin);
+        interestModelFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("INTEREST_MODEL_FACTORY");
+        poolFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("POOL_FACTORY");
+        creditFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("CREDIT_FACTORY");
+        priceOracleFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("PRICE_ORACLE_FACTORY");
+        adapterFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("ADAPTER_FACTORY");
+
+        controller = address(new ControllerTimelockV3(_acl, _vetoAdmin));
     }
 
     //
@@ -139,8 +145,10 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
         address pqk = PoolFactoryV3(poolFactory).deployPoolQuotaKeeper(pool, latestVersions[AP_POOL_QUOTA_KEEPER], salt);
 
         address rateKeeper =
-            PoolFactoryV3(poolFactory).deployPoolQuotaKeeper(pool, latestVersions[AP_POOL_RATE_KEEPER], salt);
-        //    IPoolV3.setPoolQuotaKeeper(address newPoolQuotaKeeper)
+            PoolFactoryV3(poolFactory).deployRateKeeper(pool, rateKeeperType, latestVersions[AP_POOL_RATE_KEEPER], salt);
+
+        IPoolV3(pool).setPoolQuotaKeeper(pqk);
+        IPoolQuotaKeeperV3(pqk).setGauge(rateKeeper);
 
         IContractsRegister(contractsRegister).addPool(pool);
 
@@ -191,14 +199,14 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
 
         address creditManager = CreditFactoryV3(creditFactory).deployCreditManager(
             pool,
-            IAddressProviderV3(addressProvider).getLaterstAddressOrRevert(AP_ACCOUNT_FACTORY),
+            IAddressProviderV3(addressProvider).getLatestAddressOrRevert(AP_ACCOUNT_FACTORY),
             priceOracles[pool],
             _name,
             latestVersions[AP_CREDIT_MANAGER], // TODO: Fee token case(?)
             salt
         );
 
-        IAddressProviderV3(addressProvider).addCreditManager(creditManager);
+        IAddressProviderV3(addressProvider).registerCreditManager(creditManager);
 
         bool expirable = expirationDate != 0;
 
@@ -222,7 +230,7 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
 
         address pqk = IPoolV3(pool).poolQuotaKeeper();
         IPoolQuotaKeeperV3(pqk).addCreditManager(creditManager);
-        IAddressProviderV3(addressProvider).addCreditManager(creditManager);
+        IAddressProviderV3(addressProvider).registerCreditManager(creditManager);
     }
 
     function updateCreditFacade(address creditManager, address _degenNFT, bool _expirable, uint256 _version)
@@ -382,7 +390,7 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
     }
 
     //
-    function pools() external view returns (address[] memory) {
+    function pools() external view virtual returns (address[] memory) {
         return IContractsRegister(acl).getPools();
     }
 
