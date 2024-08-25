@@ -7,6 +7,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 import {
     AddressIsNotContractException,
@@ -21,11 +22,11 @@ import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
 
-contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait {
+contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait, IVersion {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice Contract version
-    // uint256 public constant override version = 3_10;
+    uint256 public constant override version = 3_10;
 
     uint256 poLatestVersion;
 

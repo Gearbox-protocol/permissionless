@@ -46,26 +46,30 @@ import {
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
 import {MarketConfigurator} from "./MarketConfigurator.sol";
-import {AddressProviderV3} from "../global/AddressProviderV3.sol";
+import {AddressProviderV3_1} from "../global/AddressProviderV3.sol";
 import {NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
 
-// @notie it implements current migration from 3_0 to market structure
+/// @title Address provider V3 interface
+interface IAddressProviderV3Legacy {
+    function getAddressOrRevert(bytes32 key, uint256 _version) external view returns (address result);
+}
 
+// @notie it implements current migration from 3_0 to market structure
 contract MarketConfiguratorLegacy is MarketConfigurator {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     constructor(address _oldAddressProvider, address _newAddressProvider, string memory _name, address _vetoAdmin)
         MarketConfigurator(
             _newAddressProvider,
-            IAddressProviderV3(_oldAddressProvider).getAddressOrRevert("ACL", NO_VERSION_CONTROL),
-            IAddressProviderV3(_oldAddressProvider).getAddressOrRevert("CONTRACTS_REGISTER", NO_VERSION_CONTROL),
-            IAddressProviderV3(_oldAddressProvider).getAddressOrRevert("TREASURY", NO_VERSION_CONTROL),
+            IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("ACL", NO_VERSION_CONTROL),
+            IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("CONTRACTS_REGISTER", NO_VERSION_CONTROL),
+            IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("TREASURY", NO_VERSION_CONTROL),
             _name,
             _vetoAdmin
         )
     {
         /// Convert existing pools into markets
-        address priceOracle = IAddressProviderV3(_oldAddressProvider).getAddressOrRevert("PRICE_ORACLE", 300);
+        address priceOracle = IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("PRICE_ORACLE", 300);
 
         address[] memory _pools = pools();
         uint256 len = _pools.length;
@@ -79,7 +83,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         }
 
         // import degenNFT
-        address degenNFT = IAddressProviderV3(_oldAddressProvider).getAddressOrRevert("DEGEN_NFT", 1);
+        address degenNFT = IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("DEGEN_NFT", 1);
         _degenNFTs.add(degenNFT);
         emit DeployDegenNFT(degenNFT);
     }

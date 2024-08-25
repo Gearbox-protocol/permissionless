@@ -19,11 +19,16 @@ import {IBotListV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IBotLis
 import {IAccountFactoryV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IAccountFactoryV3.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
-import {AP_BOT_LIST, AP_ACCOUNT_FACTORY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
+import {
+    AP_MARKET_CONFIGURATOR_FACTORY,
+    AP_BOT_LIST,
+    AP_ACCOUNT_FACTORY,
+    NO_VERSION_CONTROL
+} from "../libraries/ContractLiterals.sol";
 
 /// @title Address provider V3
 /// @notice Stores addresses of important contracts
-contract AddressProviderV3 is Ownable2Step, IAddressProviderV3 {
+contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice Contract version
@@ -32,9 +37,6 @@ contract AddressProviderV3 is Ownable2Step, IAddressProviderV3 {
     error MarketConfiguratorsOnlyException();
     error CantRemoveMarketConfiguratorWithExistingPoolsException();
     error MarketConfiguratorNotFoundException();
-
-    /// @notice Market configurator factory
-    address public marketConfiguratorFactory;
 
     /// @notice Keeps market confifgurators
     EnumerableSet.AddressSet internal _marketConfigurators;
@@ -48,7 +50,9 @@ contract AddressProviderV3 is Ownable2Step, IAddressProviderV3 {
     mapping(string => uint256) public latestVersions;
 
     modifier marketConfiguratorFactoryOnly() {
-        if (msg.sender != marketConfiguratorFactory) revert("Market config");
+        if (msg.sender != getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL)) {
+            revert MarketConfiguratorsOnlyException();
+        }
         _;
     }
 
@@ -85,6 +89,12 @@ contract AddressProviderV3 is Ownable2Step, IAddressProviderV3 {
     /// @dev Implementation of `setAddress`
     function _setAddress(string memory key, address value, uint256 _version) internal virtual {
         addresses[key][_version] = value;
+        uint256 latestVersion = latestVersions[key];
+
+        if (_version > latestVersion) {
+            latestVersions[key] = _version;
+        }
+
         emit SetAddress(key, value, _version);
     }
 

@@ -41,7 +41,9 @@ import {
     AP_PRICE_ORACLE,
     AP_CREDIT_MANAGER,
     AP_CREDIT_FACADE,
-    AP_CREDIT_CONFIGURATOR
+    AP_CREDIT_CONFIGURATOR,
+    AP_ADAPTER_FACTORY,
+    AP_INTEREST_MODEL_FACTORY
 } from "../libraries/ContractLiterals.sol";
 import {ControllerTimelockV3} from "./ControllerTimelockV3.sol";
 
@@ -113,11 +115,11 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
         name = _name;
         treasury = _treasury;
 
-        interestModelFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("INTEREST_MODEL_FACTORY");
+        interestModelFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_INTEREST_MODEL_FACTORY);
         poolFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("POOL_FACTORY");
         creditFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("CREDIT_FACTORY");
         priceOracleFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("PRICE_ORACLE_FACTORY");
-        adapterFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("ADAPTER_FACTORY");
+        adapterFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_ADAPTER_FACTORY);
 
         controller = address(new ControllerTimelockV3(_acl, _vetoAdmin));
     }
