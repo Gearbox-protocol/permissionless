@@ -33,6 +33,7 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = "ADDRESS_PROVIDER";
 
     error MarketConfiguratorsOnlyException();
     error CantRemoveMarketConfiguratorWithExistingPoolsException();

@@ -18,6 +18,7 @@ contract BytecodeRepository is IBytecodeRepository {
     /// @notice Contract version
 
     uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = "BYTECODE_REPOSITORY_";
 
     error BytecodeNotFound(bytes32 _hash);
     error BytecodeAllreadyExists(string contractType, uint256 version);

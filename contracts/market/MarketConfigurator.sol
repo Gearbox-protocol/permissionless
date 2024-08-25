@@ -53,6 +53,8 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
 
+    bytes32 public constant contractType = "MC_";
+
     error InterestModelNotAllowedException(address);
 
     error PriceFeedIsNotAllowedException(address, address);

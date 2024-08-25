@@ -26,6 +26,7 @@ import {ILPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/interfaces/IL
 contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
     /// @notice Contract version
     uint256 public constant override version = 3_1;
+    bytes32 public constant override contractType = "CONTROLLER_TIMELOCK";
 
     /// @dev Minimum liquidation threshold ramp duration
     uint256 constant MIN_LT_RAMP_DURATION = 7 days;

@@ -15,7 +15,7 @@ import {
     PriceFeedDoesNotExistException
 } from "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
-import {ACLNonReentrantTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLNonReentrantTrait.sol";
+import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
 import {PriceFeedValidationTrait} from "@gearbox-protocol/core-v3/contracts/traits/PriceFeedValidationTrait.sol";
 
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
@@ -27,6 +27,7 @@ contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait, IVer
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = "PRICE_ORACLE_FACTORY";
 
     uint256 poLatestVersion;
 

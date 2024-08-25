@@ -23,6 +23,7 @@ contract MarketConfiguratorFactoryV3 is AbstractFactory, IVersion {
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = "MARKET_CONFIGURATOR_FACTORY";
 
     uint256 public latestMCversion;
 

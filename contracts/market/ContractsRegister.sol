@@ -12,6 +12,7 @@ contract ContractsRegister is ACLTrait, IContractsRegister {
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = "CONTRACTS_REGISTER";
 
     EnumerableSet.AddressSet internal _pools;
     EnumerableSet.AddressSet internal _creditManagers;

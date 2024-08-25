@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2023.
 pragma solidity ^0.8.17;
 
-import {ACLNonReentrantTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLNonReentrantTrait.sol";
+import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
 import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v3/contracts/libraries/Constants.sol";
 
 struct Policy {
@@ -19,14 +19,14 @@ struct Policy {
 
 /// @title Policy manager V3
 /// @dev A contract for managing bounds and conditions for mission-critical protocol params
-abstract contract PolicyManagerV3 is ACLNonReentrantTrait {
+abstract contract PolicyManagerV3 is ACLTrait {
     /// @dev Mapping from group-derived key to policy
     mapping(string => Policy) internal _policies;
 
     /// @notice Emitted when new policy is set
     event SetPolicy(string indexed policyID, bool enabled);
 
-    constructor(address _acl) ACLNonReentrantTrait(_acl) {}
+    constructor(address _acl) ACLTrait(_acl) {}
 
     /// @notice Sets the params for a new or existing policy, using policy UID as key
     /// @param policyID A unique identifier for a policy, generally, should be the signature of a method which uses the policy.

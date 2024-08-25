@@ -16,6 +16,7 @@ contract InterestModelFactory is IVersion {
     event AddNewModel(address);
 
     uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = "INTEREST_MODEL_FACTORY";
 
     EnumerableSet.AddressSet internal _modelDeployers;
 

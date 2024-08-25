@@ -7,7 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {SafeERC20} from "@1inch/solidity-utils/contracts/libraries/SafeERC20.sol";
 
-import {ACLNonReentrantTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLNonReentrantTrait.sol";
+import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {ICreditFacadeV3, MultiCall} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditFacadeV3Multicall} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3Multicall.sol";
@@ -37,7 +37,7 @@ interface IEmergencyLiquidatorEvents {
     event SetWhitelistedOnlyWithLoss(bool newStatus);
 }
 
-contract EmergencyLiquidator is ACLNonReentrantTrait, IEmergencyLiquidatorExceptions, IEmergencyLiquidatorEvents {
+contract EmergencyLiquidator is ACLTrait, IEmergencyLiquidatorExceptions, IEmergencyLiquidatorEvents {
     using SafeERC20 for IERC20;
 
     /// @dev Thrown when the access-restricted function's caller is not treasury
@@ -54,7 +54,7 @@ contract EmergencyLiquidator is ACLNonReentrantTrait, IEmergencyLiquidatorExcept
     ///         whitelisted addresses
     bool public whitelistedOnlyWithLoss;
 
-    constructor(address _acl) ACLNonReentrantTrait(_acl) {}
+    constructor(address _acl) ACLTrait(_acl) {}
 
     modifier whitelistedOnly() {
         if (!isWhitelisted[msg.sender]) revert CallerNotWhitelistedException();

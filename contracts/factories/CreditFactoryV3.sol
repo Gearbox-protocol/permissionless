@@ -16,6 +16,7 @@ import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 contract CreditFactoryV3 is AbstractFactory, IVersion {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = "CREDIT_FACTORY";
 
     constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
 

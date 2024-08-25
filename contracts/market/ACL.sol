@@ -18,6 +18,7 @@ contract ACL is IACL, Ownable {
 
     // Contract version
     uint256 public constant version = 3_10;
+    bytes32 public constant contractType = "ACL";
 
     /// @dev Adds an address to the set of admins that can pause contracts
     /// @param admin Address of a new pausable admin

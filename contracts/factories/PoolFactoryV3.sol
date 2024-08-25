@@ -14,6 +14,7 @@ import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol"
 contract PoolFactoryV3 is AbstractFactory, IVersion {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = "POOL_FACTORY";
 
     constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
 
