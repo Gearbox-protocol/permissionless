@@ -26,10 +26,14 @@ import {
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
 
+import {LibString} from "@solady/utils/LibString.sol";
+
 /// @title Address provider V3
 /// @notice Stores addresses of important contracts
 contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
     using EnumerableSet for EnumerableSet.AddressSet;
+    // using LibString for string;
+    using LibString for bytes32;
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
@@ -76,7 +80,7 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
 
     /// @notice Returns the address of a contract with a given key and version
     function getAddressOrRevert(bytes32 key, uint256 _version) public view virtual override returns (address result) {
-        return getAddressOrRevert(string(abi.encodePacked(key)), _version);
+        return getAddressOrRevert(key.fromSmallString(), _version);
     }
 
     /// @notice Returns the address of a contract with a given key and version
@@ -86,7 +90,7 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
 
     /// @notice Returns the address of a contract with a given key and version
     function getLatestAddressOrRevert(bytes32 _key) public view virtual returns (address result) {
-        string memory key = string(abi.encodePacked(_key));
+        string memory key = _key.fromSmallString();
         return getAddressOrRevert(key, latestVersions[key]);
     }
 
