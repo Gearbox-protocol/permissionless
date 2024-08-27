@@ -9,11 +9,11 @@ interface IBytecodeRepositoryEvents {}
 
 /// @title Bot list V3 interface
 interface IBytecodeRepository is IBytecodeRepositoryEvents, IVersion {
-    function deploy(string memory contactType, uint256 version, bytes memory constructorParams, bytes32 salt)
+    function deploy(bytes32 contractType, uint256 version, bytes memory constructorParams, bytes32 salt)
         external
         returns (address);
 
-    function getAddress(string memory contactType, uint256 _version, bytes memory constructorParams, bytes32 salt)
+    function getAddress(bytes32 contractType, uint256 _version, bytes memory constructorParams, bytes32 salt)
         external
         view
         returns (address);

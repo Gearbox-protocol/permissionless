@@ -75,7 +75,18 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
     }
 
     /// @notice Returns the address of a contract with a given key and version
+    function getAddressOrRevert(bytes32 key, uint256 _version) public view virtual override returns (address result) {
+        return getAddressOrRevert(string(abi.encodePacked(key)), _version);
+    }
+
+    /// @notice Returns the address of a contract with a given key and version
     function getLatestAddressOrRevert(string memory key) public view virtual returns (address result) {
+        return getAddressOrRevert(key, latestVersions[key]);
+    }
+
+    /// @notice Returns the address of a contract with a given key and version
+    function getLatestAddressOrRevert(bytes32 _key) public view virtual returns (address result) {
+        string memory key = string(abi.encodePacked(_key));
         return getAddressOrRevert(key, latestVersions[key]);
     }
 
@@ -87,7 +98,19 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
         _setAddress(key, value, saveVersion ? IVersion(value).version() : NO_VERSION_CONTROL);
     }
 
+    /// @notice Sets the address for the passed contract key
+    /// @param addr Contract address
+    /// @param saveVersion Whether to save contract's version
+    function setAddress(address addr, bool saveVersion) external override onlyOwner {
+        _setAddress(
+            string(abi.encodePacked(IVersion(addr).contractType())),
+            addr,
+            saveVersion ? IVersion(addr).version() : NO_VERSION_CONTROL
+        );
+    }
+
     /// @dev Implementation of `setAddress`
+
     function _setAddress(string memory key, address value, uint256 _version) internal virtual {
         addresses[key][_version] = value;
         uint256 latestVersion = latestVersions[key];

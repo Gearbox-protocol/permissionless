@@ -11,8 +11,13 @@ import {IMarketConfiguratorV3} from "../interfaces/IMarketConfiguratorV3.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
 
+import {LibString} from "@solady/utils/LibString.sol";
+
 contract PoolFactoryV3 is AbstractFactory, IVersion {
+    using LibString for string;
+    using LibString for bytes32;
     /// @notice Contract version
+
     uint256 public constant override version = 3_10;
     bytes32 public constant override contractType = "POOL_FACTORY";
 
@@ -33,7 +38,10 @@ contract PoolFactoryV3 is AbstractFactory, IVersion {
 
         /// @notice tries to deploy version for specific (fee) token
         try IBytecodeRepository(bytecodeRepository).deploy(
-            string.concat(AP_POOL, "_", IERC20Metadata(underlying).symbol()), _version, constructorParams, _salt
+            string.concat(AP_POOL.fromSmallString(), "_", IERC20Metadata(underlying).symbol()).toSmallString(),
+            _version,
+            constructorParams,
+            _salt
         ) returns (address deployedContract) {
             return deployedContract;
         } catch {}
@@ -52,7 +60,10 @@ contract PoolFactoryV3 is AbstractFactory, IVersion {
     {
         bytes memory constructorParams = abi.encode(pool);
         return IBytecodeRepository(bytecodeRepository).deploy(
-            string.concat(AP_POOL_RATE_KEEPER, rateKeeperType), _version, constructorParams, _salt
+            string.concat(AP_POOL_RATE_KEEPER.fromSmallString(), rateKeeperType).toSmallString(),
+            _version,
+            constructorParams,
+            _salt
         );
     }
 
@@ -65,7 +76,10 @@ contract PoolFactoryV3 is AbstractFactory, IVersion {
     ) external returns (address rateKeeper) {
         bytes memory constructorParams = abi.encode(acl, contractRegister);
         return IBytecodeRepository(bytecodeRepository).deploy(
-            string.concat(AP_DEGEN_NFT, accessType), _version, constructorParams, _salt
+            string.concat(AP_DEGEN_NFT.fromSmallString(), accessType).toSmallString(),
+            _version,
+            constructorParams,
+            _salt
         );
     }
 }

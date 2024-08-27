@@ -43,9 +43,15 @@ interface IAddressProviderV3 is IAddressProviderV3Events, IVersion {
 
     function getAddressOrRevert(string memory key, uint256 _version) external view returns (address);
 
+    function getAddressOrRevert(bytes32 key, uint256 _version) external view returns (address);
+
     function getLatestAddressOrRevert(string memory key) external view returns (address);
 
-    function setAddress(string memory key, address value, bool saveVersion) external;
+    function getLatestAddressOrRevert(bytes32 _key) external view virtual returns (address result);
+
+    function setAddress(string memory key, address addr, bool saveVersion) external;
+
+    function setAddress(address addr, bool saveVersion) external;
 
     function addMarketConfigurator(address _marketConfigurator) external;
 

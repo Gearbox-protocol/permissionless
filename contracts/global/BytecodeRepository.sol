@@ -8,7 +8,7 @@ import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
 struct BytecodeInfo {
-    string contractType;
+    bytes32 contractType;
     uint256 version;
     address[] auditors;
 }
@@ -21,14 +21,14 @@ contract BytecodeRepository is IBytecodeRepository {
     bytes32 public constant override contractType = "BYTECODE_REPOSITORY_";
 
     error BytecodeNotFound(bytes32 _hash);
-    error BytecodeAllreadyExists(string contractType, uint256 version);
+    error BytecodeAllreadyExists(bytes32 contractType, uint256 version);
 
     mapping(bytes32 => bytes) internal _bytecode;
     mapping(bytes32 => BytecodeInfo) public bytecodeInfo;
 
     EnumerableSet.UintSet internal _hashStorage;
 
-    function deploy(string memory contactType, uint256 _version, bytes memory constructorParams, bytes32 salt)
+    function deploy(bytes32 contactType, uint256 _version, bytes memory constructorParams, bytes32 salt)
         external
         override
         returns (address)
@@ -45,20 +45,20 @@ contract BytecodeRepository is IBytecodeRepository {
         return Create2.deploy(0, salt, bytecodeWithParams);
     }
 
-    function loadByteCode(string memory contractType, uint256 _version, bytes calldata bytecode) external {
-        bytes32 _hash = computeBytecodeHash(contractType, _version);
+    function loadByteCode(bytes32 _contractType, uint256 _version, bytes calldata bytecode) external {
+        bytes32 _hash = computeBytecodeHash(_contractType, _version);
         if (_hashStorage.contains(uint256(_hash))) {
-            revert BytecodeAllreadyExists(contractType, _version);
+            revert BytecodeAllreadyExists(_contractType, _version);
         }
 
         _bytecode[_hash] = bytecode;
-        bytecodeInfo[_hash].contractType = contractType;
+        bytecodeInfo[_hash].contractType = _contractType;
         bytecodeInfo[_hash].version = version;
         _hashStorage.add(uint256(_hash));
     }
 
-    function computeBytecodeHash(string memory contractType, uint256 _version) public pure returns (bytes32) {
-        return keccak256(abi.encode(contractType, _version));
+    function computeBytecodeHash(bytes32 _contractType, uint256 _version) public pure returns (bytes32) {
+        return keccak256(abi.encode(_contractType, _version));
     }
 
     function allBytecodeHashes() public view returns (bytes32[] memory result) {
@@ -81,13 +81,13 @@ contract BytecodeRepository is IBytecodeRepository {
         }
     }
 
-    function getAddress(string memory contactType, uint256 _version, bytes memory constructorParams, bytes32 salt)
+    function getAddress(bytes32 _contactType, uint256 _version, bytes memory constructorParams, bytes32 salt)
         external
         view
         override
         returns (address)
     {
-        bytes32 _hash = computeBytecodeHash(contactType, _version);
+        bytes32 _hash = computeBytecodeHash(_contactType, _version);
 
         bytes memory bytecode = _bytecode[_hash];
         if (bytecode.length == 0) {

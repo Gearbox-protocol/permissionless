@@ -48,7 +48,7 @@ import {AdapterFactoryV3} from "../contracts/factories/AdapterFactoryV3.sol";
 import "forge-std/console.sol";
 
 struct APMigration {
-    string name;
+    bytes32 name;
     uint256 version;
 }
 
@@ -97,40 +97,42 @@ contract Migrate is Script {
         uint256 len = migrations.length;
 
         for (uint256 i; i < len; i++) {
+            string memory key = string(abi.encodePacked(migrations[i].name));
+
             try IAddressProviderV3Legacy(oldAddressProvider).getAddressOrRevert(
-                stringToBytes32(migrations[i].name), migrations[i].version
+                migrations[i].name, migrations[i].version
             ) returns (address oldAddress) {
                 _addressProvider.setAddress({
-                    key: migrations[i].name,
+                    key: key,
                     value: oldAddress,
                     saveVersion: migrations[i].version != NO_VERSION_CONTROL
                 });
             } catch {
-                console.log("Failed to migrate", migrations[i].name);
+                console.log("Failed to migrate", key);
             }
         }
 
         /// Deploy new factories
         address repository = address(new BytecodeRepository());
-        _addressProvider.setAddress(AP_BYTECODE_REPOSITORY, repository, false);
+        _addressProvider.setAddress(repository, false);
 
         address factory = address(new InterestModelFactory());
-        _addressProvider.setAddress(AP_INTEREST_MODEL_FACTORY, factory, true);
+        _addressProvider.setAddress(factory, true);
 
         factory = address(new PoolFactoryV3(address(_addressProvider)));
-        _addressProvider.setAddress("POOL_FACTORY", factory, true);
+        _addressProvider.setAddress(factory, true);
 
         factory = address(new CreditFactoryV3(address(_addressProvider)));
-        _addressProvider.setAddress("CREDIT_FACTORY", factory, true);
+        _addressProvider.setAddress(factory, true);
 
         factory = address(new PriceOracleFactoryV3(address(_addressProvider)));
-        _addressProvider.setAddress("PRICE_ORACLE_FACTORY", factory, true);
+        _addressProvider.setAddress(factory, true);
 
         factory = address(new MarketConfiguratorFactoryV3(address(_addressProvider)));
-        _addressProvider.setAddress("MARKET_CONFIGURATOR_FACTORY", factory, true);
+        _addressProvider.setAddress(factory, true);
 
         factory = address(new AdapterFactoryV3());
-        _addressProvider.setAddress(AP_ADAPTER_FACTORY, factory, true);
+        _addressProvider.setAddress(factory, true);
 
         /// Deploy MarketConfiguratorLegacy
         bytes memory bytecode = type(MarketConfiguratorLegacy).creationCode;
@@ -140,7 +142,7 @@ contract Migrate is Script {
         address mcl = Create2.computeAddress(0, keccak256(bytecodeWithParams));
 
         /// set this contract to add mcl as marketConfigurator
-        _addressProvider.setAddress(AP_MARKET_CONFIGURATOR_FACTORY, deployer, false);
+        _addressProvider.setAddress(deployer, false);
 
         /// Register this marketConfigurator in AddressProvider
         _addressProvider.addMarketConfigurator(address(mcl));
@@ -149,7 +151,7 @@ contract Migrate is Script {
         Create2.deploy(0, 0, bytecodeWithParams);
 
         factory = address(new MarketConfiguratorFactoryV3(address(_addressProvider)));
-        _addressProvider.setAddress(AP_MARKET_CONFIGURATOR_FACTORY, factory, false);
+        _addressProvider.setAddress(factory, false);
 
         vm.stopBroadcast();
     }

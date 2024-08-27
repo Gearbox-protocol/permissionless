@@ -43,7 +43,10 @@ import {
     AP_CREDIT_FACADE,
     AP_CREDIT_CONFIGURATOR,
     AP_ADAPTER_FACTORY,
-    AP_INTEREST_MODEL_FACTORY
+    AP_INTEREST_MODEL_FACTORY,
+    AP_POOL_FACTORY,
+    AP_CREDIT_FACTORY,
+    AP_PRICE_ORACLE_FACTORY
 } from "../libraries/ContractLiterals.sol";
 import {ControllerTimelockV3} from "./ControllerTimelockV3.sol";
 
@@ -101,7 +104,7 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
     address public override adapterFactory;
     address public override controller;
 
-    mapping(string => uint256) public latestVersions;
+    mapping(bytes32 => uint256) public latestVersions;
 
     constructor(
         address _addressProvider,
@@ -118,9 +121,9 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
         treasury = _treasury;
 
         interestModelFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_INTEREST_MODEL_FACTORY);
-        poolFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("POOL_FACTORY");
-        creditFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("CREDIT_FACTORY");
-        priceOracleFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert("PRICE_ORACLE_FACTORY");
+        poolFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_POOL_FACTORY);
+        creditFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_CREDIT_FACTORY);
+        priceOracleFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_PRICE_ORACLE_FACTORY);
         adapterFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_ADAPTER_FACTORY);
 
         controller = address(new ControllerTimelockV3(_acl, _vetoAdmin));
