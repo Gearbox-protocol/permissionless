@@ -107,7 +107,7 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
     /// @param saveVersion Whether to save contract's version
     function setAddress(address addr, bool saveVersion) external override onlyOwner {
         _setAddress(
-            string(abi.encodePacked(IVersion(addr).contractType())),
+            IVersion(addr).contractType().fromSmallString(),
             addr,
             saveVersion ? IVersion(addr).version() : NO_VERSION_CONTROL
         );
