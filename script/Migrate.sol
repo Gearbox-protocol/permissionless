@@ -46,6 +46,7 @@ import {CreditFactoryV3} from "../contracts/factories/CreditFactoryV3.sol";
 import {PriceOracleFactoryV3} from "../contracts/factories/PriceOracleFactoryV3.sol";
 import {MarketConfiguratorFactoryV3} from "../contracts/factories/MarketConfiguratorFactoryV3.sol";
 import {AdapterFactoryV3} from "../contracts/factories/AdapterFactoryV3.sol";
+import {LibString} from "@solady/utils/LibString.sol";
 
 import "forge-std/console.sol";
 
@@ -62,6 +63,8 @@ interface IAddressProviderV3Legacy {
 address constant emergencyLiquidator = 0x7BD9c8161836b1F402233E80F55E3CaE0Fde4d87;
 
 contract Migrate is Script {
+    using LibString for bytes32;
+
     function run() external virtual {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
@@ -153,7 +156,7 @@ contract Migrate is Script {
         address mcl = Create2.computeAddress(0, keccak256(bytecodeWithParams));
 
         /// set this contract to add mcl as marketConfigurator
-        _addressProvider.setAddress(deployer, false);
+        _addressProvider.setAddress(AP_MARKET_CONFIGURATOR_FACTORY.fromSmallString(), deployer, false);
 
         /// Register this marketConfigurator in AddressProvider
         _addressProvider.addMarketConfigurator(address(mcl));
