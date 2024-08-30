@@ -15,6 +15,8 @@ import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.
 import {IPriceOracleV3, PriceFeedParams} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {ILPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/interfaces/ILPPriceFeed.sol";
 
+import {AP_CONTROLLER_TIMELOCK} from "../libraries/ContractLiterals.sol";
+
 /// @title Controller timelock V3
 /// @notice Controller timelock is a governance contract that allows special actors less trusted than Gearbox Governance
 ///         to modify system parameters within set boundaries. This is mostly related to risk parameters that should be
@@ -25,8 +27,8 @@ import {ILPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/interfaces/IL
 ///      for it. The policy also determines the address that can change a particular parameter.
 contract ControllerTimelockV3 is PolicyManagerV3, IControllerTimelockV3 {
     /// @notice Contract version
-    uint256 public constant override version = 3_1;
-    bytes32 public constant override contractType = "CONTROLLER_TIMELOCK";
+    uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = AP_CONTROLLER_TIMELOCK;
 
     /// @dev Minimum liquidation threshold ramp duration
     uint256 constant MIN_LT_RAMP_DURATION = 7 days;

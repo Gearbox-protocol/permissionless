@@ -46,7 +46,8 @@ import {
     AP_INTEREST_MODEL_FACTORY,
     AP_POOL_FACTORY,
     AP_CREDIT_FACTORY,
-    AP_PRICE_ORACLE_FACTORY
+    AP_PRICE_ORACLE_FACTORY,
+    AP_MARKET_CONFIGURATOR
 } from "../libraries/ContractLiterals.sol";
 import {ControllerTimelockV3} from "./ControllerTimelockV3.sol";
 
@@ -56,7 +57,7 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
 
-    bytes32 public constant contractType = "MC_";
+    bytes32 public constant contractType = AP_MARKET_CONFIGURATOR;
 
     error InterestModelNotAllowedException(address);
 

@@ -8,6 +8,8 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IACL} from "../interfaces/IACL.sol";
 
+import {AP_ACL} from "../libraries/ContractLiterals.sol";
+
 /// @title ACL contract that stores admin addresses
 /// More info: https://dev.gearbox.fi/security/roles
 contract ACL is IACL, Ownable {
@@ -18,7 +20,7 @@ contract ACL is IACL, Ownable {
 
     // Contract version
     uint256 public constant version = 3_10;
-    bytes32 public constant contractType = "ACL";
+    bytes32 public constant contractType = AP_ACL;
 
     /// @dev Adds an address to the set of admins that can pause contracts
     /// @param admin Address of a new pausable admin

@@ -7,12 +7,14 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
 import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 
+import {AP_CONTRACTS_REGISTER} from "../libraries/ContractLiterals.sol";
+
 contract ContractsRegister is ACLTrait, IContractsRegister {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "CONTRACTS_REGISTER";
+    bytes32 public constant override contractType = AP_CONTRACTS_REGISTER;
 
     EnumerableSet.AddressSet internal _pools;
     EnumerableSet.AddressSet internal _creditManagers;

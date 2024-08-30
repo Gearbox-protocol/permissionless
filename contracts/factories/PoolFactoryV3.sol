@@ -6,7 +6,13 @@ pragma solidity ^0.8.17;
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {AP_POOL, AP_POOL_QUOTA_KEEPER, AP_POOL_RATE_KEEPER, AP_DEGEN_NFT} from "../libraries/ContractLiterals.sol";
+import {
+    AP_POOL,
+    AP_POOL_QUOTA_KEEPER,
+    AP_POOL_RATE_KEEPER,
+    AP_DEGEN_NFT,
+    AP_POOL_FACTORY
+} from "../libraries/ContractLiterals.sol";
 import {IMarketConfiguratorV3} from "../interfaces/IMarketConfiguratorV3.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
@@ -19,7 +25,7 @@ contract PoolFactoryV3 is AbstractFactory, IVersion {
     /// @notice Contract version
 
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "POOL_FACTORY";
+    bytes32 public constant override contractType = AP_POOL_FACTORY;
 
     constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
 

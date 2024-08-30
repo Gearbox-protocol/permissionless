@@ -12,7 +12,7 @@ import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
-import {AP_MARKET_CONFIGURATOR} from "../libraries/ContractLiterals.sol";
+import {AP_MARKET_CONFIGURATOR, AP_MARKET_CONFIGURATOR_FACTORY} from "../libraries/ContractLiterals.sol";
 
 interface IAdapterDeployer {
     function deploy(address creditManager, address target, bytes calldata specificParams) external returns (address);
@@ -23,7 +23,7 @@ contract MarketConfiguratorFactoryV3 is AbstractFactory, IVersion {
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "MARKET_CONFIGURATOR_FACTORY";
+    bytes32 public constant override contractType = AP_MARKET_CONFIGURATOR_FACTORY;
 
     uint256 public latestMCversion;
 

@@ -6,6 +6,7 @@ pragma solidity ^0.8.17;
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
+import {AP_BYTECODE_REPOSITORY} from "../libraries/ContractLiterals.sol";
 
 struct BytecodeInfo {
     bytes32 contractType;
@@ -18,7 +19,7 @@ contract BytecodeRepository is IBytecodeRepository {
     /// @notice Contract version
 
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "BYTECODE_REPOSITORY_";
+    bytes32 public constant override contractType = AP_BYTECODE_REPOSITORY;
 
     error BytecodeNotFound(bytes32 _hash);
     error BytecodeAllreadyExists(bytes32 contractType, uint256 version);

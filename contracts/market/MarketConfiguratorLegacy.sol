@@ -35,7 +35,11 @@ import {IACL} from "../interfaces/IACL.sol";
 import {ACL} from "./ACL.sol";
 
 import {
+    AP_ACL,
+    AP_CONTRACTS_REGISTER,
+    AP_TREASURY,
     AP_ACCOUNT_FACTORY,
+    AP_DEGEN_NFT,
     AP_POOL,
     AP_POOL_QUOTA_KEEPER,
     AP_POOL_RATE_KEEPER,
@@ -61,15 +65,15 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     constructor(address _oldAddressProvider, address _newAddressProvider, string memory _name, address _vetoAdmin)
         MarketConfigurator(
             _newAddressProvider,
-            IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("ACL", NO_VERSION_CONTROL),
-            IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("CONTRACTS_REGISTER", NO_VERSION_CONTROL),
-            IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("TREASURY", NO_VERSION_CONTROL),
+            IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert(AP_ACL, NO_VERSION_CONTROL),
+            IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert(AP_CONTRACTS_REGISTER, NO_VERSION_CONTROL),
+            IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert(AP_TREASURY, NO_VERSION_CONTROL),
             _name,
             _vetoAdmin
         )
     {
         /// Convert existing pools into markets
-        address priceOracle = IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("PRICE_ORACLE", 300);
+        address priceOracle = IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert(AP_PRICE_ORACLE, 300);
 
         address[] memory _pools = pools();
         uint256 len = _pools.length;
@@ -83,7 +87,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         }
 
         // import degenNFT
-        address degenNFT = IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert("DEGEN_NFT", 1);
+        address degenNFT = IAddressProviderV3Legacy(_oldAddressProvider).getAddressOrRevert(AP_DEGEN_NFT, 1);
         _degenNFTs.add(degenNFT);
         emit DeployDegenNFT(degenNFT);
     }

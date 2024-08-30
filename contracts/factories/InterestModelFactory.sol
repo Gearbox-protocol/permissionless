@@ -8,6 +8,8 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
+import {AP_INTEREST_MODEL_FACTORY} from "../libraries/ContractLiterals.sol";
+
 contract InterestModelFactory is IVersion {
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -16,7 +18,7 @@ contract InterestModelFactory is IVersion {
     event AddNewModel(address);
 
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "INTEREST_MODEL_FACTORY";
+    bytes32 public constant override contractType = AP_INTEREST_MODEL_FACTORY;
 
     EnumerableSet.AddressSet internal _modelDeployers;
 

@@ -20,6 +20,7 @@ import {IAccountFactoryV3} from "@gearbox-protocol/core-v3/contracts/interfaces/
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 import {
+    AP_ADDRESS_PROVIDER,
     AP_MARKET_CONFIGURATOR_FACTORY,
     AP_BOT_LIST,
     AP_ACCOUNT_FACTORY,
@@ -37,7 +38,7 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "ADDRESS_PROVIDER";
+    bytes32 public constant override contractType = AP_ADDRESS_PROVIDER;
 
     error MarketConfiguratorsOnlyException();
     error CantRemoveMarketConfiguratorWithExistingPoolsException();
@@ -63,7 +64,7 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
 
     constructor() {
         // The first event is emitted for the address provider itself to aid in contract discovery
-        emit SetAddress("ADDRESS_PROVIDER", address(this), version);
+        emit SetAddress(AP_ADDRESS_PROVIDER.fromSmallString(), address(this), version);
     }
 
     /// @notice Returns the address of a contract with a given key and version

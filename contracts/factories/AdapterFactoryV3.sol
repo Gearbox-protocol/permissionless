@@ -6,6 +6,8 @@ pragma solidity ^0.8.17;
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
+import {AP_ADAPTER_FACTORY} from "../libraries/ContractLiterals.sol";
+
 interface IAdapterDeployer {
     function deploy(address creditManager, address target, bytes calldata specificParams) external returns (address);
 }
@@ -15,7 +17,7 @@ contract AdapterFactoryV3 is IVersion {
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "ADAPTER_FACTORY";
+    bytes32 public constant override contractType = AP_ADAPTER_FACTORY;
 
     mapping(address => uint8) public targetTypes;
     mapping(uint8 => mapping(uint256 => address)) public adapterDeployers;

@@ -6,6 +6,8 @@ import {IAddressProviderV3} from "../contracts/interfaces/IAddressProviderV3.sol
 import {AddressProviderV3_1} from "../contracts/global/AddressProviderV3.sol";
 
 import {
+    AP_ADDRESS_PROVIDER,
+    AP_ACL,
     AP_WETH_TOKEN,
     AP_GEAR_STAKING,
     AP_ACCOUNT_FACTORY,
@@ -60,15 +62,24 @@ interface IAddressProviderV3Legacy {
 address constant emergencyLiquidator = 0x7BD9c8161836b1F402233E80F55E3CaE0Fde4d87;
 
 contract Migrate is Script {
-    function run() external {
+    function run() external virtual {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         address oldAddressProvider = vm.envAddress("ADDRESS_PROVIDER");
         address vetoAdmin = vm.envAddress("VETO_ADMIN");
 
-        address acl = IAddressProviderV3Legacy(oldAddressProvider).getAddressOrRevert("ACL", NO_VERSION_CONTROL);
-
         vm.startBroadcast(deployerPrivateKey);
+
+        _deployGovernance3_1(oldAddressProvider, vetoAdmin, deployer);
+
+        vm.stopBroadcast();
+    }
+
+    function _deployGovernance3_1(address oldAddressProvider, address vetoAdmin, address deployer)
+        internal
+        returns (address)
+    {
+        address acl = IAddressProviderV3Legacy(oldAddressProvider).getAddressOrRevert(AP_ACL, NO_VERSION_CONTROL);
         AddressProviderV3_1 _addressProvider = new AddressProviderV3_1();
         console.log("new address provider:", address(_addressProvider));
 
@@ -153,17 +164,6 @@ contract Migrate is Script {
         factory = address(new MarketConfiguratorFactoryV3(address(_addressProvider)));
         _addressProvider.setAddress(factory, false);
 
-        vm.stopBroadcast();
-    }
-
-    function stringToBytes32(string memory source) public pure returns (bytes32 result) {
-        bytes memory tempEmptyStringTest = bytes(source);
-        if (tempEmptyStringTest.length == 0) {
-            return 0x0;
-        }
-
-        assembly {
-            result := mload(add(source, 32))
-        }
+        return address(_addressProvider);
     }
 }

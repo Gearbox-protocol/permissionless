@@ -10,13 +10,18 @@ import {CreditManagerV3} from "@gearbox-protocol/core-v3/contracts/credit/Credit
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {AP_CREDIT_MANAGER, AP_CREDIT_FACADE, AP_CREDIT_CONFIGURATOR} from "../libraries/ContractLiterals.sol";
+import {
+    AP_CREDIT_MANAGER,
+    AP_CREDIT_FACADE,
+    AP_CREDIT_CONFIGURATOR,
+    AP_CREDIT_FACTORY
+} from "../libraries/ContractLiterals.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
 contract CreditFactoryV3 is AbstractFactory, IVersion {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "CREDIT_FACTORY";
+    bytes32 public constant override contractType = AP_CREDIT_FACTORY;
 
     constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
 

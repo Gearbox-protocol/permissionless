@@ -5,10 +5,11 @@ pragma solidity ^0.8.17;
 
 uint256 constant NO_VERSION_CONTROL = 0;
 
-// bytes32 constant AP_CONTRACTS_REGISTER = "CONTRACTS_REGISTER";
-// bytes32 constant AP_ACL = "ACL";
-
 bytes32 constant AP_ACL = "ACL";
+bytes32 constant AP_CONTRACTS_REGISTER = "CONTRACTS_REGISTER";
+
+bytes32 constant AP_ADDRESS_PROVIDER = "ADDRESS_PROVIDER";
+bytes32 constant AP_CONTROLLER_TIMELOCK = "CONTROLLER_TIMELOCK";
 
 bytes32 constant AP_POOL = "LP";
 bytes32 constant AP_POOL_QUOTA_KEEPER = "POOL_QUOTA_KEEPER";
