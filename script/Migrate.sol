@@ -2,7 +2,7 @@
 pragma solidity ^0.8.17;
 
 import "forge-std/Script.sol";
-import {IAddressProviderV3} from "../contracts/interfaces/IAddressProviderV3.sol";
+import {IAddressProviderV3_1} from "../contracts/interfaces/IAddressProviderV3_1.sol";
 import {AddressProviderV3_1} from "../contracts/global/AddressProviderV3.sol";
 
 import {
@@ -89,7 +89,8 @@ contract Migrate is Script {
         _addressProvider.transferOwnership(IACL(acl).owner());
 
         /// AddressProvider migration
-        APMigration[16] memory migrations = [
+        APMigration[17] memory migrations = [
+            APMigration({name: AP_GEAR_TOKEN, version: 0}),
             APMigration({name: AP_WETH_TOKEN, version: 0}),
             APMigration({name: AP_GEAR_TOKEN, version: 0}),
             APMigration({name: AP_BOT_LIST, version: 300}),
@@ -111,11 +112,13 @@ contract Migrate is Script {
         uint256 len = migrations.length;
 
         for (uint256 i; i < len; i++) {
-            string memory key = string(abi.encodePacked(migrations[i].name));
+            string memory key = migrations[i].name.fromSmallString();
 
             try IAddressProviderV3Legacy(oldAddressProvider).getAddressOrRevert(
                 migrations[i].name, migrations[i].version
             ) returns (address oldAddress) {
+                console.log("migrating", key, oldAddress);
+
                 _addressProvider.setAddress({
                     key: key,
                     value: oldAddress,

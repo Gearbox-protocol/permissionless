@@ -9,7 +9,7 @@ import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/I
 import {IMarketConfiguratorV3} from "../interfaces/IMarketConfiguratorV3.sol";
 import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 
-import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
+import {IAddressProviderV3_1, ContractValue} from "../interfaces/IAddressProviderV3_1.sol";
 import {
     AddressNotFoundException,
     CallerNotConfiguratorException
@@ -29,9 +29,14 @@ import {
 
 import {LibString} from "@solady/utils/LibString.sol";
 
+struct ContractKey {
+    string key;
+    uint256 version;
+}
+
 /// @title Address provider V3
 /// @notice Stores addresses of important contracts
-contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
+contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3_1 {
     using EnumerableSet for EnumerableSet.AddressSet;
     // using LibString for string;
     using LibString for bytes32;
@@ -54,6 +59,8 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
     mapping(string => mapping(uint256 => address)) public override addresses;
 
     mapping(string => uint256) public latestVersions;
+
+    ContractKey[] internal contractKeys;
 
     modifier marketConfiguratorFactoryOnly() {
         if (msg.sender != getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL)) {
@@ -123,6 +130,7 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
         if (_version > latestVersion) {
             latestVersions[key] = _version;
         }
+        contractKeys.push(ContractKey(key, _version));
 
         emit SetAddress(key, value, _version);
     }
@@ -181,7 +189,17 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3 {
         return marketConfigurator;
     }
 
-    function owner() public view override(Ownable, IAddressProviderV3) returns (address) {
+    function owner() public view override(Ownable, IAddressProviderV3_1) returns (address) {
         return Ownable.owner();
+    }
+
+    function getAllSavedContracts() external view returns (ContractValue[] memory) {
+        ContractValue[] memory result = new ContractValue[](contractKeys.length);
+        for (uint256 i = 0; i < contractKeys.length; i++) {
+            result[i] = ContractValue(
+                contractKeys[i].key, addresses[contractKeys[i].key][contractKeys[i].version], contractKeys[i].version
+            );
+        }
+        return result;
     }
 }

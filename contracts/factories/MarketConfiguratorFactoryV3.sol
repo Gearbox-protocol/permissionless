@@ -8,7 +8,7 @@ import {AbstractFactory} from "./AbstractFactory.sol";
 import {MarketConfigurator} from "../market/MarketConfigurator.sol";
 import {ACL} from "../market/ACL.sol";
 import {ContractsRegister} from "../market/ContractsRegister.sol";
-import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
+import {IAddressProviderV3_1} from "../interfaces/IAddressProviderV3_1.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
@@ -54,13 +54,13 @@ contract MarketConfiguratorFactoryV3 is AbstractFactory, IVersion {
         /// Makes market configurator contract owner
         acl.transferOwnership(_marketConfigurator);
 
-        IAddressProviderV3(addressProvider).addMarketConfigurator(_marketConfigurator);
+        IAddressProviderV3_1(addressProvider).addMarketConfigurator(_marketConfigurator);
     }
 
     function removeMarketConfigurator(address _marketConfigurator) external apOwnerOnly {
         if (MarketConfigurator(_marketConfigurator).pools().length != 0) {
             revert CantRemoveMarketConfiguratorWithExistingPoolsException();
         }
-        IAddressProviderV3(addressProvider).removeMarketConfigurator(_marketConfigurator);
+        IAddressProviderV3_1(addressProvider).removeMarketConfigurator(_marketConfigurator);
     }
 }

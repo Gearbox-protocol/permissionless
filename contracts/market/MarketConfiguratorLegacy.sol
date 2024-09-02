@@ -28,7 +28,7 @@ import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.so
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
-import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
+import {IAddressProviderV3_1} from "../interfaces/IAddressProviderV3_1.sol";
 import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 import {IACL} from "../interfaces/IACL.sol";
 
@@ -82,7 +82,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
             address pool = _pools[i];
 
             priceOracles[pool] = priceOracle;
-            IAddressProviderV3(addressProvider).registerPool(pool);
+            IAddressProviderV3_1(addressProvider).registerPool(pool);
             emit CreateMarket(pool, IPoolV3(pool).asset(), IPoolV3(pool).name(), IPoolV3(pool).symbol());
         }
 

@@ -27,7 +27,7 @@ import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 
-import {IAddressProviderV3} from "../interfaces/IAddressProviderV3.sol";
+import {IAddressProviderV3_1} from "../interfaces/IAddressProviderV3_1.sol";
 import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 import {IACL} from "../interfaces/IACL.sol";
 
@@ -121,11 +121,12 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
         name = _name;
         treasury = _treasury;
 
-        interestModelFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_INTEREST_MODEL_FACTORY);
-        poolFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_POOL_FACTORY);
-        creditFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_CREDIT_FACTORY);
-        priceOracleFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_PRICE_ORACLE_FACTORY);
-        adapterFactory = IAddressProviderV3(_addressProvider).getLatestAddressOrRevert(AP_ADAPTER_FACTORY);
+        interestModelFactory =
+            IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_INTEREST_MODEL_FACTORY);
+        poolFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_POOL_FACTORY);
+        creditFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_CREDIT_FACTORY);
+        priceOracleFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_PRICE_ORACLE_FACTORY);
+        adapterFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_ADAPTER_FACTORY);
 
         controller = address(new ControllerTimelockV3(_acl, _vetoAdmin));
     }
@@ -207,14 +208,14 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
 
         address creditManager = CreditFactoryV3(creditFactory).deployCreditManager(
             pool,
-            IAddressProviderV3(addressProvider).getLatestAddressOrRevert(AP_ACCOUNT_FACTORY),
+            IAddressProviderV3_1(addressProvider).getLatestAddressOrRevert(AP_ACCOUNT_FACTORY),
             priceOracles[pool],
             _name,
             latestVersions[AP_CREDIT_MANAGER], // TODO: Fee token case(?)
             salt
         );
 
-        IAddressProviderV3(addressProvider).registerCreditManager(creditManager);
+        IAddressProviderV3_1(addressProvider).registerCreditManager(creditManager);
 
         bool expirable = expirationDate != 0;
 
@@ -238,7 +239,7 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
 
         address pqk = IPoolV3(pool).poolQuotaKeeper();
         IPoolQuotaKeeperV3(pqk).addCreditManager(creditManager);
-        IAddressProviderV3(addressProvider).registerCreditManager(creditManager);
+        IAddressProviderV3_1(addressProvider).registerCreditManager(creditManager);
     }
 
     function updateCreditFacade(address creditManager, address _degenNFT, bool _expirable, uint256 _version)
@@ -397,13 +398,13 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
         emit SetName(_newName);
     }
 
-    //
-    function pools() external view virtual returns (address[] memory) {
+    // returns all pools
+    function pools() external view virtual override returns (address[] memory) {
         return IContractsRegister(acl).getPools();
     }
 
-    //
-    function owner() external view returns (address) {
+    // returns owner
+    function owner() external view override returns (address) {
         return IACL(acl).owner();
     }
 }
