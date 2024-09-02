@@ -61,6 +61,7 @@ interface IAddressProviderV3Legacy {
 }
 
 address constant emergencyLiquidator = 0x7BD9c8161836b1F402233E80F55E3CaE0Fde4d87;
+address constant PUBLIC_FACTORY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
 contract Migrate is Script {
     using LibString for bytes32;
@@ -156,7 +157,9 @@ contract Migrate is Script {
         bytes memory parameters = abi.encode(oldAddressProvider, address(_addressProvider), "ChaosLabs", vetoAdmin);
 
         bytes memory bytecodeWithParams = abi.encodePacked(bytecode, parameters);
-        address mcl = Create2.computeAddress(0, keccak256(bytecodeWithParams));
+        address mcl = Create2.computeAddress(0, keccak256(bytecodeWithParams), PUBLIC_FACTORY);
+
+        console.log("MarketConfiguratorLegacy:", mcl);
 
         /// set this contract to add mcl as marketConfigurator
         _addressProvider.setAddress(AP_MARKET_CONFIGURATOR_FACTORY.fromSmallString(), deployer, false);
@@ -165,7 +168,8 @@ contract Migrate is Script {
         _addressProvider.addMarketConfigurator(address(mcl));
 
         /// Deploy MarketConfiguratorLegacy
-        Create2.deploy(0, 0, bytecodeWithParams);
+        address pp = Create2.deploy(0, 0, bytecodeWithParams);
+        console.log("MarketConfiguratorLegacy deployed at:", pp);
 
         factory = address(new MarketConfiguratorFactoryV3(address(_addressProvider)));
         _addressProvider.setAddress(factory, false);
