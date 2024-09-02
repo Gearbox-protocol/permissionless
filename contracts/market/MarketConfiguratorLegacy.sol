@@ -100,7 +100,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         address[] memory _v3pools = new address[](len);
         for (uint256 i; i < len; i++) {
             address p = _pools[i];
-            if (IVersion(p).version() > 3_00) {
+            if (IVersion(p).version() >= 3_00) {
                 _v3pools[v3count] = p;
                 v3count++;
             }
