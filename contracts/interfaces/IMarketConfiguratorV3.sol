@@ -31,6 +31,4 @@ interface IMarketConfiguratorV3 is IVersion {
     function controller() external view returns (address);
 
     function pools() external view returns (address[] memory);
-
-    function owner() external view returns (address);
 }
