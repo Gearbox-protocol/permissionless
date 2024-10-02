@@ -5,6 +5,23 @@ pragma solidity ^0.8.17;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
+enum PolicyType {
+    UintRange,
+    AddressInSet,
+    NoValueCheck
+}
+
+struct Policy {
+    address admin;
+    uint40 delay;
+    PolicyType policyType;
+}
+
+struct UintRange {
+    uint256 minValue;
+    uint256 maxValue;
+}
+
 struct QueuedTransactionData {
     bool queued;
     address initiator;
@@ -16,12 +33,47 @@ struct QueuedTransactionData {
     bytes sanityCheckCallData;
 }
 
+struct PolicyUintRange {
+    string id;
+    address admin;
+    uint40 delay;
+    uint256 minValue;
+    uint256 maxValue;
+}
+
+struct AddressSet {
+    address key;
+    address[] values;
+}
+
+struct PolicyAddressSet {
+    string id;
+    address admin;
+    uint40 delay;
+    AddressSet[] addressSet;
+}
+
+struct PolicyNoCheck {
+    string id;
+    address admin;
+    uint40 delay;
+}
+
+struct PolicyState {
+    PolicyUintRange[] policiesInRange;
+    PolicyAddressSet[] policiesAddressSet;
+    PolicyNoCheck[] policiesNoValueCheck;
+}
+
 interface IControllerTimelockV3Events {
     /// @notice Emitted when the veto admin of the controller is updated
-    event SetVetoAdmin(address indexed newAdmin);
+    event SetVetoAdmin(address indexed admin);
 
     /// @notice Emitted when an address' status as executor is changed
-    event SetExecutor(address indexed executor, bool status);
+    event AddExecutor(address indexed executor);
+
+    /// @notice Emitted when an address' status as executor is changed
+    event RemoveExecutor(address indexed executor);
 
     /// @notice Emitted when a transaction is queued
     event QueueTransaction(
@@ -33,6 +85,12 @@ interface IControllerTimelockV3Events {
 
     /// @notice Emitted when a transaction is cancelled
     event CancelTransaction(bytes32 indexed txHash);
+
+    event UpdatePolicyRange(string policyID, uint256 min, uint256 max);
+
+    event AddToPolicyList(string policyID, address key, address value);
+
+    event RemoveFromPolicyList(string policyID, address key, address value);
 }
 
 interface IControllerTimelockV3Exceptions {
@@ -56,6 +114,18 @@ interface IControllerTimelockV3Exceptions {
 
     /// @notice Thrown on attempting to call an access restricted function not as veto admin
     error CallerNotVetoAdminException();
+
+    /// @notice Thrown when the policy for the called function is not set
+    error PolicyDoesNotExistException();
+
+    /// @notice Thrown when the caller is not the policy admin
+    error CallerNotPolicyAdminException();
+
+    /// @notice Thrown when the new value is not in the range defined by policy
+    error UintIsNotInRange(uint256, uint256);
+
+    /// @notice Thrown when the address is not in the set defined by policy
+    error AddressIsNotInSet(address[]);
 }
 
 /// @title Controller timelock V3 interface
@@ -63,8 +133,6 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
     // -------- //
     // QUEUEING //
     // -------- //
-
-    function setExpirationDate(address creditManager, uint40 expirationDate) external;
 
     function setMaxDebtPerBlockMultiplier(address creditManager, uint8 multiplier) external;
 
@@ -94,13 +162,22 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
 
     function setMaxQuotaRate(address pool, address token, uint16 rate) external;
 
-    function setWithdrawFee(address pool, uint256 newFee) external;
-
     function setLPPriceFeedLimiter(address priceFeed, uint256 lowerBound) external;
 
-    function forbidBoundsUpdate(address priceFeed) external;
-
     function setPriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod) external;
+
+    function removeEmergencyLiquidator(address creditManager, address liquidator)
+        external;
+
+    function allowToken(address creditManager, address token) external;
+
+    function setLiquidationThreshold(address creditManager, address token, uint16 liquidationThreshold)
+        external;
+
+    function setTumblerQuotaRate(address pool, address token, uint16 rate)
+        external;
+
+    function updateTumblerRates(address pool) external;
 
     // --------- //
     // EXECUTION //
@@ -136,5 +213,9 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
 
     function setVetoAdmin(address newAdmin) external;
 
-    function setExecutor(address executor, bool status) external;
+    function addExecutor(address executorAddress) external;
+
+    function removeExecutor(address executorAddress) external;
+
+    function executors() external view returns (address[] memory);
 }
