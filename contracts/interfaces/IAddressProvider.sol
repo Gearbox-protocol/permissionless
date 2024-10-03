@@ -3,6 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
+import {VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 struct ContractValue {
@@ -11,7 +12,7 @@ struct ContractValue {
     uint256 version;
 }
 
-interface IAddressProviderV3Events {
+interface IAddressProviderEvents {
     /// @notice Emitted when an address is set for a contract key
     event SetAddress(string key, address indexed value, uint256 version);
 
@@ -22,8 +23,8 @@ interface IAddressProviderV3Events {
     event RemoveMarketConfigurator(address indexed marketConfigurator);
 }
 
-/// @title Address provider V3 interface
-interface IAddressProviderV3_1 is IAddressProviderV3Events, IVersion {
+/// @title Address provider interface
+interface IAddressProvider is IAddressProviderEvents, IVersion {
     function owner() external view returns (address);
 
     function addresses(string memory key, uint256 _version) external view returns (address);
@@ -36,7 +37,7 @@ interface IAddressProviderV3_1 is IAddressProviderV3Events, IVersion {
 
     function getLatestAddressOrRevert(string memory key) external view returns (address);
 
-    function getLatestAddressOrRevert(bytes32 _key) external view virtual returns (address result);
+    function getLatestAddressOrRevert(bytes32 _key) external view returns (address result);
 
     function setAddress(string memory key, address addr, bool saveVersion) external;
 
@@ -53,6 +54,8 @@ interface IAddressProviderV3_1 is IAddressProviderV3Events, IVersion {
     function registerPool(address pool) external;
 
     function registerCreditManager(address creditManager) external;
+
+    function setVotingContractStatus(address votingContract, VotingContractStatus status) external;
 
     function marketConfiguratorByPool(address creditManager) external view returns (address);
 

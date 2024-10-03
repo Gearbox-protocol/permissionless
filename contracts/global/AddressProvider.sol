@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Gearbox Protocol. Generalized leverage for DeFi protocols
-// (c) Gearbox Foundation, 2023.
-pragma solidity ^0.8.17;
+// (c) Gearbox Foundation, 2024.
+pragma solidity ^0.8.23;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
-import {IMarketConfiguratorV3} from "../interfaces/IMarketConfiguratorV3.sol";
-import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
+import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
+import {IContractsRegisterExt} from "../interfaces/extensions/IContractsRegisterExt.sol";
 
-import {IAddressProviderV3_1, ContractValue} from "../interfaces/IAddressProviderV3_1.sol";
+import {IAddressProvider, ContractValue} from "../interfaces/IAddressProvider.sol";
 import {
     AddressNotFoundException,
     CallerNotConfiguratorException
@@ -17,12 +17,15 @@ import {
 
 import {IBotListV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IBotListV3.sol";
 import {IAccountFactoryV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IAccountFactoryV3.sol";
+import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {IVotingContract} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVotingContract.sol";
 
 import {
     AP_ADDRESS_PROVIDER,
     AP_MARKET_CONFIGURATOR_FACTORY,
     AP_BOT_LIST,
+    AP_GEAR_STAKING,
     AP_ACCOUNT_FACTORY,
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
@@ -36,7 +39,7 @@ struct ContractKey {
 
 /// @title Address provider V3
 /// @notice Stores addresses of important contracts
-contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3_1 {
+contract AddressProvider is Ownable2Step, IAddressProvider {
     using EnumerableSet for EnumerableSet.AddressSet;
     // using LibString for string;
     using LibString for bytes32;
@@ -163,13 +166,29 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3_1 {
     }
 
     function registerPool(address pool) external override marketConfiguratorsOnly {
+        // TODO: ensure that pool corresponds to `msg.sender`
         marketConfiguratorByPool[pool] = msg.sender;
     }
 
     function registerCreditManager(address creditManager) external override marketConfiguratorsOnly {
         // TODO: make method names more consistent?
-        IBotListV3(getLatestAddressOrRevert(AP_BOT_LIST)).approvedCreditManager(creditManager);
+        // TODO: ensure that `creditManager` corresponds to `msg.sender`
+        IBotListV3(getLatestAddressOrRevert(AP_BOT_LIST)).approveCreditManager(creditManager);
         IAccountFactoryV3(getLatestAddressOrRevert(AP_ACCOUNT_FACTORY)).addCreditManager(creditManager);
+    }
+
+    function setVotingContractStatus(address votingContract, VotingContractStatus status)
+        external
+        override
+        marketConfiguratorsOnly
+    {
+        address staking = IVotingContract(votingContract).voter();
+        //if (staking == oldStaking) {
+        //    marketConfiguratorWorkaround.setVotingContractStatus(...);
+        //}
+        //else {
+        IGearStakingV3(staking).setVotingContractStatus(votingContract, status);
+        //}
     }
 
     // Getters
@@ -179,7 +198,7 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3_1 {
         address marketConfigurator = marketConfiguratorByPool[pool];
         if (marketConfigurator == address(0)) revert MarketConfiguratorNotFoundException();
         if (
-            IContractsRegister(IMarketConfiguratorV3(marketConfigurator).contractsRegister()).isCreditManager(
+            IContractsRegisterExt(IMarketConfigurator(marketConfigurator).contractsRegister()).isCreditManager(
                 creditManager
             )
         ) {
@@ -189,7 +208,7 @@ contract AddressProviderV3_1 is Ownable2Step, IAddressProviderV3_1 {
         return marketConfigurator;
     }
 
-    function owner() public view override(Ownable, IAddressProviderV3_1) returns (address) {
+    function owner() public view override(Ownable, IAddressProvider) returns (address) {
         return Ownable.owner();
     }
 

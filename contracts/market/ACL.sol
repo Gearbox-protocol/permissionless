@@ -1,96 +1,84 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Gearbox Protocol. Generalized leverage for DeFi protocols
 // (c) Gearbox Holdings, 2024
-pragma solidity ^0.8.10;
-
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+pragma solidity ^0.8.23;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IACL} from "../interfaces/IACL.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+import {IACLExt} from "../interfaces/extensions/IACLExt.sol";
 import {AP_ACL} from "../libraries/ContractLiterals.sol";
 
-/// @title ACL contract that stores admin addresses
-/// More info: https://dev.gearbox.fi/security/roles
-contract ACL is IACL, Ownable {
+/// @title Access control list
+contract ACL is IACLExt, Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    EnumerableSet.AddressSet pausableAdminSet;
-    EnumerableSet.AddressSet unpausableAdminSet;
+    /// @notice Contract version
+    uint256 public constant override version = 3_10;
 
-    // Contract version
-    uint256 public constant version = 3_10;
-    bytes32 public constant contractType = AP_ACL;
+    /// @notice Contract type
+    bytes32 public constant override contractType = AP_ACL;
 
-    /// @dev Adds an address to the set of admins that can pause contracts
-    /// @param admin Address of a new pausable admin
-    function addPausableAdmin(address admin)
-        external
-        onlyOwner // T:[ACL-1]
-    {
-        if (pausableAdminSet.contains(admin)) {
-            pausableAdminSet.add(admin); // T:[ACL-2]
-            emit PausableAdminAdded(admin); // T:[ACL-2]
-        }
+    /// @dev Set of pausable admins
+    EnumerableSet.AddressSet internal _pausableAdminsSet;
+
+    /// @dev Set of unpausable admins
+    EnumerableSet.AddressSet internal _unpausableAdminsSet;
+
+    /// @notice Returns configurator
+    /// @dev New in version `3_10`
+    function getConfigurator() external view override returns (address) {
+        return owner();
     }
 
-    /// @dev Removes an address from the set of admins that can pause contracts
-    /// @param admin Address of admin to be removed
-    function removePausableAdmin(address admin)
-        external
-        onlyOwner // T:[ACL-1]
-    {
-        if (!pausableAdminSet.contains(admin)) {
-            revert AddressNotPausableAdminException(admin);
-        }
-        pausableAdminSet.remove(admin); // T:[ACL-3]
-        emit PausableAdminRemoved(admin); // T:[ACL-3]
-    }
-
-    /// @dev Returns true if the address is a pausable admin and false if not
-    /// @param admin Address to check
-    function isPausableAdmin(address admin) external view override returns (bool) {
-        return pausableAdminSet.contains(admin); // T:[ACL-2,3]
-    }
-
-    /// @dev Adds unpausable admin address to the list
-    /// @param admin Address of new unpausable admin
-    function addUnpausableAdmin(address admin)
-        external
-        onlyOwner // T:[ACL-1]
-    {
-        if (unpausableAdminSet.contains(admin)) {
-            unpausableAdminSet.add(admin); // T:[ACL-2]
-            emit UnpausableAdminAdded(admin); // T:[ACL-2]
-        }
-    }
-
-    /// @dev Adds an address to the set of admins that can unpause contracts
-    /// @param admin Address of admin to be removed
-    function removeUnpausableAdmin(address admin)
-        external
-        onlyOwner // T:[ACL-1]
-    {
-        if (!unpausableAdminSet.contains(admin)) {
-            revert AddressNotUnpausableAdminException(admin);
-        }
-        unpausableAdminSet.remove(admin); // T:[ACL-5]
-        emit UnpausableAdminRemoved(admin); // T:[ACL-5]
-    }
-
-    /// @dev Returns true if the address is unpausable admin and false if not
-    /// @param admin Address to check
-    function isUnpausableAdmin(address admin) external view override returns (bool) {
-        return unpausableAdminSet.contains(admin); // T:[ACL-4,5]
-    }
-
-    /// @dev Returns true if an address has configurator rights
-    /// @param account Address to check
+    /// @notice Whether `account` is configurator
     function isConfigurator(address account) external view override returns (bool) {
-        return account == owner(); // T:[ACL-6]
+        return account == owner();
     }
 
-    function owner() public view override(IACL, Ownable) returns (address) {
-        return Ownable.owner();
+    /// @notice Returns the list of pausable admins
+    /// @dev New in version `3_10`
+    function getPausableAdmins() external view override returns (address[] memory) {
+        return _pausableAdminsSet.values();
+    }
+
+    /// @notice Whether `account` is one of pausable admins
+    function isPausableAdmin(address account) external view override returns (bool) {
+        return _pausableAdminsSet.contains(account);
+    }
+
+    /// @notice Returns the list of unpausable admins
+    /// @dev New in version `3_10`
+    function getUnpausableAdmins() external view override returns (address[] memory) {
+        return _unpausableAdminsSet.values();
+    }
+
+    /// @notice Whether `account` is one of unpausable admins
+    function isUnpausableAdmin(address account) external view override returns (bool) {
+        return _unpausableAdminsSet.contains(account);
+    }
+
+    /// @notice Adds `admin` to the set of pausable admins
+    /// @dev Reverts if caller is not configurator
+    function addPausableAdmin(address admin) external override onlyOwner {
+        if (_pausableAdminsSet.add(admin)) emit AddPausableAdmin(admin);
+    }
+
+    /// @notice Removes `admin` from the set of pausable admins
+    /// @dev Reverts if caller is not configurator
+    function removePausableAdmin(address admin) external override onlyOwner {
+        if (_pausableAdminsSet.remove(admin)) emit RemovePausableAdmin(admin);
+    }
+
+    /// @notice Adds `admin` to the set of unpausable admins
+    /// @dev Reverts if caller is not configurator
+    function addUnpausableAdmin(address admin) external override onlyOwner {
+        if (_unpausableAdminsSet.add(admin)) emit AddUnpausableAdmin(admin);
+    }
+
+    /// @notice Removes `admin` from the set of unpausable admins
+    /// @dev Reverts if caller is not configurator
+    function removeUnpausableAdmin(address admin) external override onlyOwner {
+        if (_unpausableAdminsSet.remove(admin)) emit RemoveUnpausableAdmin(admin);
     }
 }
