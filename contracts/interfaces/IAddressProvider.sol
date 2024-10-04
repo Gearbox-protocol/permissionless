@@ -57,7 +57,7 @@ interface IAddressProvider is IAddressProviderEvents, IVersion {
 
     function setVotingContractStatus(address votingContract, VotingContractStatus status) external;
 
-    function marketConfiguratorByPool(address creditManager) external view returns (address);
+    function marketConfiguratorByPool(address pool) external view returns (address);
 
     function marketConfiguratorByCreditManager(address creditManager) external view returns (address);
 }

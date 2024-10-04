@@ -17,6 +17,16 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     address public immutable gearStaking;
     address public immutable legacyContractsRegister;
 
+    modifier onlyConfiguratorFactory() {
+        require(msg.sender == configuratorFactory);
+        _;
+    }
+
+    modifier onlyContractsRegister() {
+        require(msg.sender == contractsRegister);
+        _;
+    }
+
     constructor(
         address addressProvider_,
         address acl_,
@@ -30,28 +40,24 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         legacyContractsRegister = legacyContractsRegister_;
     }
 
-    function addPool(address pool) external {
-        require(msg.sender == contractsRegister);
+    function addPool(address pool) external onlyContractsRegister {
         IContractsRegisterExt(legacyContractsRegister).addPool(pool);
     }
 
-    function addCreditManager(address creditManager) external {
-        require(msg.sender == contractsRegister);
+    function addCreditManager(address creditManager) external onlyContractsRegister {
         IContractsRegisterExt(legacyContractsRegister).addCreditManager(creditManager);
     }
 
-    function addCreditManagerToFactory(address creditManager) external {
-        require(msg.sender == addressProvider);
-    }
+    function addCreditManagerToFactory(address creditManager) external onlyConfiguratorFactory {}
 
-    function addCreditManagerToBotList(address creditManager) external {
-        require(msg.sender == addressProvider);
-
+    function addCreditManagerToBotList(address creditManager) external onlyConfiguratorFactory {
         // setCreditManagerApprovedStatus(address,bool)
     }
 
-    function setVotingContractStatus(address votingContract, VotingContractStatus status) external {
-        require(msg.sender == addressProvider);
+    function setVotingContractStatus(address votingContract, VotingContractStatus status)
+        external
+        onlyConfiguratorFactory
+    {
         IGearStakingV3(gearStaking).setVotingContractStatus(votingContract, status);
     }
 }

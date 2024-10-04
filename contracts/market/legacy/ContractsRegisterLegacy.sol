@@ -70,7 +70,7 @@ contract ContractsRegisterLegacy is ACLTrait, IContractsRegisterExt {
 
     function addPool(address pool) external override configuratorOnly {
         MarketConfiguratorLegacy(_marketConfigurator()).addPool(pool);
-        if (_removedPoolsSet.remove(pool)) emit AddPool(pool);
+        _removedPoolsSet.remove(pool);
     }
 
     function removePool(address pool) external override configuratorOnly {
@@ -79,7 +79,7 @@ contract ContractsRegisterLegacy is ACLTrait, IContractsRegisterExt {
 
     function addCreditManager(address creditManager) external override configuratorOnly {
         MarketConfiguratorLegacy(_marketConfigurator()).addCreditManager(creditManager);
-        if (_removedCreditManagersSet.remove(creditManager)) emit AddCreditManager(creditManager);
+        _removedCreditManagersSet.remove(creditManager);
     }
 
     function removeCreditManager(address creditManager) external override configuratorOnly {

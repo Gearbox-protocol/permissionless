@@ -27,33 +27,47 @@ import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v3/contracts/libraries/C
 import {IACLExt} from "../interfaces/extensions/IACLExt.sol";
 import {IContractsRegisterExt} from "../interfaces/extensions/IContractsRegisterExt.sol";
 import {IRateKeeperExt} from "../interfaces/extensions/IRateKeeperExt.sol";
+import {IVotingContractExt} from "../interfaces/extensions/IVotingContractExt.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
+import {IConfiguratorFactory} from "../interfaces/IConfiguratorFactory.sol";
 import {IContractsFactory} from "../interfaces/IContractsFactory.sol";
+import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 
 import {AP_CONTRACTS_FACTORY, AP_PRICE_FEED_STORE} from "../libraries/ContractLiterals.sol";
 import {NestedPriceFeeds} from "../libraries/NestedPriceFeeds.sol";
 
 /// @title Market configurator
-contract MarketConfigurator is Ownable {
+contract MarketConfigurator is Ownable, IMarketConfigurator {
     using Address for address;
     using SafeERC20 for IERC20;
     using NestedPriceFeeds for IPriceFeed;
     using EnumerableSet for EnumerableSet.AddressSet;
 
+    address public immutable configuratorFactory;
     address public immutable addressProvider;
     address public immutable acl;
     address public immutable contractsRegister;
     address public immutable treasury;
 
-    mapping(address pool => address priceOracle) public priceOracles;
-    mapping(address pool => address lossLiquidator) public lossLiquidators;
-    address public controller;
+    mapping(address pool => address) public override priceOracles;
+    mapping(address pool => address) public override lossLiquidators;
+    address public override controller;
     EnumerableSet.AddressSet internal _emergencyLiquidators;
 
     // ------ //
     // ERRORS //
     // ------ //
+
+    error CantRemoveNonEmptyMarketException(address pool);
+
+    error CantRemoveNonEmptyCreditSuiteException(address creditManager);
+
+    error RampDurationTooShortException();
+
+    error ExpirationDateTooSoonException();
+
+    error ZeroUnderlyingPriceException();
 
     error PriceFeedNotAllowedException(address token, address priceFeed);
 
@@ -70,13 +84,14 @@ contract MarketConfigurator is Ownable {
     // ----------- //
 
     constructor(address addressProvider_, address acl_, address contractsRegister_, address treasury_) {
+        configuratorFactory = msg.sender;
         addressProvider = addressProvider_;
         acl = acl_;
         contractsRegister = contractsRegister_;
         treasury = treasury_;
     }
 
-    function emergencyLiquidators() external view returns (address[] memory) {
+    function emergencyLiquidators() external view override returns (address[] memory) {
         return _emergencyLiquidators.values();
     }
 
@@ -101,31 +116,24 @@ contract MarketConfigurator is Ownable {
         uint32 stalenessPeriod = _ensureAllowedPriceFeed(underlying, underlyingPriceFeed);
         MarketParams memory params = abi.decode(encodedParams, (MarketParams));
 
-        address irm = _contractsFactory().deployInterestRateModel(params.irmType, params.irmParams);
+        address irm = _deployInterestRateModel(params.irmType, params.irmParams);
         (address pool, address quotaKeeper) =
             _contractsFactory().deployPool(acl, contractsRegister, underlying, treasury, irm, params.poolParams);
-        address rateKeeper = _contractsFactory().deployRateKeeper(pool, params.rateKeeperType, params.rateKeeperParams);
-        address priceOracle = _contractsFactory().deployPriceOracle(acl, params.priceOracleParams);
+        address rateKeeper = _deployRateKeeper(pool, params.rateKeeperType, params.rateKeeperParams);
+        address priceOracle = _deployPriceOracle(acl, params.priceOracleParams);
+
+        IContractsRegisterExt(contractsRegister).addPool(pool);
 
         IPoolV3(pool).setPoolQuotaKeeper(quotaKeeper);
-        IPoolQuotaKeeperV3(quotaKeeper).setGauge(rateKeeper);
+        _installRateKeeper(quotaKeeper, rateKeeper);
 
         if (IERC20(underlying).balanceOf(address(this)) < 1e5) revert InsufficientBalanceException();
         IERC20(underlying).forceApprove(pool, 1e5);
         IPoolV3(pool).deposit(1e5, address(0xdead));
 
         priceOracles[pool] = priceOracle;
-        if (_getPrice(underlyingPriceFeed) == 0) revert();
+        if (_getPrice(underlyingPriceFeed) == 0) revert ZeroUnderlyingPriceException();
         _setPriceFeed(priceOracle, underlying, underlyingPriceFeed, stalenessPeriod, false);
-
-        IContractsRegisterExt(contractsRegister).addPool(pool);
-
-        // TODO: why doing it?
-        IAddressProvider(addressProvider).registerPool(pool);
-
-        if (params.rateKeeperType == "RK_GAUGE") {
-            IAddressProvider(addressProvider).setVotingContractStatus(rateKeeper, VotingContractStatus.ALLOWED);
-        }
 
         address controller_ = controller;
         if (controller_ != address(0)) {
@@ -142,30 +150,26 @@ contract MarketConfigurator is Ownable {
     function removeMarket(address pool) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        if (IPoolV3(pool).totalBorrowed() != 0) revert();
-
-        IPoolV3(pool).setTotalDebtLimit(0);
-        IPoolV3(pool).setWithdrawFee(0);
-        IContractsRegisterExt(contractsRegister).removePool(pool);
-
-        // QUESTION: we can instead ask to remove all managers instead
-        address[] memory creditManagers = _creditManagers(pool);
-        uint256 numManagers = creditManagers.length;
-        for (uint256 i; i < numManagers; ++i) {
-            IContractsRegisterExt(contractsRegister).removeCreditManager(creditManagers[i]);
+        if (IPoolV3(pool).totalBorrowed() != 0 || _creditManagers(pool).length != 0) {
+            revert CantRemoveNonEmptyMarketException(pool);
         }
+
+        _uninstallRateKeeper(_rateKeeper(_quotaKeeper(pool)));
+        _setTotalDebtLimit(pool, 0);
+        _setWithdrawFee(pool, 0);
+        IContractsRegisterExt(contractsRegister).removePool(pool);
     }
 
     function setTotalDebtLimit(address pool, uint256 newLimit) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        IPoolV3(pool).setTotalDebtLimit(newLimit);
+        _setTotalDebtLimit(pool, newLimit);
     }
 
     function setWithdrawFee(address pool, uint256 newWithdrawFee) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        IPoolV3(pool).setWithdrawFee(newWithdrawFee);
+        _setWithdrawFee(pool, newWithdrawFee);
     }
 
     function addToken(address pool, address token, address priceFeed) external onlyOwner {
@@ -190,6 +194,14 @@ contract MarketConfigurator is Ownable {
         IPoolQuotaKeeperV3(_quotaKeeper(pool)).setTokenQuotaIncreaseFee(token, fee);
     }
 
+    function _setTotalDebtLimit(address pool, uint256 newLimit) internal {
+        IPoolV3(pool).setTotalDebtLimit(newLimit);
+    }
+
+    function _setWithdrawFee(address pool, uint256 newWithdrawFee) internal {
+        IPoolV3(pool).setWithdrawFee(newWithdrawFee);
+    }
+
     // ----------------------- //
     // CREDIT SUITE MANAGEMENT //
     // ----------------------- //
@@ -212,17 +224,17 @@ contract MarketConfigurator is Ownable {
         CreditSuiteParams memory params = abi.decode(encodedParams, (CreditSuiteParams));
 
         address creditManager = _contractsFactory().deployCreditManager(pool, priceOracles[pool], params.managerParams);
-        address creditConfigurator =
-            _contractsFactory().deployCreditConfigurator(creditManager, params.configuratorParams);
-        address creditFacade = _contractsFactory().deployCreditFacade(creditManager, params.facadeParams);
+        address creditConfigurator = _deployCreditConfigurator(creditManager, params.configuratorParams);
+        address creditFacade = _deployCreditFacade(creditManager, params.facadeParams);
 
         ICreditManagerV3(creditManager).setCreditConfigurator(creditConfigurator);
-        ICreditConfiguratorV3(creditConfigurator).setCreditFacade(creditFacade, false);
+        _setCreditFacade(creditConfigurator, creditFacade, false);
 
         IContractsRegisterExt(contractsRegister).addCreditManager(creditManager);
-        IPoolV3(pool).setCreditManagerDebtLimit(creditManager, params.debtLimit);
+        _setCreditManagerDebtLimit(pool, creditManager, params.debtLimit);
         IPoolQuotaKeeperV3(_quotaKeeper(pool)).addCreditManager(creditManager);
-        IAddressProvider(addressProvider).registerCreditManager(creditManager);
+        IConfiguratorFactory(configuratorFactory).addCreditManagerToAccountFactory(creditManager);
+        IConfiguratorFactory(configuratorFactory).addCreditManagerToBotList(creditManager);
 
         // TODO: add checks (what kind of checks?)
         ICreditConfiguratorV3(creditConfigurator).setFees(
@@ -234,15 +246,15 @@ contract MarketConfigurator is Ownable {
 
         ICreditConfiguratorV3(creditConfigurator).setDebtLimits(params.minDebt, params.maxDebt);
 
-        // TODO: what about expirations and DegenNFT?
+        // QUESTION: what about DegenNFT?
 
         address lossLiquidator = lossLiquidators[pool];
-        if (lossLiquidator != address(0)) ICreditConfiguratorV3(creditConfigurator).setLossLiquidator(lossLiquidator);
+        if (lossLiquidator != address(0)) _setLossLiquidator(creditConfigurator, lossLiquidator);
 
         EnumerableSet.AddressSet storage emergencyLiquidators_ = _emergencyLiquidators;
         uint256 numLiquidators = emergencyLiquidators_.length();
         for (uint256 i; i < numLiquidators; ++i) {
-            ICreditConfiguratorV3(creditConfigurator).addEmergencyLiquidator(emergencyLiquidators_.at(i));
+            _addEmergencyLiquidator(creditConfigurator, emergencyLiquidators_.at(i));
         }
 
         address controller_ = controller;
@@ -254,24 +266,26 @@ contract MarketConfigurator is Ownable {
     function removeCreditSuite(address creditManager) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
 
-        address pool = ICreditManagerV3(creditManager).pool();
-        if (IPoolV3(pool).creditManagerBorrowed(creditManager) != 0) revert();
+        address pool = _pool(creditManager);
+        if (IPoolV3(pool).creditManagerBorrowed(creditManager) != 0) {
+            revert CantRemoveNonEmptyCreditSuiteException(creditManager);
+        }
 
-        IPoolV3(pool).setCreditManagerDebtLimit(creditManager, 0);
+        _setCreditManagerDebtLimit(pool, creditManager, 0);
         IContractsRegisterExt(contractsRegister).removeCreditManager(creditManager);
     }
 
     function setCreditFacade(address creditManager, bytes calldata params) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
 
-        address creditFacade = _contractsFactory().deployCreditFacade(creditManager, params);
-        ICreditConfiguratorV3(_creditConfigurator(creditManager)).setCreditFacade(creditFacade, true);
+        address creditFacade = _deployCreditFacade(creditManager, params);
+        _setCreditFacade(_creditConfigurator(creditManager), creditFacade, true);
     }
 
     function setCreditConfigurator(address creditManager, bytes calldata params) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
 
-        address creditConfigurator = _contractsFactory().deployCreditConfigurator(creditManager, params);
+        address creditConfigurator = _deployCreditConfigurator(creditManager, params);
         ICreditConfiguratorV3(_creditConfigurator(creditManager)).upgradeCreditConfigurator(creditConfigurator);
 
         address controller_ = controller;
@@ -281,7 +295,7 @@ contract MarketConfigurator is Ownable {
     function setCreditManagerDebtLimit(address creditManager, uint256 newLimit) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
 
-        IPoolV3(ICreditManagerV3(creditManager).pool()).setCreditManagerDebtLimit(creditManager, newLimit);
+        _setCreditManagerDebtLimit(_pool(creditManager), creditManager, newLimit);
     }
 
     function setMaxDebtPerBlockMultiplier(address creditManager, uint8 multiplier) external onlyOwner {
@@ -304,7 +318,7 @@ contract MarketConfigurator is Ownable {
         uint24 rampDuration
     ) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
-        // TODO: add checks for min duration (at least 2 days?) (except 0 quota)
+        if (rampDuration < 2 days && _quota(_pool(creditManager), token) != 0) revert RampDurationTooShortException();
 
         ICreditConfiguratorV3(_creditConfigurator(creditManager)).rampLiquidationThreshold(
             token, ltFinal, rampStart, rampDuration
@@ -312,7 +326,9 @@ contract MarketConfigurator is Ownable {
     }
 
     function setLiquidationFees(address creditManager, uint16 premium, uint16 fee) external onlyOwner {
+        // TODO: implement
         _ensureRegisteredCreditManager(creditManager);
+        if (premium < fee) revert IncorrectParameterException();
 
         (
             ,
@@ -321,10 +337,6 @@ contract MarketConfigurator is Ownable {
             uint16 feeLiquidationExpired,
             uint16 liquidationDiscountExpired
         ) = ICreditManagerV3(creditManager).fees();
-
-        if (premium < fee) {
-            revert IncorrectParameterException();
-        }
 
         if (premium + fee != feeLiquidation + PERCENTAGE_FACTOR - liquidationDiscount) {
             revert IncorrectParameterException();
@@ -336,11 +348,11 @@ contract MarketConfigurator is Ownable {
     }
 
     function setExpiredLiquidationFees(address creditManager, uint16 premium, uint16 fee) external onlyOwner {
+        // TODO: implement
         _ensureRegisteredCreditManager(creditManager);
 
-        if (ICreditFacadeV3(ICreditManagerV3(creditManager).creditFacade()).expirable()) {
-            // TODO: at least 14 days before expiration
-        }
+        uint256 expirationDate = ICreditFacadeV3(ICreditManagerV3(creditManager).creditFacade()).expirationDate();
+        if (expirationDate != 0 && expirationDate < block.timestamp + 14 days) revert ExpirationDateTooSoonException();
 
         if (premium < fee) {
             revert IncorrectParameterException();
@@ -361,7 +373,7 @@ contract MarketConfigurator is Ownable {
 
     function setExpirationDate(address creditManager, uint40 expirationDate) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
-        if (expirationDate < block.timestamp + 14 days) revert IncorrectParameterException();
+        if (expirationDate < block.timestamp + 14 days) revert ExpirationDateTooSoonException();
 
         ICreditConfiguratorV3(_creditConfigurator(creditManager)).setExpirationDate(expirationDate);
     }
@@ -378,6 +390,22 @@ contract MarketConfigurator is Ownable {
         ICreditConfiguratorV3(_creditConfigurator(creditManager)).allowToken(token);
     }
 
+    function _deployCreditConfigurator(address creditManager, bytes memory params) internal returns (address) {
+        return _contractsFactory().deployCreditConfigurator(creditManager, params);
+    }
+
+    function _deployCreditFacade(address creditManager, bytes memory params) internal returns (address) {
+        return _contractsFactory().deployCreditFacade(creditManager, params);
+    }
+
+    function _setCreditFacade(address creditConfigurator, address newCreditFacade, bool migrateParams) internal {
+        ICreditConfiguratorV3(creditConfigurator).setCreditFacade(newCreditFacade, migrateParams);
+    }
+
+    function _setCreditManagerDebtLimit(address pool, address creditManager, uint256 newLimit) internal {
+        IPoolV3(pool).setCreditManagerDebtLimit(creditManager, newLimit);
+    }
+
     // ----------------------- //
     // PRICE ORACLE MANAGEMENT //
     // ----------------------- //
@@ -385,7 +413,7 @@ contract MarketConfigurator is Ownable {
     function setPriceOracle(address pool, bytes calldata params) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        address priceOracle = _contractsFactory().deployPriceOracle(acl, params);
+        address priceOracle = _deployPriceOracle(acl, params);
         address currentPriceOracle = priceOracles[pool];
         priceOracles[pool] = priceOracle;
 
@@ -420,10 +448,9 @@ contract MarketConfigurator is Ownable {
         uint256 price = _getPrice(priceFeed);
         if (price == 0) {
             if (token == IPoolV3(pool).asset()) {
+                revert ZeroUnderlyingPriceException();
+            } else if (_quota(pool, token) != 0) {
                 revert();
-            } else {
-                (,,, uint96 quota,,) = IPoolQuotaKeeperV3(_quotaKeeper(pool)).getTokenQuotaParams(token);
-                if (quota != 0) revert();
             }
         } else {
             // TODO: disable this check in unsafe mode
@@ -442,6 +469,10 @@ contract MarketConfigurator is Ownable {
 
         uint32 stalenessPeriod = _ensureAllowedPriceFeed(token, priceFeed);
         _setPriceFeed(priceOracle, token, priceFeed, stalenessPeriod, true);
+    }
+
+    function _deployPriceOracle(address acl, bytes memory params) internal returns (address) {
+        return _contractsFactory().deployPriceOracle(acl, params);
     }
 
     function _setPriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod, bool reserve)
@@ -489,24 +520,15 @@ contract MarketConfigurator is Ownable {
 
         address quotaKeeper = _quotaKeeper(pool);
         address currentRateKeeper = _rateKeeper(quotaKeeper);
-        if (_getRateKeeperType(currentRateKeeper) == "RK_GAUGE") {
-            IAddressProvider(addressProvider).setVotingContractStatus(
-                currentRateKeeper, VotingContractStatus.UNVOTE_ONLY
-            );
-            IGaugeV3(currentRateKeeper).setFrozenEpoch(true);
-        }
+        _uninstallRateKeeper(currentRateKeeper);
 
-        address rateKeeper = _contractsFactory().deployRateKeeper(pool, type_, params);
+        address rateKeeper = _deployRateKeeper(pool, type_, params);
         address[] memory tokens = IPoolQuotaKeeperV3(quotaKeeper).quotedTokens();
         uint256 numTokens = tokens.length;
         for (uint256 i; i < numTokens; ++i) {
             _addToken(rateKeeper, tokens[i], type_);
         }
-        IPoolQuotaKeeperV3(quotaKeeper).setGauge(rateKeeper);
-
-        if (type_ == "RK_GAUGE") {
-            IAddressProvider(addressProvider).setVotingContractStatus(rateKeeper, VotingContractStatus.ALLOWED);
-        }
+        _installRateKeeper(quotaKeeper, rateKeeper);
 
         address controller_ = controller;
         if (controller_ != address(0)) _setController(rateKeeper, controller_);
@@ -522,6 +544,10 @@ contract MarketConfigurator is Ownable {
             revert ForbiddenConfigurationCallException(rateKeeper, selector);
         }
         rateKeeper.functionCall(data);
+    }
+
+    function _deployRateKeeper(address pool, bytes32 type_, bytes memory params) internal returns (address) {
+        return _contractsFactory().deployRateKeeper(pool, type_, params);
     }
 
     function _addToken(address rateKeeper, address token, bytes32 type_) internal {
@@ -549,6 +575,36 @@ contract MarketConfigurator is Ownable {
         }
     }
 
+    function _installRateKeeper(address quotaKeeper, address rateKeeper) internal {
+        IPoolQuotaKeeperV3(quotaKeeper).setGauge(rateKeeper);
+        if (_isVotingContract(rateKeeper)) {
+            _setVotingContractStatus(rateKeeper, VotingContractStatus.ALLOWED);
+            try IVotingContractExt(rateKeeper).onInstallCallback() {} catch {}
+        }
+    }
+
+    function _uninstallRateKeeper(address rateKeeper) internal {
+        if (_isVotingContract(rateKeeper)) {
+            _setVotingContractStatus(rateKeeper, VotingContractStatus.UNVOTE_ONLY);
+            try IVotingContractExt(rateKeeper).onUninstallCallback() {}
+            catch {
+                IGaugeV3(rateKeeper).setFrozenEpoch(true);
+            }
+        }
+    }
+
+    function _isVotingContract(address rateKeeper) internal view returns (bool) {
+        try IVotingContractExt(rateKeeper).voter() returns (address) {
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function _setVotingContractStatus(address votingContract, VotingContractStatus status) internal {
+        IConfiguratorFactory(configuratorFactory).setVotingContractStatus(votingContract, status);
+    }
+
     // -------------- //
     // IRM MANAGEMENT //
     // -------------- //
@@ -556,7 +612,7 @@ contract MarketConfigurator is Ownable {
     function setInterestRateModel(address pool, bytes32 type_, bytes calldata params) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        address irm = _contractsFactory().deployInterestRateModel(type_, params);
+        address irm = _deployInterestRateModel(type_, params);
         IPoolV3(pool).setInterestRateModel(irm);
 
         address controller_ = controller;
@@ -566,13 +622,17 @@ contract MarketConfigurator is Ownable {
     function configureInterestRateModel(address pool, bytes calldata data) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        address irm = IPoolV3(pool).interestRateModel();
+        address irm = _interestRateModel(pool);
 
         bytes4 selector = bytes4(data);
         if (selector == IControlledTrait.setController.selector) {
             revert ForbiddenConfigurationCallException(irm, selector);
         }
         irm.functionCall(data);
+    }
+
+    function _deployInterestRateModel(bytes32 type_, bytes memory params) internal returns (address) {
+        return _contractsFactory().deployInterestRateModel(type_, params);
     }
 
     // ------------------ //
@@ -589,19 +649,20 @@ contract MarketConfigurator is Ownable {
     function forbidAdapter(address creditManager, address targetContract) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
 
-        address adapter = ICreditManagerV3(creditManager).contractToAdapter(targetContract);
-        if (adapter == address(0)) revert AdapterNotInitializedException(creditManager, targetContract);
-
+        address adapter = _getAdapterOrRevert(creditManager, targetContract);
         ICreditConfiguratorV3(_creditConfigurator(creditManager)).forbidAdapter(adapter);
     }
 
     function configureAdapter(address creditManager, address targetContract, bytes calldata data) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
 
+        address adapter = _getAdapterOrRevert(creditManager, targetContract);
+        adapter.functionCall(data);
+    }
+
+    function _getAdapterOrRevert(address creditManager, address targetContract) internal view returns (address) {
         address adapter = ICreditManagerV3(creditManager).contractToAdapter(targetContract);
         if (adapter == address(0)) revert AdapterNotInitializedException(creditManager, targetContract);
-
-        adapter.functionCall(data);
     }
 
     // ---------------- //
@@ -626,27 +687,19 @@ contract MarketConfigurator is Ownable {
 
     function addEmergencyLiquidator(address liquidator) external onlyOwner {
         if (!_emergencyLiquidators.add(liquidator)) return;
-        address[] memory pools = _pools();
-        uint256 numPools = pools.length;
-        for (uint256 i; i < numPools; ++i) {
-            address[] memory creditManagers = _creditManagers(pools[i]);
-            uint256 numManagers = creditManagers.length;
-            for (uint256 j; j < numManagers; ++j) {
-                ICreditConfiguratorV3(_creditConfigurator(creditManagers[j])).addEmergencyLiquidator(liquidator);
-            }
+        address[] memory creditManagers = _creditManagers();
+        uint256 numManagers = creditManagers.length;
+        for (uint256 i; i < numManagers; ++i) {
+            _addEmergencyLiquidator(_creditConfigurator(creditManagers[i]), liquidator);
         }
     }
 
     function removeEmergencyLiquidator(address liquidator) external onlyOwner {
         if (!_emergencyLiquidators.remove(liquidator)) return;
-        address[] memory pools = _pools();
-        uint256 numPools = pools.length;
-        for (uint256 i; i < numPools; ++i) {
-            address[] memory creditManagers = _creditManagers(pools[i]);
-            uint256 numManagers = creditManagers.length;
-            for (uint256 j; j < numManagers; ++j) {
-                ICreditConfiguratorV3(_creditConfigurator(creditManagers[j])).removeEmergencyLiquidator(liquidator);
-            }
+        address[] memory creditManagers = _creditManagers();
+        uint256 numManagers = creditManagers.length;
+        for (uint256 i; i < numManagers; ++i) {
+            ICreditConfiguratorV3(_creditConfigurator(creditManagers[i])).removeEmergencyLiquidator(liquidator);
         }
     }
 
@@ -658,7 +711,7 @@ contract MarketConfigurator is Ownable {
         address[] memory creditManagers = _creditManagers(pool);
         uint256 numManagers = creditManagers.length;
         for (uint256 i; i < numManagers; ++i) {
-            ICreditConfiguratorV3(_creditConfigurator(creditManagers[i])).setLossLiquidator(lossLiquidator);
+            _setLossLiquidator(_creditConfigurator(creditManagers[i]), lossLiquidator);
         }
 
         lossLiquidators[pool] = lossLiquidator;
@@ -689,7 +742,7 @@ contract MarketConfigurator is Ownable {
             address pool = pools[i];
             address quotaKeeper = _quotaKeeper(pool);
 
-            _setController(IPoolV3(pool).interestRateModel(), controller_);
+            _setController(_interestRateModel(pool), controller_);
             _setController(pool, controller_);
             _setController(quotaKeeper, controller_);
             _setController(_rateKeeper(quotaKeeper), controller_);
@@ -697,12 +750,12 @@ contract MarketConfigurator is Ownable {
 
             address lossLiquidator = lossLiquidators[pool];
             if (lossLiquidator != address(0)) _setController(lossLiquidator, controller_);
+        }
 
-            address[] memory creditManagers = _creditManagers(pool);
-            uint256 numManagers = creditManagers.length;
-            for (uint256 j; j < numManagers; ++j) {
-                _setController(_creditConfigurator(creditManagers[j]), controller_);
-            }
+        address[] memory creditManagers = _creditManagers();
+        uint256 numManagers = creditManagers.length;
+        for (uint256 i; i < numManagers; ++i) {
+            _setController(_creditConfigurator(creditManagers[i]), controller_);
         }
 
         controller = controller_;
@@ -713,6 +766,14 @@ contract MarketConfigurator is Ownable {
         if (controller_ == address(0)) revert ControllerNotInitializedException();
 
         controller_.functionCall(data);
+    }
+
+    function _addEmergencyLiquidator(address creditConfigurator, address liquidator) internal {
+        ICreditConfiguratorV3(creditConfigurator).addEmergencyLiquidator(liquidator);
+    }
+
+    function _setLossLiquidator(address creditConfigurator, address lossLiquidator) internal {
+        ICreditConfiguratorV3(creditConfigurator).setLossLiquidator(lossLiquidator);
     }
 
     function _setController(address contract_, address controller_) internal {
@@ -730,11 +791,15 @@ contract MarketConfigurator is Ownable {
     // --------- //
 
     function _contractsFactory() internal view returns (IContractsFactory) {
-        return IContractsFactory(IAddressProvider(addressProvider).getLatestAddressOrRevert(AP_CONTRACTS_FACTORY));
+        return IContractsFactory(_getLatestContract(AP_CONTRACTS_FACTORY));
     }
 
     function _priceFeedStore() internal view returns (IPriceFeedStore) {
-        return IPriceFeedStore(IAddressProvider(addressProvider).getLatestAddressOrRevert(AP_PRICE_FEED_STORE));
+        return IPriceFeedStore(_getLatestContract(AP_PRICE_FEED_STORE));
+    }
+
+    function _getLatestContract(bytes32 type_) internal view returns (address) {
+        return IAddressProvider(addressProvider).getLatestAddressOrRevert(type_);
     }
 
     function _ensureRegisteredPool(address pool) internal view {
@@ -753,8 +818,27 @@ contract MarketConfigurator is Ownable {
         return IContractsRegisterExt(contractsRegister).getPools();
     }
 
-    function _creditManagers(address pool) internal view returns (address[] memory) {
-        return IPoolV3(pool).creditManagers();
+    function _creditManagers() internal view returns (address[] memory) {
+        return IContractsRegisterExt(contractsRegister).getCreditManagers();
+    }
+
+    function _creditManagers(address pool) internal view returns (address[] memory creditManagers) {
+        address[] memory allCreditManagers = _creditManagers();
+        uint256 totalManagers = allCreditManagers.length;
+        creditManagers = new address[](totalManagers);
+        uint256 numManagers;
+        for (uint256 i; i < totalManagers; ++i) {
+            if (_pool(allCreditManagers[i]) == pool) {
+                creditManagers[numManagers++] = allCreditManagers[i];
+            }
+        }
+        assembly {
+            mstore(creditManagers, numManagers)
+        }
+    }
+
+    function _interestRateModel(address pool) internal view returns (address) {
+        return IPoolV3(pool).interestRateModel();
     }
 
     function _quotaKeeper(address pool) internal view returns (address) {
@@ -763,6 +847,14 @@ contract MarketConfigurator is Ownable {
 
     function _rateKeeper(address quotaKeeper) internal view returns (address) {
         return IPoolQuotaKeeperV3(quotaKeeper).gauge();
+    }
+
+    function _quota(address pool, address token) internal view returns (uint96 quota) {
+        (,,, quota,,) = IPoolQuotaKeeperV3(_quotaKeeper(pool)).getTokenQuotaParams(token);
+    }
+
+    function _pool(address creditManager) internal view returns (address) {
+        return ICreditManagerV3(creditManager).pool();
     }
 
     function _creditConfigurator(address creditManager) internal view returns (address) {
