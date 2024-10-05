@@ -37,6 +37,12 @@ import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import {AP_CONTRACTS_FACTORY, AP_PRICE_FEED_STORE} from "../libraries/ContractLiterals.sol";
 import {NestedPriceFeeds} from "../libraries/NestedPriceFeeds.sol";
 
+// TODO:
+// - zappers management
+// - degen NFT management
+// - migration to new market configurator
+// - rescue
+
 /// @title Market configurator
 contract MarketConfigurator is Ownable, IMarketConfigurator {
     using Address for address;
@@ -66,8 +72,6 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     error RampDurationTooShortException();
 
     error ExpirationDateTooSoonException();
-
-    error ZeroUnderlyingPriceException();
 
     error PriceFeedNotAllowedException(address token, address priceFeed);
 
@@ -132,7 +136,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         IPoolV3(pool).deposit(1e5, address(0xdead));
 
         priceOracles[pool] = priceOracle;
-        if (_getPrice(underlyingPriceFeed) == 0) revert ZeroUnderlyingPriceException();
+        if (_getPrice(underlyingPriceFeed) == 0) revert IncorrectPriceException();
         _setPriceFeed(priceOracle, underlying, underlyingPriceFeed, stalenessPeriod, false);
 
         address controller_ = controller;
@@ -236,17 +240,14 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         IConfiguratorFactory(configuratorFactory).addCreditManagerToAccountFactory(creditManager);
         IConfiguratorFactory(configuratorFactory).addCreditManagerToBotList(creditManager);
 
-        // TODO: add checks (what kind of checks?)
-        ICreditConfiguratorV3(creditConfigurator).setFees(
+        _setFees(
+            creditConfigurator,
             params.feeLiquidation,
             params.liquidationPremium,
             params.feeLiquidationExpired,
             params.liquidationPremiumExpired
         );
-
         ICreditConfiguratorV3(creditConfigurator).setDebtLimits(params.minDebt, params.maxDebt);
-
-        // QUESTION: what about DegenNFT?
 
         address lossLiquidator = lossLiquidators[pool];
         if (lossLiquidator != address(0)) _setLossLiquidator(creditConfigurator, lossLiquidator);
@@ -325,49 +326,43 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         );
     }
 
-    function setLiquidationFees(address creditManager, uint16 premium, uint16 fee) external onlyOwner {
-        // TODO: implement
+    function setFees(
+        address creditManager,
+        uint16 feeLiquidation,
+        uint16 liquidationPremium,
+        uint16 feeLiquidationExpired,
+        uint16 liquidationPremiumExpired
+    ) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
-        if (premium < fee) revert IncorrectParameterException();
 
         (
             ,
-            uint16 feeLiquidation,
-            uint16 liquidationDiscount,
-            uint16 feeLiquidationExpired,
-            uint16 liquidationDiscountExpired
+            uint16 feeLiquidationPrev,
+            uint16 liquidationDiscountPrev,
+            uint16 feeLiquidationExpiredPrev,
+            uint16 liquidationDiscountExpiredPrev
         ) = ICreditManagerV3(creditManager).fees();
 
-        if (premium + fee != feeLiquidation + PERCENTAGE_FACTOR - liquidationDiscount) {
+        if (feeLiquidation + liquidationPremium != feeLiquidationPrev + PERCENTAGE_FACTOR - liquidationDiscountPrev) {
             revert IncorrectParameterException();
         }
 
-        ICreditConfiguratorV3(_creditConfigurator(creditManager)).setFees(
-            fee, premium, feeLiquidationExpired, PERCENTAGE_FACTOR - liquidationDiscountExpired
-        );
-    }
-
-    function setExpiredLiquidationFees(address creditManager, uint16 premium, uint16 fee) external onlyOwner {
-        // TODO: implement
-        _ensureRegisteredCreditManager(creditManager);
-
-        uint256 expirationDate = ICreditFacadeV3(ICreditManagerV3(creditManager).creditFacade()).expirationDate();
-        if (expirationDate != 0 && expirationDate < block.timestamp + 14 days) revert ExpirationDateTooSoonException();
-
-        if (premium < fee) {
-            revert IncorrectParameterException();
+        if (
+            feeLiquidationExpired + liquidationPremiumExpired
+                != feeLiquidationExpiredPrev + PERCENTAGE_FACTOR - liquidationDiscountExpiredPrev
+        ) {
+            uint256 expirationDate = ICreditFacadeV3(ICreditManagerV3(creditManager).creditFacade()).expirationDate();
+            if (expirationDate != 0 && expirationDate < block.timestamp + 14 days) {
+                revert ExpirationDateTooSoonException();
+            }
         }
 
-        (
-            ,
-            uint16 feeLiquidation,
-            uint16 liquidationDiscount,
-            uint16 feeLiquidationExpired,
-            uint16 liquidationDiscountExpired
-        ) = ICreditManagerV3(creditManager).fees();
-
-        ICreditConfiguratorV3(_creditConfigurator(creditManager)).setFees(
-            feeLiquidation, PERCENTAGE_FACTOR - liquidationDiscount, fee, premium
+        _setFees(
+            _creditConfigurator(creditManager),
+            feeLiquidation,
+            liquidationPremium,
+            feeLiquidationExpired,
+            liquidationPremiumExpired
         );
     }
 
@@ -404,6 +399,25 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
 
     function _setCreditManagerDebtLimit(address pool, address creditManager, uint256 newLimit) internal {
         IPoolV3(pool).setCreditManagerDebtLimit(creditManager, newLimit);
+    }
+
+    function _setFees(
+        address creditConfigurator,
+        uint16 feeLiquidation,
+        uint16 liquidationPremium,
+        uint16 feeLiquidationExpired,
+        uint16 liquidationPremiumExpired
+    ) internal {
+        if (
+            feeLiquidation > liquidationPremium || feeLiquidationExpired > liquidationPremiumExpired
+                || feeLiquidationExpired > feeLiquidation || liquidationPremiumExpired > liquidationPremium
+                || liquidationPremium == 0 || liquidationPremiumExpired == 0
+        ) {
+            revert IncorrectParameterException();
+        }
+        ICreditConfiguratorV3(creditConfigurator).setFees(
+            feeLiquidation, liquidationPremium, feeLiquidationExpired, liquidationPremiumExpired
+        );
     }
 
     // ----------------------- //
@@ -443,20 +457,11 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         _ensureRegisteredPool(pool);
 
         address priceOracle = priceOracles[pool];
+        if (IPriceOracleV3(priceOracle).priceFeeds(token) == address(0)) revert PriceFeedDoesNotExistException();
 
         uint32 stalenessPeriod = _ensureAllowedPriceFeed(token, priceFeed);
-        uint256 price = _getPrice(priceFeed);
-        if (price == 0) {
-            if (token == IPoolV3(pool).asset()) {
-                revert ZeroUnderlyingPriceException();
-            } else if (_quota(pool, token) != 0) {
-                revert();
-            }
-        } else {
-            // TODO: disable this check in unsafe mode
-            address oldPriceFeed = IPriceOracleV3(priceOracle).priceFeeds(token);
-            (, int256 oldFeedAnswer,,,) = IPriceFeed(oldPriceFeed).latestRoundData();
-            //(price - oldFeedAnswer) / price > oldFeedAnswer ? price : oldFeedAnswer;
+        if (_getPrice(priceFeed) == 0 && (token == IPoolV3(pool).asset() || _quota(pool, token) != 0)) {
+            revert IncorrectPriceException();
         }
 
         _setPriceFeed(priceOracle, token, priceFeed, stalenessPeriod, false);
@@ -779,12 +784,6 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     function _setController(address contract_, address controller_) internal {
         try IControlledTrait(contract_).setController(controller_) {} catch {}
     }
-
-    // ------ //
-    // RESCUE //
-    // ------ //
-
-    // TODO: add function that allows arbitrary call that must be approved by owner and DAO
 
     // --------- //
     // INTERNALS //
