@@ -61,15 +61,16 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     mapping(string => EnumerableSet.AddressSet) internal allowedAddressSetKeys;
 
     /// @notice List of all supported function keys
-    string[19] public keys = [
+    string[20] public keys = [
         "setPriceFeed",
         "setLPPriceFeedLimiter",
         "setMaxDebtPerBlockMultiplier",
         "rampLiquidationThreshold",
         "rampLiquidationThreshold_rampDuration",
         "setLiquidationThreshold",
-        "setMinDebtLimit",
-        "setMaxDebtLimit",
+        "setDebtLimits",
+        "setDebtLimits_minDebt",
+        "setDebtLimits_maxDebt",
         "forbidAdapter",
         "allowToken",
         "removeEmergencyLiquidator",
@@ -85,6 +86,9 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
 
     /// @notice Period before a mature transaction becomes stale
     uint256 public constant override GRACE_PERIOD = 14 days;
+
+    /// @notice Default delay for controller policies
+    uint40 public constant override DEFAULT_DELAY = 2 days;
 
     /// @notice Admin address that can cancel transactions
     address public override vetoAdmin;
@@ -105,11 +109,13 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
         unchecked {
             for (uint256 i; i < len; ++i) {
                 policies[keys[i]].admin = IACL(_acl).owner();
+                policies[keys[i]].delay = DEFAULT_DELAY;
                 policies[keys[i]].policyType = PolicyType.UintRange;
             }
         }
 
         policies["setPriceFeed"].policyType = PolicyType.AddressInSet;
+        policies["setDebtLimits"].policyType = PolicyType.NoValueCheck;
         policies["forbidAdapter"].policyType = PolicyType.NoValueCheck;
         policies["allowToken"].policyType = PolicyType.NoValueCheck;
         policies["removeEmergencyLiquidator"].policyType = PolicyType.NoValueCheck;
@@ -173,7 +179,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     function _ensureUintInRange(string memory policyID, uint256 value) internal view {
         UintRange storage range = allowedRanges[policyID];
         if (value < range.minValue || value > range.maxValue) {
-            revert UintIsNotInRange(range.minValue, range.maxValue);
+            revert UintIsNotInRangeException(range.minValue, range.maxValue);
         }
     }
 
@@ -181,7 +187,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     function _ensureAddressInSet(string memory policyID, address key, address value) internal view {
         EnumerableSet.AddressSet storage set = allowedAddressSets[policyID][key];
         if (!set.contains(value)) {
-            revert AddressIsNotInSet(set.values());
+            revert AddressIsNotInSetException(set.values());
         }
     }
 
@@ -246,7 +252,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     function setMaxDebtPerBlockMultiplier(address creditManager, uint8 multiplier)
         external
         override
-        policyAdminOnly("multiplier")
+        policyAdminOnly("setMaxDebtPerBlockMultiplier")
         checkPolicyValueInRange("setMaxDebtPerBlockMultiplier", multiplier)
     {
         _queueTransaction({
@@ -305,7 +311,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
         _queueTransaction({
             policy: "setLiquidationThreshold",
             target: ICreditManagerV3(creditManager).creditConfigurator(),
-            signature: "rampLiquidationThreshold(address,uint16)",
+            signature: "setLiquidationThreshold(address,uint16)",
             data: abi.encode(token, liquidationThreshold),
             sanityCheckCallData: abi.encodeCall(this.getLTRampParamsHash, (creditManager, token))
         }); // U: [CT-6]
@@ -318,52 +324,31 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
         return keccak256(abi.encode(ltInitial, ltFinal, timestampRampStart, rampDuration));
     }
 
-    /// @notice Queues a transaction to set a new min debt per account
+    /// @notice Queues a transaction to change debt limits for a Credit Manager
     /// @param creditManager Adress of CM to update the limits for
-    /// @param minDebt The new minimal debt amount
-    function setMinDebtLimit(address creditManager, uint128 minDebt)
+    /// @param minDebt The new minDebt value
+    /// @param maxDebt The new maxDebt value
+    function setDebtLimits(address creditManager, uint128 minDebt, uint128 maxDebt)
         external
         override
-        policyAdminOnly("setMinDebtLimit")
-        checkPolicyValueInRange("setMinDebtLimit", uint256(minDebt))
+        policyAdminOnly("setDebtLimits")
+        checkPolicyValueInRange("setDebtLimits_minDebt", minDebt)
+        checkPolicyValueInRange("setDebtLimits_maxDebt", maxDebt)
     {
         _queueTransaction({
-            policy: "setMinDebtLimit",
+            policy: "setDebtLimits",
             target: ICreditManagerV3(creditManager).creditConfigurator(),
-            signature: "setMinDebtLimit(uint128)",
-            data: abi.encode(minDebt),
-            sanityCheckCallData: abi.encodeCall(this.getMinDebtLimit, (creditManager))
-        }); // U:[CT-4A]
+            signature: "setDebtLimits(uint128,uint128)",
+            data: abi.encode(minDebt, maxDebt),
+            sanityCheckCallData: abi.encodeCall(this.getDebtLimits, (creditManager))
+        });
     }
 
-    /// @dev Retrieves the current min debt limit for a Credit Manager
-    function getMinDebtLimit(address creditManager) public view returns (uint128) {
-        (uint128 minDebtCurrent,) = ICreditFacadeV3(ICreditManagerV3(creditManager).creditFacade()).debtLimits();
-        return minDebtCurrent;
-    }
-
-    /// @notice Queues a transaction to set a new max debt per account
-    /// @param creditManager Adress of CM to update the limits for
-    /// @param maxDebt The new maximal debt amount
-    function setMaxDebtLimit(address creditManager, uint128 maxDebt)
-        external
-        override
-        policyAdminOnly("setMaxDebtLimit")
-        checkPolicyValueInRange("setMaxDebtLimit", uint256(maxDebt))
-    {
-        _queueTransaction({
-            policy: "setMaxDebtLimit",
-            target: ICreditManagerV3(creditManager).creditConfigurator(),
-            signature: "setMaxDebtLimit(uint128)",
-            data: abi.encode(maxDebt),
-            sanityCheckCallData: abi.encodeCall(this.getMaxDebtLimit, (creditManager))
-        }); // U:[CT-4B]
-    }
-
-    /// @dev Retrieves the current max debt limit for a Credit Manager
-    function getMaxDebtLimit(address creditManager) public view returns (uint128) {
-        (, uint128 maxDebtCurrent) = ICreditFacadeV3(ICreditManagerV3(creditManager).creditFacade()).debtLimits();
-        return maxDebtCurrent;
+    /// @dev Retrieves current debt limits for a Credit Manager
+    function getDebtLimits(address creditManager) public view returns (uint256) {
+        (uint128 minDebtCurrent, uint128 maxDebtCurrent) =
+            ICreditFacadeV3(ICreditManagerV3(creditManager).creditFacade()).debtLimits();
+        return uint256(keccak256(abi.encode(minDebtCurrent, maxDebtCurrent)));
     }
 
     /// @notice Queues a transaction to forbid a third party contract adapter
@@ -761,16 +746,36 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
         return _executors.values();
     }
 
+    function setPolicyAdmin(string memory policyID, address newAdmin) external configuratorOnly {
+        if (policies[policyID].policyType == PolicyType.None) revert InvalidPolicyException();
+
+        if (policies[policyID].admin != newAdmin) {
+            policies[policyID].admin = newAdmin;
+            emit SetPolicyAdmin(policyID, newAdmin);
+        }
+    }
+
+    function setPolicyDelay(string memory policyID, uint40 newDelay) external configuratorOnly {
+        if (policies[policyID].policyType == PolicyType.None) revert InvalidPolicyException();
+
+        if (policies[policyID].delay != newDelay) {
+            policies[policyID].delay = newDelay;
+            emit SetPolicyDelay(policyID, newDelay);
+        }
+    }
+
     /// @notice Sets a range for UintRange policies
     function setRange(string memory policyID, uint256 min, uint256 max)
         external
         applicablePolicyOnly(policyID, PolicyType.UintRange)
         configuratorOnly
     {
-        allowedRanges[policyID].minValue = min;
-        allowedRanges[policyID].maxValue = max;
+        if (allowedRanges[policyID].minValue != min || allowedRanges[policyID].maxValue != max) {
+            allowedRanges[policyID].minValue = min;
+            allowedRanges[policyID].maxValue = max;
 
-        emit UpdatePolicyRange(policyID, min, max);
+            emit SetPolicyRange(policyID, min, max);
+        }
     }
 
     /// @notice Adds an address to the set for AddressInSet policies
@@ -780,12 +785,14 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
         configuratorOnly
     {
         EnumerableSet.AddressSet storage set = allowedAddressSets[policyID][key];
-        set.add(newValue);
+        if (!set.contains(newValue)) {
+            set.add(newValue);
 
-        EnumerableSet.AddressSet storage keySet = allowedAddressSetKeys[policyID];
-        keySet.add(key);
+            EnumerableSet.AddressSet storage keySet = allowedAddressSetKeys[policyID];
+            keySet.add(key);
 
-        emit AddToPolicyList(policyID, key, newValue);
+            emit AddAddressToPolicySet(policyID, key, newValue);
+        }
     }
 
     /// @notice Removes an address from the set for AddressInSet policies
@@ -795,25 +802,35 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
         configuratorOnly
     {
         EnumerableSet.AddressSet storage set = allowedAddressSets[policyID][key];
-        set.remove(value);
+        if (set.contains(value)) {
+            set.remove(value);
 
-        if (set.length() == 0) {
-            EnumerableSet.AddressSet storage keySet = allowedAddressSetKeys[policyID];
-            keySet.remove(key);
+            if (set.length() == 0) {
+                EnumerableSet.AddressSet storage keySet = allowedAddressSetKeys[policyID];
+                keySet.remove(key);
+            }
+
+            emit RemoveAddressFromPolicySet(policyID, key, value);
         }
-
-        emit RemoveFromPolicyList(policyID, key, value);
     }
 
-    function policyState() external view returns (PolicyState memory result) {
+    function policyState()
+        external
+        view
+        returns (
+            PolicyUintRange[] memory policiesInRange,
+            PolicyAddressSet[] memory policiesAddressSet,
+            PolicyNoCheck[] memory policiesNoCheck
+        )
+    {
         uint256 uintPolicyCount;
         uint256 addressSetPolicyCount;
         uint256 noCheckPolicyCount;
         uint256 len = keys.length;
 
-        PolicyUintRange[] memory policiesInRange = new PolicyUintRange[](len);
-        PolicyAddressSet[] memory policiesAddressSet = new PolicyAddressSet[](len);
-        PolicyNoCheck[] memory policiesNoCheck = new PolicyNoCheck[](len);
+        policiesInRange = new PolicyUintRange[](len);
+        policiesAddressSet = new PolicyAddressSet[](len);
+        policiesNoCheck = new PolicyNoCheck[](len);
 
         unchecked {
             for (uint256 i; i < len; ++i) {
@@ -821,7 +838,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
                 Policy storage p = policies[id];
                 if (p.policyType == PolicyType.UintRange) {
                     UintRange storage range = allowedRanges[id];
-                    result.policiesInRange[uintPolicyCount] = PolicyUintRange({
+                    policiesInRange[uintPolicyCount] = PolicyUintRange({
                         id: id,
                         admin: p.admin,
                         delay: p.delay,
@@ -839,13 +856,12 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
                         addressSet[j] = AddressSet({key: key, values: allowedAddressSets[id][key].values()});
                     }
 
-                    result.policiesAddressSet[addressSetPolicyCount] =
+                    policiesAddressSet[addressSetPolicyCount] =
                         PolicyAddressSet({id: id, admin: p.admin, delay: p.delay, addressSet: addressSet});
 
                     ++addressSetPolicyCount;
                 } else {
-                    result.policiesNoValueCheck[noCheckPolicyCount] =
-                        PolicyNoCheck({id: id, admin: p.admin, delay: p.delay});
+                    policiesNoCheck[noCheckPolicyCount] = PolicyNoCheck({id: id, admin: p.admin, delay: p.delay});
 
                     ++noCheckPolicyCount;
                 }
@@ -858,10 +874,12 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             mstore(policiesNoCheck, noCheckPolicyCount)
         }
 
-        return PolicyState({
-            policiesInRange: policiesInRange,
-            policiesAddressSet: policiesAddressSet,
-            policiesNoValueCheck: policiesNoCheck
-        });
+        return (policiesInRange, policiesAddressSet, policiesNoCheck);
+
+        // return PolicyState({
+        //     policiesInRange: policiesInRange,
+        //     policiesAddressSet: policiesAddressSet,
+        //     policiesNoValueCheck: policiesNoCheck
+        // });
     }
 }

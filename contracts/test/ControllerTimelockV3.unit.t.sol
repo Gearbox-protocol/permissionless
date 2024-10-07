@@ -19,8 +19,17 @@ import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.
 import {PoolV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolV3.sol";
 import {PoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolQuotaKeeperV3.sol";
 import {GaugeV3} from "@gearbox-protocol/core-v3/contracts/pool/GaugeV3.sol";
+import {TumblerV3} from "@gearbox-protocol/core-v3/contracts/pool/TumblerV3.sol";
 import {ILPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/interfaces/ILPPriceFeed.sol";
-import {IControllerTimelockV3Events} from "../interfaces/IControllerTimelockV3.sol";
+import {
+    IControllerTimelockV3Events,
+    IControllerTimelockV3Exceptions,
+    UintRange,
+    PolicyState,
+    Policy,
+    PolicyAddressSet,
+    PolicyUintRange
+} from "../interfaces/IControllerTimelockV3.sol";
 import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
 // TEST
@@ -30,7 +39,7 @@ import "@gearbox-protocol/core-v3/contracts/test/lib/constants.sol";
 import {AddressProviderV3ACLMock} from
     "@gearbox-protocol/core-v3/contracts/test/mocks/core/AddressProviderV3ACLMock.sol";
 
-contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events {
+contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, IControllerTimelockV3Exceptions {
     AddressProviderV3ACLMock public addressProvider;
 
     ControllerTimelockV3 public controllerTimelock;
@@ -90,1527 +99,1337 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events {
     ///
     ///
 
-    // /// @dev U:[CT-1]: setExpirationDate works correctly
-    // function test_U_CT_01_setExpirationDate_works_correctly() public {
-    //     (address creditManager, address creditFacade, address creditConfigurator, address pool,) = _makeMocks();
+    /// @dev U:[CT-1]: configuration functions work correctly
+    function test_U_CT_01_configuration_works_correctly() public {
+        vm.expectEmit(false, false, false, true);
+        emit SetPolicyAdmin("setPriceFeed", admin);
 
-    //     string memory policyID = "setExpirationDate";
+        vm.prank(CONFIGURATOR);
+        controllerTimelock.setPolicyAdmin("setPriceFeed", admin);
 
-    //     uint256 initialExpirationDate = block.timestamp;
+        vm.expectEmit(false, false, false, true);
+        emit SetPolicyDelay("setPriceFeed", uint40(1 days));
 
-    //     vm.mockCall(
-    //         creditFacade,
-    //         abi.encodeWithSelector(ICreditFacadeV3.expirationDate.selector),
-    //         abi.encode(initialExpirationDate)
-    //     );
-
-    //     vm.mockCall(
-    //         pool, abi.encodeWithSelector(IPoolV3.creditManagerBorrowed.selector, creditManager), abi.encode(1234)
-    //     );
-
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = block.timestamp + 5;
-
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
-
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setExpirationDate(creditManager, uint40(block.timestamp + 5));
-
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
-
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setExpirationDate(creditManager, uint40(block.timestamp + 5));
-
-    //     // VERIFY THAT POLICY CHECKS ARE PERFORMED
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setExpirationDate(creditManager, uint40(block.timestamp + 4));
-
-    //     // VERIFY THAT EXTRA CHECKS ARE PERFORMED
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setExpirationDate(creditManager, uint40(block.timestamp + 5));
-
-    //     vm.mockCall(pool, abi.encodeWithSelector(IPoolV3.creditManagerBorrowed.selector, creditManager), abi.encode(0));
+        vm.prank(CONFIGURATOR);
+        controllerTimelock.setPolicyDelay("setPriceFeed", uint40(1 days));
+
+        (address admin, uint40 delay,) = controllerTimelock.policies("setPriceFeed");
+        assertEq(admin, admin, "Policy admin is incorrect");
+        assertEq(delay, uint40(1 days), "Polict delay is incorrect");
+
+        vm.expectEmit(false, false, false, true);
+        emit SetPolicyRange("setLPPriceFeedLimiter", 1, 20);
+
+        vm.prank(CONFIGURATOR);
+        controllerTimelock.setRange("setLPPriceFeedLimiter", 1, 20);
+
+        (uint256 minValue, uint256 maxValue) = controllerTimelock.allowedRanges("setLPPriceFeedLimiter");
+
+        assertEq(minValue, 1, "Range min value is incorrect");
+        assertEq(maxValue, 20, "Range max value is incorrect");
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(
-    //         abi.encode(admin, creditConfigurator, "setExpirationDate(uint40)", abi.encode(block.timestamp + 5))
-    //     );
+        address token = makeAddr("TOKEN");
+        address value = makeAddr("VALUE");
+
+        vm.expectEmit(false, false, false, true);
+        emit AddAddressToPolicySet("setPriceFeed", token, value);
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         creditConfigurator,
-    //         "setExpirationDate(uint40)",
-    //         abi.encode(block.timestamp + 5),
-    //         uint40(block.timestamp + 1 days)
-    //     );
+        vm.prank(CONFIGURATOR);
+        controllerTimelock.addAddressToSet("setPriceFeed", token, value);
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setExpirationDate(creditManager, uint40(block.timestamp + 5));
+        vm.expectEmit(true, false, false, false);
+        emit AddExecutor(FRIEND);
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        vm.prank(CONFIGURATOR);
+        controllerTimelock.addExecutor(FRIEND);
 
-    //     assertEq(sanityCheckValue, initialExpirationDate, "Sanity check value written incorrectly");
+        assertTrue(controllerTimelock.isExecutor(FRIEND), "Executor is not added");
+        assertEq(controllerTimelock.executors().length, 1, "Executor array length is not correct");
 
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getExpirationDate, (creditManager)));
+        vm.expectEmit(true, false, false, false);
+        emit RemoveExecutor(FRIEND);
 
-    //     vm.expectCall(
-    //         creditConfigurator,
-    //         abi.encodeWithSelector(ICreditConfiguratorV3.setExpirationDate.selector, block.timestamp + 5)
-    //     );
+        vm.prank(CONFIGURATOR);
+        controllerTimelock.removeExecutor(FRIEND);
 
-    //     vm.warp(block.timestamp + 1 days);
+        assertTrue(!controllerTimelock.isExecutor(FRIEND), "Executor is not removed");
+        assertEq(controllerTimelock.executors().length, 0, "Executor array length is not correct");
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        // (PolicyUintRange[] memory rangePolicies, PolicyAddressSet[] memory setPolicies, ) = controllerTimelock.policyState();
+        // (PolicyUintRange[] memory rangePolicies,, ) = controllerTimelock.policyState();
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        // PolicyState memory pState = controllerTimelock.policyState();
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        // assertEq(pState.policiesAddressSet[0].admin, admin, "setPriceFeed admin is incorrect");
+        // assertEq(pState.policiesAddressSet[0].delay, 1 days, "setPriceFeed delay is incorrect");
+        // assertEq(pState.policiesAddressSet[0].addressSet[0].key, token, "setPriceFeed address set key is incorrect");
+        // assertEq(pState.policiesAddressSet[0].addressSet[0].values[0], value, "setPriceFeed address set first value is incorrect");
 
-    // /// @dev U:[CT-2]: setLPPriceFeedLimiter works correctly
-    // function test_U_CT_02_setLPPriceFeedLimiter_works_correctly() public {
-    //     address lpPriceFeed = address(new GeneralMock());
+        // assertEq(pState.policiesInRange[0].minValue, 0, "setLPPriceFeedLimiter min is incorrect");
+        // assertEq(pState.policiesInRange[0].maxValue, 20, "setLPPriceFeedLimiter max is incorrect");
+    }
 
-    //     vm.mockCall(lpPriceFeed, abi.encodeWithSelector(ILPPriceFeedV2.lowerBound.selector), abi.encode(5));
+    /// @dev U:[CT-2]: setPriceFeed works correctly
+    function test_U_CT_02_setPriceFeed_works_correctly() public {
+        address token = makeAddr("TOKEN");
+        address priceFeed = makeAddr("PRICE_FEED");
+        address priceOracle = makeAddr("PRICE_ORACLE");
+        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
+        vm.mockCall(
+            priceOracle,
+            abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
+            abi.encode(PriceFeedParams(priceFeed, 3000, false, 18))
+        );
 
-    //     string memory policyID = "setLPPriceFeedLimiter";
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.addAddressToSet("setPriceFeed", token, priceFeed);
+        controllerTimelock.setPolicyAdmin("setPriceFeed", admin);
+        controllerTimelock.setPolicyDelay("setPriceFeed", 1 days);
+        vm.stopPrank();
 
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 7;
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        {
+            address[] memory addrSet = new address[](1);
+            addrSet[0] = priceFeed;
+            // VERIFY THAT THE FUNCTION CORRECTLY CHECKS SET INCLUSION
+            vm.expectRevert(abi.encodeWithSelector(AddressIsNotInSetException.selector, addrSet));
 
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setLPPriceFeedLimiter(lpPriceFeed, 7);
+            vm.prank(admin);
+            controllerTimelock.setPriceFeed(priceOracle, token, makeAddr("WRONG_PF"), 4500);
+        }
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(
+            abi.encode(admin, priceOracle, "setPriceFeed(address,address,uint32)", abi.encode(token, priceFeed, 4500))
+        );
 
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setLPPriceFeedLimiter(lpPriceFeed, 7);
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            priceOracle,
+            "setPriceFeed(address,address,uint32)",
+            abi.encode(token, priceFeed, 4500),
+            uint40(block.timestamp + 1 days)
+        );
 
-    //     // VERIFY THAT POLICY CHECKS ARE PERFORMED
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setLPPriceFeedLimiter(lpPriceFeed, 8);
+        vm.prank(admin);
+        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(abi.encode(admin, lpPriceFeed, "setLimiter(uint256)", abi.encode(7)));
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash, admin, lpPriceFeed, "setLimiter(uint256)", abi.encode(7), uint40(block.timestamp + 1 days)
-    //     );
+        assertEq(
+            sanityCheckValue, uint256(keccak256(abi.encode(priceFeed, 3000))), "Sanity check value written incorrectly"
+        );
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setLPPriceFeedLimiter(lpPriceFeed, 7);
+        assertEq(
+            sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getCurrentPriceFeedHash, (priceOracle, token))
+        );
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        vm.expectCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)));
 
-    //     assertEq(sanityCheckValue, 5, "Sanity check value written incorrectly");
+        vm.warp(block.timestamp + 1 days);
 
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getPriceFeedLowerBound, (lpPriceFeed)));
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     vm.expectCall(lpPriceFeed, abi.encodeWithSelector(ILPPriceFeedV2.setLimiter.selector, 7));
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.warp(block.timestamp + 1 days);
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+    /// @dev U:[CT-3]: setLPPriceFeedLimiter works correctly
+    function test_U_CT_03_setLPPriceFeedLimiter_works_correctly() public {
+        address lpPriceFeed = address(new GeneralMock());
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        vm.mockCall(lpPriceFeed, abi.encodeWithSelector(ILPPriceFeed.lowerBound.selector), abi.encode(5));
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setLPPriceFeedLimiter", 10, 20);
+        controllerTimelock.setPolicyAdmin("setLPPriceFeedLimiter", admin);
+        controllerTimelock.setPolicyDelay("setLPPriceFeedLimiter", 1 days);
+        vm.stopPrank();
 
-    // /// @dev U:[CT-3]: setMaxDebtPerBlockMultiplier works correctly
-    // function test_U_CT_03_setMaxDebtPerBlockMultiplier_works_correctly() public {
-    //     (address creditManager, address creditFacade, address creditConfigurator,,) = _makeMocks();
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setLPPriceFeedLimiter(lpPriceFeed, 10);
 
-    //     string memory policyID = "setMaxDebtPerBlockMultiplier";
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 20));
+        vm.prank(admin);
+        controllerTimelock.setLPPriceFeedLimiter(lpPriceFeed, 30);
 
-    //     vm.mockCall(
-    //         creditFacade, abi.encodeWithSelector(ICreditFacadeV3.maxDebtPerBlockMultiplier.selector), abi.encode(3)
-    //     );
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 20));
+        vm.prank(admin);
+        controllerTimelock.setLPPriceFeedLimiter(lpPriceFeed, 5);
 
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 4;
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(abi.encode(admin, lpPriceFeed, "setLimiter(uint256)", abi.encode(15)));
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 2 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash, admin, lpPriceFeed, "setLimiter(uint256)", abi.encode(15), uint40(block.timestamp + 1 days)
+        );
 
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMaxDebtPerBlockMultiplier(creditManager, 4);
+        vm.prank(admin);
+        controllerTimelock.setLPPriceFeedLimiter(lpPriceFeed, 15);
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setMaxDebtPerBlockMultiplier(creditManager, 4);
+        assertEq(sanityCheckValue, 5, "Sanity check value written incorrectly");
 
-    //     // VERIFY THAT POLICY CHECKS ARE PERFORMED
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMaxDebtPerBlockMultiplier(creditManager, 5);
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getPriceFeedLowerBound, (lpPriceFeed)));
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash =
-    //         keccak256(abi.encode(admin, creditConfigurator, "setMaxDebtPerBlockMultiplier(uint8)", abi.encode(4)));
+        vm.expectCall(lpPriceFeed, abi.encodeWithSelector(ILPPriceFeed.setLimiter.selector, 15));
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         creditConfigurator,
-    //         "setMaxDebtPerBlockMultiplier(uint8)",
-    //         abi.encode(4),
-    //         uint40(block.timestamp + 2 days)
-    //     );
+        vm.warp(block.timestamp + 1 days);
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setMaxDebtPerBlockMultiplier(creditManager, 4);
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     assertEq(sanityCheckValue, 3, "Sanity check value written incorrectly");
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     assertEq(
-    //         sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getMaxDebtPerBlockMultiplier, (creditManager))
-    //     );
+    /// @dev U:[CT-4]: setMaxDebtPerBlockMultiplier works correctly
+    function test_U_CT_04_setMaxDebtPerBlockMultiplier_works_correctly() public {
+        (address creditManager, address creditFacade, address creditConfigurator,,) = _makeMocks();
 
-    //     vm.expectCall(
-    //         creditConfigurator, abi.encodeWithSelector(ICreditConfiguratorV3.setMaxDebtPerBlockMultiplier.selector, 4)
-    //     );
+        vm.mockCall(
+            creditFacade, abi.encodeWithSelector(ICreditFacadeV3.maxDebtPerBlockMultiplier.selector), abi.encode(3)
+        );
 
-    //     vm.warp(block.timestamp + 2 days);
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setMaxDebtPerBlockMultiplier", 2, 4);
+        controllerTimelock.setPolicyAdmin("setMaxDebtPerBlockMultiplier", admin);
+        controllerTimelock.setPolicyDelay("setMaxDebtPerBlockMultiplier", 1 days);
+        vm.stopPrank();
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setMaxDebtPerBlockMultiplier(creditManager, 4);
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 2, 4));
+        vm.prank(admin);
+        controllerTimelock.setMaxDebtPerBlockMultiplier(creditManager, 1);
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 2, 4));
+        vm.prank(admin);
+        controllerTimelock.setMaxDebtPerBlockMultiplier(creditManager, 5);
+
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash =
+            keccak256(abi.encode(admin, creditConfigurator, "setMaxDebtPerBlockMultiplier(uint8)", abi.encode(4)));
+
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            creditConfigurator,
+            "setMaxDebtPerBlockMultiplier(uint8)",
+            abi.encode(4),
+            uint40(block.timestamp + 1 days)
+        );
+
+        vm.prank(admin);
+        controllerTimelock.setMaxDebtPerBlockMultiplier(creditManager, 4);
+
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
+
+        assertEq(sanityCheckValue, 3, "Sanity check value written incorrectly");
+
+        assertEq(
+            sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getMaxDebtPerBlockMultiplier, (creditManager))
+        );
+
+        vm.expectCall(
+            creditConfigurator, abi.encodeWithSelector(ICreditConfiguratorV3.setMaxDebtPerBlockMultiplier.selector, 4)
+        );
+
+        vm.warp(block.timestamp + 2 days);
+
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
+
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
+
+    /// @dev U:[CT-5]: rampLiquidationThreshold works correctly
+    function test_U_CT_05_rampLiquidationThreshold_works_correctly() public {
+        (address creditManager,, address creditConfigurator,,) = _makeMocks();
+
+        address token = makeAddr("TOKEN");
+
+        vm.mockCall(
+            creditManager, abi.encodeWithSelector(ICreditManagerV3.liquidationThresholds.selector), abi.encode(5000)
+        );
+
+        vm.mockCall(
+            creditManager,
+            abi.encodeWithSelector(ICreditManagerV3.ltParams.selector),
+            abi.encode(uint16(5000), uint16(5000), type(uint40).max, uint24(0))
+        );
+
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("rampLiquidationThreshold", 5000, 9300);
+        controllerTimelock.setRange("rampLiquidationThreshold_rampDuration", 7 days, 60 days);
+        controllerTimelock.setPolicyAdmin("rampLiquidationThreshold", admin);
+        controllerTimelock.setPolicyDelay("rampLiquidationThreshold", 1 days);
+        vm.stopPrank();
+
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.rampLiquidationThreshold(
+            creditManager, token, 7000, uint40(block.timestamp + 7 days), uint24(7 days)
+        );
+
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 5000, 9300));
+        vm.prank(admin);
+        controllerTimelock.rampLiquidationThreshold(
+            creditManager, token, 4000, uint40(block.timestamp + 7 days), uint24(7 days)
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 5000, 9300));
+        vm.prank(admin);
+        controllerTimelock.rampLiquidationThreshold(
+            creditManager, token, 9500, uint40(block.timestamp + 7 days), uint24(7 days)
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 7 days, 60 days));
+        vm.prank(admin);
+        controllerTimelock.rampLiquidationThreshold(
+            creditManager, token, 7000, uint40(block.timestamp + 7 days), uint24(5 days)
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 7 days, 60 days));
+        vm.prank(admin);
+        controllerTimelock.rampLiquidationThreshold(
+            creditManager, token, 7000, uint40(block.timestamp + 7 days), uint24(70 days)
+        );
+
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(
+            abi.encode(
+                admin,
+                creditConfigurator,
+                "rampLiquidationThreshold(address,uint16,uint40,uint24)",
+                abi.encode(token, 6000, block.timestamp + 14 days, 7 days)
+            )
+        );
+
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            creditConfigurator,
+            "rampLiquidationThreshold(address,uint16,uint40,uint24)",
+            abi.encode(token, 6000, block.timestamp + 14 days, 7 days),
+            uint40(block.timestamp + 1 days)
+        );
+
+        vm.prank(admin);
+        controllerTimelock.rampLiquidationThreshold(
+            creditManager, token, 6000, uint40(block.timestamp + 14 days), 7 days
+        );
+
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
+
+        assertEq(
+            sanityCheckValue,
+            uint256(keccak256(abi.encode(uint16(5000), uint16(5000), type(uint40).max, uint24(0)))),
+            "Sanity check value written incorrectly"
+        );
+
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getLTRampParamsHash, (creditManager, token)));
+
+        vm.expectCall(
+            creditConfigurator,
+            abi.encodeWithSelector(
+                ICreditConfiguratorV3.rampLiquidationThreshold.selector,
+                token,
+                6000,
+                uint40(block.timestamp + 14 days),
+                7 days
+            )
+        );
+
+        vm.warp(block.timestamp + 1 days);
+
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
+
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
+
+    /// @dev U:[CT-6]: setLiquidationThreshold works correctly
+    function test_U_CT_06_setLiquidationThreshold_works_correctly() public {
+        (address creditManager,, address creditConfigurator,,) = _makeMocks();
+
+        address token = makeAddr("TOKEN");
+
+        vm.mockCall(
+            creditManager, abi.encodeWithSelector(ICreditManagerV3.liquidationThresholds.selector), abi.encode(5000)
+        );
+
+        vm.mockCall(
+            creditManager,
+            abi.encodeWithSelector(ICreditManagerV3.ltParams.selector),
+            abi.encode(uint16(5000), uint16(5000), type(uint40).max, uint24(0))
+        );
+
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setLiquidationThreshold", 5000, 9300);
+        controllerTimelock.setPolicyAdmin("setLiquidationThreshold", admin);
+        controllerTimelock.setPolicyDelay("setLiquidationThreshold", 1 days);
+        vm.stopPrank();
+
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setLiquidationThreshold(creditManager, token, 7000);
+
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 5000, 9300));
+        vm.prank(admin);
+        controllerTimelock.setLiquidationThreshold(creditManager, token, 4000);
+
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 5000, 9300));
+        vm.prank(admin);
+        controllerTimelock.setLiquidationThreshold(creditManager, token, 9500);
+
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(
+            abi.encode(admin, creditConfigurator, "setLiquidationThreshold(address,uint16)", abi.encode(token, 6000))
+        );
+
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            creditConfigurator,
+            "setLiquidationThreshold(address,uint16)",
+            abi.encode(token, 6000),
+            uint40(block.timestamp + 1 days)
+        );
+
+        vm.prank(admin);
+        controllerTimelock.setLiquidationThreshold(creditManager, token, 6000);
+
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
+
+        assertEq(
+            sanityCheckValue,
+            uint256(keccak256(abi.encode(uint16(5000), uint16(5000), type(uint40).max, uint24(0)))),
+            "Sanity check value written incorrectly"
+        );
+
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getLTRampParamsHash, (creditManager, token)));
+
+        vm.expectCall(
+            creditConfigurator,
+            abi.encodeWithSelector(ICreditConfiguratorV3.setLiquidationThreshold.selector, token, 6000)
+        );
+
+        vm.warp(block.timestamp + 1 days);
+
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
+
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
+
+    /// @dev U:[CT-7]: setDebtLimits works correctly
+    function test_U_CT_07_setDebtLimits_works_correctly() public {
+        (address creditManager, address creditFacade, address creditConfigurator,,) = _makeMocks();
+
+        vm.mockCall(creditFacade, abi.encodeWithSelector(ICreditFacadeV3.debtLimits.selector), abi.encode(75, 200));
+
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setDebtLimits_minDebt", 50, 100);
+        controllerTimelock.setRange("setDebtLimits_maxDebt", 150, 300);
+        controllerTimelock.setPolicyAdmin("setDebtLimits", admin);
+        controllerTimelock.setPolicyDelay("setDebtLimits", 1 days);
+        vm.stopPrank();
+
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setDebtLimits(creditManager, 80, 250);
+
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 50, 100));
+        vm.prank(admin);
+        controllerTimelock.setDebtLimits(creditManager, 40, 250);
+
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 50, 100));
+        vm.prank(admin);
+        controllerTimelock.setDebtLimits(creditManager, 120, 250);
+
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 150, 300));
+        vm.prank(admin);
+        controllerTimelock.setDebtLimits(creditManager, 80, 100);
+
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 150, 300));
+        vm.prank(admin);
+        controllerTimelock.setDebtLimits(creditManager, 80, 400);
+
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash =
+            keccak256(abi.encode(admin, creditConfigurator, "setDebtLimits(uint128,uint128)", abi.encode(80, 250)));
+
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            creditConfigurator,
+            "setDebtLimits(uint128,uint128)",
+            abi.encode(80, 250),
+            uint40(block.timestamp + 1 days)
+        );
+
+        vm.prank(admin);
+        controllerTimelock.setDebtLimits(creditManager, 80, 250);
+
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
+
+        assertEq(sanityCheckValue, uint256(keccak256(abi.encode(75, 200))), "Sanity check value written incorrectly");
+
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getDebtLimits, (creditManager)));
+
+        vm.expectCall(creditConfigurator, abi.encodeWithSelector(ICreditConfiguratorV3.setDebtLimits.selector, 80, 250));
+
+        vm.warp(block.timestamp + 3 days);
+
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
+
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
+
+    /// @dev U:[CT-8]: forbidAdapter works correctly
+    function test_U_CT_08_forbidAdapter_works_correctly() public {
+        (address creditManager,, address creditConfigurator,,) = _makeMocks();
 
-    // /// @dev U:[CT-4A]: setMinDebtLimit works correctly
-    // function test_U_CT_04A_setMinDebtLimit_works_correctly() public {
-    //     (address creditManager, address creditFacade, address creditConfigurator,,) = _makeMocks();
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setPolicyAdmin("forbidAdapter", admin);
+        controllerTimelock.setPolicyDelay("forbidAdapter", 1 days);
+        vm.stopPrank();
 
-    //     string memory policyID = "setMinDebtLimit";
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.forbidAdapter(creditManager, DUMB_ADDRESS);
 
-    //     vm.mockCall(creditFacade, abi.encodeWithSelector(ICreditFacadeV3.debtLimits.selector), abi.encode(10, 20));
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash =
+            keccak256(abi.encode(admin, creditConfigurator, "forbidAdapter(address)", abi.encode(DUMB_ADDRESS)));
 
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 15;
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            creditConfigurator,
+            "forbidAdapter(address)",
+            abi.encode(DUMB_ADDRESS),
+            uint40(block.timestamp + 1 days)
+        );
+
+        vm.prank(admin);
+        controllerTimelock.forbidAdapter(creditManager, DUMB_ADDRESS);
+
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
+
+        assertEq(sanityCheckValue, 0, "Sanity check value written incorrectly");
+
+        assertEq(sanityCheckCallData, "");
+
+        vm.expectCall(
+            creditConfigurator, abi.encodeWithSelector(ICreditConfiguratorV3.forbidAdapter.selector, DUMB_ADDRESS)
+        );
+
+        vm.warp(block.timestamp + 1 days);
+
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
+
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
+
+    /// @dev U:[CT-9]: allowToken works correctly
+    function test_U_CT_09_allowToken_works_correctly() public {
+        (address creditManager,, address creditConfigurator,,) = _makeMocks();
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 3 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        address token = makeAddr("TOKEN");
 
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMinDebtLimit(creditManager, 15);
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setPolicyAdmin("allowToken", admin);
+        controllerTimelock.setPolicyDelay("allowToken", 1 days);
+        vm.stopPrank();
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.allowToken(creditManager, token);
 
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setMinDebtLimit(creditManager, 15);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(abi.encode(admin, creditConfigurator, "allowToken(address)", abi.encode(token)));
+
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            creditConfigurator,
+            "allowToken(address)",
+            abi.encode(token),
+            uint40(block.timestamp + 1 days)
+        );
+
+        vm.prank(admin);
+        controllerTimelock.allowToken(creditManager, token);
+
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
+
+        assertEq(sanityCheckValue, 0, "Sanity check value written incorrectly");
+
+        assertEq(sanityCheckCallData, "");
+
+        vm.expectCall(creditConfigurator, abi.encodeWithSelector(ICreditConfiguratorV3.allowToken.selector, token));
+
+        vm.warp(block.timestamp + 1 days);
+
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
+
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
+
+    /// @dev U:[CT-10]: removeEmergencyLiquidator works correctly
+    function test_U_CT_10_removeEmergencyLiquidator_works_correctly() public {
+        (address creditManager,, address creditConfigurator,,) = _makeMocks();
+
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setPolicyAdmin("removeEmergencyLiquidator", admin);
+        controllerTimelock.setPolicyDelay("removeEmergencyLiquidator", 1 days);
+        vm.stopPrank();
+
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.removeEmergencyLiquidator(creditManager, DUMB_ADDRESS);
 
-    //     // VERIFY THAT POLICY CHECKS ARE PERFORMED
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMinDebtLimit(creditManager, 5);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(
+            abi.encode(admin, creditConfigurator, "removeEmergencyLiquidator(address)", abi.encode(DUMB_ADDRESS))
+        );
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(abi.encode(admin, creditConfigurator, "setMinDebtLimit(uint128)", abi.encode(15)));
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            creditConfigurator,
+            "removeEmergencyLiquidator(address)",
+            abi.encode(DUMB_ADDRESS),
+            uint40(block.timestamp + 1 days)
+        );
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         creditConfigurator,
-    //         "setMinDebtLimit(uint128)",
-    //         abi.encode(15),
-    //         uint40(block.timestamp + 3 days)
-    //     );
+        vm.prank(admin);
+        controllerTimelock.removeEmergencyLiquidator(creditManager, DUMB_ADDRESS);
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setMinDebtLimit(creditManager, 15);
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        assertEq(sanityCheckValue, 0, "Sanity check value written incorrectly");
 
-    //     assertEq(sanityCheckValue, 10, "Sanity check value written incorrectly");
+        assertEq(sanityCheckCallData, "");
 
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getMinDebtLimit, (creditManager)));
+        vm.expectCall(
+            creditConfigurator,
+            abi.encodeWithSelector(ICreditConfiguratorV3.removeEmergencyLiquidator.selector, DUMB_ADDRESS)
+        );
 
-    //     vm.expectCall(creditConfigurator, abi.encodeWithSelector(ICreditConfiguratorV3.setMinDebtLimit.selector, 15));
+        vm.warp(block.timestamp + 1 days);
 
-    //     vm.warp(block.timestamp + 3 days);
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+    /// @dev U:[CT-11]: setCreditManagerDebtLimit works correctly
+    function test_U_CT_11_setCreditManagerDebtLimit_works_correctly() public {
+        (address creditManager,,, address pool,) = _makeMocks();
 
-    // /// @dev U:[CT-4B]: setMaxDebtLimit works correctly
-    // function test_U_CT_04B_setMaxDebtLimit_works_correctly() public {
-    //     (address creditManager, address creditFacade, address creditConfigurator,,) = _makeMocks();
+        vm.mockCall(
+            pool, abi.encodeWithSelector(IPoolV3.creditManagerDebtLimit.selector, creditManager), abi.encode(1e18)
+        );
 
-    //     string memory policyID = "setMaxDebtLimit";
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setCreditManagerDebtLimit", 1e17, 1e19);
+        controllerTimelock.setPolicyAdmin("setCreditManagerDebtLimit", admin);
+        controllerTimelock.setPolicyDelay("setCreditManagerDebtLimit", 1 days);
+        vm.stopPrank();
 
-    //     vm.mockCall(creditFacade, abi.encodeWithSelector(ICreditFacadeV3.debtLimits.selector), abi.encode(10, 20));
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setCreditManagerDebtLimit(creditManager, 2e18);
 
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 25;
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 1e17, 1e19));
+        vm.prank(admin);
+        controllerTimelock.setCreditManagerDebtLimit(creditManager, 10);
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 1e17, 1e19));
+        vm.prank(admin);
+        controllerTimelock.setCreditManagerDebtLimit(creditManager, 2e19);
 
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMaxDebtLimit(creditManager, 25);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(
+            abi.encode(admin, pool, "setCreditManagerDebtLimit(address,uint256)", abi.encode(creditManager, 2e18))
+        );
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            pool,
+            "setCreditManagerDebtLimit(address,uint256)",
+            abi.encode(creditManager, 2e18),
+            uint40(block.timestamp + 1 days)
+        );
 
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setMaxDebtLimit(creditManager, 25);
+        vm.prank(admin);
+        controllerTimelock.setCreditManagerDebtLimit(creditManager, 2e18);
 
-    //     // VERIFY THAT POLICY CHECKS ARE PERFORMED
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMaxDebtLimit(creditManager, 5);
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(abi.encode(admin, creditConfigurator, "setMaxDebtLimit(uint128)", abi.encode(25)));
+        assertEq(sanityCheckValue, 1e18, "Sanity check value written incorrectly");
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         creditConfigurator,
-    //         "setMaxDebtLimit(uint128)",
-    //         abi.encode(25),
-    //         uint40(block.timestamp + 1 days)
-    //     );
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getCreditManagerDebtLimit, (creditManager)));
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setMaxDebtLimit(creditManager, 25);
+        vm.expectCall(pool, abi.encodeWithSelector(PoolV3.setCreditManagerDebtLimit.selector, creditManager, 2e18));
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        vm.warp(block.timestamp + 1 days);
 
-    //     assertEq(sanityCheckValue, 20, "Sanity check value written incorrectly");
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getMaxDebtLimit, (creditManager)));
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.expectCall(creditConfigurator, abi.encodeWithSelector(ICreditConfiguratorV3.setMaxDebtLimit.selector, 25));
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     vm.warp(block.timestamp + 1 days);
+    /// @dev U:[CT-11]: setTotalDebtLimit works correctly
+    function test_U_CT_11_setTotalDebtLimit_works_correctly() public {
+        (address creditManager,,, address pool,) = _makeMocks();
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        vm.mockCall(pool, abi.encodeWithSelector(IPoolV3.totalDebtLimit.selector), abi.encode(1e18));
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setTotalDebtLimit", 1e17, 1e19);
+        controllerTimelock.setPolicyAdmin("setTotalDebtLimit", admin);
+        controllerTimelock.setPolicyDelay("setTotalDebtLimit", 1 days);
+        vm.stopPrank();
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setTotalDebtLimit(creditManager, 2e18);
 
-    // /// @dev U:[CT-5]: setCreditManagerDebtLimit works correctly
-    // function test_U_CT_05_setCreditManagerDebtLimit_works_correctly() public {
-    //     (address creditManager, /* address creditFacade */,, address pool,) = _makeMocks();
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 1e17, 1e19));
+        vm.prank(admin);
+        controllerTimelock.setTotalDebtLimit(creditManager, 10);
 
-    //     string memory policyID = "setCreditManagerDebtLimit";
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 1e17, 1e19));
+        vm.prank(admin);
+        controllerTimelock.setTotalDebtLimit(creditManager, 2e19);
 
-    //     vm.mockCall(
-    //         pool, abi.encodeWithSelector(IPoolV3.creditManagerDebtLimit.selector, creditManager), abi.encode(1e18)
-    //     );
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(abi.encode(admin, pool, "setTotalDebtLimit(uint256)", abi.encode(2e18)));
 
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 2e18;
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash, admin, pool, "setTotalDebtLimit(uint256)", abi.encode(2e18), uint40(block.timestamp + 1 days)
+        );
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        vm.prank(admin);
+        controllerTimelock.setTotalDebtLimit(pool, 2e18);
 
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setCreditManagerDebtLimit(creditManager, 2e18);
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        assertEq(sanityCheckValue, 1e18, "Sanity check value written incorrectly");
 
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setCreditManagerDebtLimit(creditManager, 2e18);
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getTotalDebtLimit, (pool)));
 
-    //     // VERIFY THAT POLICY CHECKS ARE PERFORMED
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setCreditManagerDebtLimit(creditManager, 1e18);
+        vm.expectCall(pool, abi.encodeWithSelector(PoolV3.setTotalDebtLimit.selector, 2e18));
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(
-    //         abi.encode(admin, pool, "setCreditManagerDebtLimit(address,uint256)", abi.encode(creditManager, 2e18))
-    //     );
+        vm.warp(block.timestamp + 1 days);
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         pool,
-    //         "setCreditManagerDebtLimit(address,uint256)",
-    //         abi.encode(creditManager, 2e18),
-    //         uint40(block.timestamp + 1 days)
-    //     );
-
-    //     vm.prank(admin);
-    //     controllerTimelock.setCreditManagerDebtLimit(creditManager, 2e18);
-
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
-
-    //     assertEq(sanityCheckValue, 1e18, "Sanity check value written incorrectly");
-
-    //     assertEq(
-    //         sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getCreditManagerDebtLimit, (pool, creditManager))
-    //     );
-
-    //     vm.expectCall(pool, abi.encodeWithSelector(PoolV3.setCreditManagerDebtLimit.selector, creditManager, 2e18));
-
-    //     vm.warp(block.timestamp + 1 days);
-
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
-
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
-
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
-
-    // /// @dev U:[CT-6]: rampLiquidationThreshold works correctly
-    // function test_U_CT_06_rampLiquidationThreshold_works_correctly() public {
-    //     (address creditManager,, address creditConfigurator,,) = _makeMocks();
-
-    //     address token = makeAddr("TOKEN");
-
-    //     string memory policyID = "rampLiquidationThreshold";
-
-    //     vm.mockCall(
-    //         creditManager, abi.encodeWithSelector(ICreditManagerV3.liquidationThresholds.selector), abi.encode(5000)
-    //     );
-
-    //     vm.mockCall(
-    //         creditManager,
-    //         abi.encodeWithSelector(ICreditManagerV3.ltParams.selector),
-    //         abi.encode(uint16(5000), uint16(5000), type(uint40).max, uint24(0))
-    //     );
-
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 6000;
-
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
-
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.rampLiquidationThreshold(
-    //         creditManager, token, 6000, uint40(block.timestamp + 14 days), 7 days
-    //     );
-
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
-
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.rampLiquidationThreshold(
-    //         creditManager, token, 6000, uint40(block.timestamp + 14 days), 7 days
-    //     );
-
-    //     // VERIFY THAT POLICY CHECKS ARE PERFORMED
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.rampLiquidationThreshold(
-    //         creditManager, token, 5000, uint40(block.timestamp + 14 days), 7 days
-    //     );
-
-    //     // VERIFY THAT EXTRA CHECKS ARE PERFORMED
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.rampLiquidationThreshold(
-    //         creditManager, token, 6000, uint40(block.timestamp + 14 days), 1 days
-    //     );
-
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.rampLiquidationThreshold(
-    //         creditManager, token, 6000, uint40(block.timestamp + 1 days / 2), 7 days
-    //     );
-
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(
-    //         abi.encode(
-    //             admin,
-    //             creditConfigurator,
-    //             "rampLiquidationThreshold(address,uint16,uint40,uint24)",
-    //             abi.encode(token, 6000, block.timestamp + 14 days, 7 days)
-    //         )
-    //     );
-
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         creditConfigurator,
-    //         "rampLiquidationThreshold(address,uint16,uint40,uint24)",
-    //         abi.encode(token, 6000, block.timestamp + 14 days, 7 days),
-    //         uint40(block.timestamp + 1 days)
-    //     );
-
-    //     vm.prank(admin);
-    //     controllerTimelock.rampLiquidationThreshold(
-    //         creditManager, token, 6000, uint40(block.timestamp + 14 days), 7 days
-    //     );
-
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
-
-    //     assertEq(
-    //         sanityCheckValue,
-    //         uint256(keccak256(abi.encode(uint16(5000), uint16(5000), type(uint40).max, uint24(0)))),
-    //         "Sanity check value written incorrectly"
-    //     );
-
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getLTRampParamsHash, (creditManager, token)));
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     vm.expectCall(
-    //         creditConfigurator,
-    //         abi.encodeWithSelector(
-    //             ICreditConfiguratorV3.rampLiquidationThreshold.selector,
-    //             token,
-    //             6000,
-    //             uint40(block.timestamp + 14 days),
-    //             7 days
-    //         )
-    //     );
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.warp(block.timestamp + 1 days);
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+    /// @dev U:[CT-12]: setTokenLimit works correctly
+    function test_U_CT_12_setTokenLimit_works_correctly() public {
+        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        address token = makeAddr("TOKEN");
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
-
-    // /// @dev U:[CT-7]: cancelTransaction works correctly
-    // function test_U_CT_07_cancelTransaction_works_correctly() public {
-    //     (address creditManager, address creditFacade, address creditConfigurator, address pool,) = _makeMocks();
-
-    //     string memory policyID = "setExpirationDate";
-
-    //     vm.mockCall(
-    //         creditFacade, abi.encodeWithSelector(ICreditFacadeV3.expirationDate.selector), abi.encode(block.timestamp)
-    //     );
-
-    //     vm.mockCall(pool, abi.encodeWithSelector(IPoolV3.creditManagerBorrowed.selector, creditManager), abi.encode(0));
-
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = block.timestamp + 5;
+        vm.mockCall(
+            poolQuotaKeeper,
+            abi.encodeCall(IPoolQuotaKeeperV3.getTokenQuotaParams, (token)),
+            abi.encode(uint16(10), uint192(1e27), uint16(15), uint96(1e17), uint96(1e18), true)
+        );
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setTokenLimit", 1e17, 1e19);
+        controllerTimelock.setPolicyAdmin("setTokenLimit", admin);
+        controllerTimelock.setPolicyDelay("setTokenLimit", 1 days);
+        vm.stopPrank();
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setTokenLimit(pool, token, 2e18);
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(
-    //         abi.encode(admin, creditConfigurator, "setExpirationDate(uint40)", abi.encode(block.timestamp + 5))
-    //     );
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 1e17, 1e19));
+        vm.prank(admin);
+        controllerTimelock.setTokenLimit(pool, token, 10);
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setExpirationDate(creditManager, uint40(block.timestamp + 5));
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 1e17, 1e19));
+        vm.prank(admin);
+        controllerTimelock.setTokenLimit(pool, token, 2e19);
 
-    //     vm.expectRevert(CallerNotVetoAdminException.selector);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(
+            abi.encode(admin, poolQuotaKeeper, "setTokenLimit(address,uint96)", abi.encode(token, uint96(2e18)))
+        );
 
-    //     vm.prank(admin);
-    //     controllerTimelock.cancelTransaction(txHash);
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            poolQuotaKeeper,
+            "setTokenLimit(address,uint96)",
+            abi.encode(token, uint96(2e18)),
+            uint40(block.timestamp + 1 days)
+        );
 
-    //     vm.expectEmit(true, false, false, false);
-    //     emit CancelTransaction(txHash);
+        vm.prank(admin);
+        controllerTimelock.setTokenLimit(pool, token, 2e18);
 
-    //     vm.prank(vetoAdmin);
-    //     controllerTimelock.cancelTransaction(txHash);
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        assertEq(sanityCheckValue, 1e18, "Sanity check value written incorrectly");
 
-    //     assertTrue(!queued, "Transaction is still queued after cancelling");
-
-    //     vm.expectRevert(TxNotQueuedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
-    // }
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getTokenLimit, (pool, token)));
 
-    // /// @dev U:[CT-8]: configuration functions work correctly
-    // function test_U_CT_08_configuration_works_correctly() public {
-    //     vm.expectRevert(CallerNotConfiguratorException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setVetoAdmin(DUMB_ADDRESS);
+        vm.expectCall(poolQuotaKeeper, abi.encodeCall(PoolQuotaKeeperV3.setTokenLimit, (token, 2e18)));
 
-    //     vm.expectEmit(true, false, false, false);
-    //     emit SetVetoAdmin(DUMB_ADDRESS);
+        vm.warp(block.timestamp + 1 days);
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setVetoAdmin(DUMB_ADDRESS);
-
-    //     assertEq(controllerTimelock.vetoAdmin(), DUMB_ADDRESS, "Veto admin address was not set");
-    // }
-
-    // /// @dev U:[CT-9]: executeTransaction works correctly
-    // function test_U_CT_09_executeTransaction_works_correctly() public {
-    //     (address creditManager, address creditFacade, address creditConfigurator, address pool,) = _makeMocks();
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     string memory policyID = "setExpirationDate";
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     uint40 initialExpirationDate = uint40(block.timestamp);
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     vm.mockCall(
-    //         creditFacade,
-    //         abi.encodeWithSelector(ICreditFacadeV3.expirationDate.selector),
-    //         abi.encode(initialExpirationDate)
-    //     );
-
-    //     vm.mockCall(pool, abi.encodeWithSelector(IPoolV3.creditManagerBorrowed.selector, creditManager), abi.encode(0));
-
-    //     uint40 expirationDate = uint40(block.timestamp + 2 days);
-
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = expirationDate;
-
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: FRIEND,
-    //         delay: 2 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
-
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
-
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash =
-    //         keccak256(abi.encode(FRIEND, creditConfigurator, "setExpirationDate(uint40)", abi.encode(expirationDate)));
-
-    //     vm.prank(FRIEND);
-    //     controllerTimelock.setExpirationDate(creditManager, expirationDate);
-
-    //     vm.expectRevert(CallerNotExecutorException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.executeTransaction(txHash);
-
-    //     vm.expectRevert(TxExecutedOutsideTimeWindowException.selector);
-    //     vm.prank(FRIEND);
-    //     controllerTimelock.executeTransaction(txHash);
-
-    //     vm.warp(block.timestamp + 20 days);
-
-    //     vm.expectRevert(TxExecutedOutsideTimeWindowException.selector);
-    //     vm.prank(FRIEND);
-    //     controllerTimelock.executeTransaction(txHash);
-
-    //     vm.warp(block.timestamp - 10 days);
-
-    //     vm.mockCallRevert(
-    //         creditConfigurator,
-    //         abi.encodeWithSelector(ICreditConfiguratorV3.setExpirationDate.selector, expirationDate),
-    //         abi.encode("error")
-    //     );
-
-    //     vm.expectRevert(TxExecutionRevertedException.selector);
-    //     vm.prank(FRIEND);
-    //     controllerTimelock.executeTransaction(txHash);
+    /// @dev U:[CT-13]: setTokenQuotaIncreaseFee works correctly
+    function test_U_CT_13_setTokenQuotaIncreaseFee_works_correctly() public {
+        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
 
-    //     vm.clearMockedCalls();
+        address token = makeAddr("TOKEN");
 
-    //     vm.mockCall(
-    //         creditManager, abi.encodeWithSelector(ICreditManagerV3.creditFacade.selector), abi.encode(creditFacade)
-    //     );
+        vm.mockCall(
+            poolQuotaKeeper,
+            abi.encodeCall(IPoolQuotaKeeperV3.getTokenQuotaParams, (token)),
+            abi.encode(uint16(10), uint192(1e27), uint16(15), uint96(1e17), uint96(1e18), false)
+        );
 
-    //     vm.mockCall(
-    //         creditFacade,
-    //         abi.encodeWithSelector(ICreditFacadeV3.expirationDate.selector),
-    //         abi.encode(block.timestamp + 2 days)
-    //     );
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setTokenQuotaIncreaseFee", 10, 500);
+        controllerTimelock.setPolicyAdmin("setTokenQuotaIncreaseFee", admin);
+        controllerTimelock.setPolicyDelay("setTokenQuotaIncreaseFee", 1 days);
+        vm.stopPrank();
 
-    //     vm.expectRevert(ParameterChangedAfterQueuedTxException.selector);
-    //     vm.prank(FRIEND);
-    //     controllerTimelock.executeTransaction(txHash);
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setTokenQuotaIncreaseFee(pool, token, 20);
 
-    //     vm.mockCall(
-    //         creditFacade,
-    //         abi.encodeWithSelector(ICreditFacadeV3.expirationDate.selector),
-    //         abi.encode(initialExpirationDate)
-    //     );
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 500));
+        vm.prank(admin);
+        controllerTimelock.setTokenQuotaIncreaseFee(pool, token, 5);
 
-    //     vm.expectEmit(true, false, false, false);
-    //     emit ExecuteTransaction(txHash);
-
-    //     vm.prank(FRIEND);
-    //     controllerTimelock.executeTransaction(txHash);
-    // }
-
-    // /// @dev U:[CT-10]: forbidAdapter works correctly
-    // function test_U_CT_10_forbidAdapter_works_correctly() public {
-    //     (address creditManager,, address creditConfigurator,,) = _makeMocks();
-
-    //     string memory policyID = "forbidAdapter";
-
-    //     uint256[] memory setValues = new uint256[](0);
-
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: false,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
-
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.forbidAdapter(creditManager, DUMB_ADDRESS);
-
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
-
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.forbidAdapter(creditManager, DUMB_ADDRESS);
-
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash =
-    //         keccak256(abi.encode(admin, creditConfigurator, "forbidAdapter(address)", abi.encode(DUMB_ADDRESS)));
-
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         creditConfigurator,
-    //         "forbidAdapter(address)",
-    //         abi.encode(DUMB_ADDRESS),
-    //         uint40(block.timestamp + 1 days)
-    //     );
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 500));
+        vm.prank(admin);
+        controllerTimelock.setTokenQuotaIncreaseFee(pool, token, 1000);
 
-    //     vm.prank(admin);
-    //     controllerTimelock.forbidAdapter(creditManager, DUMB_ADDRESS);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(
+            abi.encode(
+                admin, poolQuotaKeeper, "setTokenQuotaIncreaseFee(address,uint16)", abi.encode(token, uint16(20))
+            )
+        );
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            poolQuotaKeeper,
+            "setTokenQuotaIncreaseFee(address,uint16)",
+            abi.encode(token, uint16(20)),
+            uint40(block.timestamp + 1 days)
+        );
 
-    //     assertEq(sanityCheckValue, 0, "Sanity check value written incorrectly");
+        vm.prank(admin);
+        controllerTimelock.setTokenQuotaIncreaseFee(pool, token, 20);
 
-    //     assertEq(sanityCheckCallData, "");
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.expectCall(
-    //         creditConfigurator, abi.encodeWithSelector(ICreditConfiguratorV3.forbidAdapter.selector, DUMB_ADDRESS)
-    //     );
+        assertEq(sanityCheckValue, 15, "Sanity check value written incorrectly");
 
-    //     vm.warp(block.timestamp + 1 days);
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getTokenQuotaIncreaseFee, (pool, token)));
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        vm.expectCall(poolQuotaKeeper, abi.encodeCall(PoolQuotaKeeperV3.setTokenQuotaIncreaseFee, (token, 20)));
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        vm.warp(block.timestamp + 1 days);
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    // /// @dev U:[CT-11]: setTokenLimit works correctly
-    // function test_U_CT_11_setTokenLimit_works_correctly() public {
-    //     (,,, address pool, address poolQuotaKeeper) = _makeMocks();
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     address token = makeAddr("TOKEN");
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     vm.mockCall(
-    //         poolQuotaKeeper,
-    //         abi.encodeCall(IPoolQuotaKeeperV3.getTokenQuotaParams, (token)),
-    //         abi.encode(uint16(10), uint192(1e27), uint16(15), uint96(1e17), uint96(1e18), true)
-    //     );
+    /// @dev U:[CT-14]: setMinQuotaRate works correctly
+    function test_U_CT_14_setMinQuotaRate_works_correctly() public {
+        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
 
-    //     string memory policyID = "setTokenLimit";
-
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 1e19;
-
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
-
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setTokenLimit(pool, token, 1e19);
-
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
-
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setTokenLimit(pool, token, 1e19);
-
-    //     // VERIFY THAT THE FUNCTION PERFORMS POLICY CHECKS
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setTokenLimit(pool, token, 1e20);
-
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(
-    //         abi.encode(admin, poolQuotaKeeper, "setTokenLimit(address,uint96)", abi.encode(token, uint96(1e19)))
-    //     );
-
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         poolQuotaKeeper,
-    //         "setTokenLimit(address,uint96)",
-    //         abi.encode(token, uint96(1e19)),
-    //         uint40(block.timestamp + 1 days)
-    //     );
-
-    //     vm.prank(admin);
-    //     controllerTimelock.setTokenLimit(pool, token, 1e19);
-
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
-
-    //     assertEq(sanityCheckValue, 1e18, "Sanity check value written incorrectly");
-
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getTokenLimit, (poolQuotaKeeper, token)));
+        address gauge = address(new GeneralMock());
 
-    //     vm.expectCall(poolQuotaKeeper, abi.encodeCall(PoolQuotaKeeperV3.setTokenLimit, (token, 1e19)));
-
-    //     vm.warp(block.timestamp + 1 days);
+        vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(gauge));
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        address token = makeAddr("TOKEN");
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        vm.mockCall(
+            gauge,
+            abi.encodeCall(IGaugeV3.quotaRateParams, (token)),
+            abi.encode(uint16(10), uint16(20), uint96(100), uint96(200))
+        );
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setMinQuotaRate", 10, 500);
+        controllerTimelock.setPolicyAdmin("setMinQuotaRate", admin);
+        controllerTimelock.setPolicyDelay("setMinQuotaRate", 1 days);
+        vm.stopPrank();
 
-    // /// @dev U:[CT-12]: setQuotaIncreaseFee works correctly
-    // function test_U_CT_12_setTokenQuotaIncreaseFee_works_correctly() public {
-    //     (,,, address pool, address poolQuotaKeeper) = _makeMocks();
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setMinQuotaRate(pool, token, 20);
 
-    //     address token = makeAddr("TOKEN");
-
-    //     vm.mockCall(
-    //         poolQuotaKeeper,
-    //         abi.encodeCall(IPoolQuotaKeeperV3.getTokenQuotaParams, (token)),
-    //         abi.encode(uint16(10), uint192(1e27), uint16(15), uint96(1e17), uint96(1e18), false)
-    //     );
-
-    //     string memory policyID = "setTokenQuotaIncreaseFee";
-
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 20;
-
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
-
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setTokenQuotaIncreaseFee(pool, token, 20);
-
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
-
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setTokenQuotaIncreaseFee(pool, token, 20);
-
-    //     // VERIFY THAT THE FUNCTION PERFORMS POLICY CHECKS
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setTokenQuotaIncreaseFee(pool, token, 30);
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 500));
+        vm.prank(admin);
+        controllerTimelock.setMinQuotaRate(pool, token, 5);
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(
-    //         abi.encode(
-    //             admin, poolQuotaKeeper, "setTokenQuotaIncreaseFee(address,uint16)", abi.encode(token, uint16(20))
-    //         )
-    //     );
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 500));
+        vm.prank(admin);
+        controllerTimelock.setMinQuotaRate(pool, token, 1000);
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         poolQuotaKeeper,
-    //         "setTokenQuotaIncreaseFee(address,uint16)",
-    //         abi.encode(token, uint16(20)),
-    //         uint40(block.timestamp + 1 days)
-    //     );
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash =
+            keccak256(abi.encode(admin, gauge, "changeQuotaMinRate(address,uint16)", abi.encode(token, uint16(15))));
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setTokenQuotaIncreaseFee(pool, token, 20);
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            gauge,
+            "changeQuotaMinRate(address,uint16)",
+            abi.encode(token, uint16(15)),
+            uint40(block.timestamp + 1 days)
+        );
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        vm.prank(admin);
+        controllerTimelock.setMinQuotaRate(pool, token, 15);
 
-    //     assertEq(sanityCheckValue, 15, "Sanity check value written incorrectly");
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     assertEq(
-    //         sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getTokenQuotaIncreaseFee, (poolQuotaKeeper, token))
-    //     );
+        assertEq(sanityCheckValue, 10, "Sanity check value written incorrectly");
 
-    //     vm.expectCall(poolQuotaKeeper, abi.encodeCall(PoolQuotaKeeperV3.setTokenQuotaIncreaseFee, (token, 20)));
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getMinQuotaRate, (pool, token)));
 
-    //     vm.warp(block.timestamp + 1 days);
+        vm.expectCall(gauge, abi.encodeCall(GaugeV3.changeQuotaMinRate, (token, 15)));
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        vm.warp(block.timestamp + 1 days);
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    // /// @dev U:[CT-13]: setTotalDebt works correctly
-    // function test_U_CT_13_setTotalDebtLimit_works_correctly() public {
-    //     (,,, address pool,) = _makeMocks();
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     vm.mockCall(pool, abi.encodeCall(IPoolV3.totalDebtLimit, ()), abi.encode(1e18));
+    /// @dev U:[CT-15]: setMaxQuotaRate works correctly
+    function test_U_CT_15_setMaxQuotaRate_works_correctly() public {
+        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
 
-    //     string memory policyID = "setTotalDebtLimit";
+        address gauge = address(new GeneralMock());
 
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 2e18;
+        vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(gauge));
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        address token = makeAddr("TOKEN");
 
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setTotalDebtLimit(pool, 2e18);
+        vm.mockCall(
+            gauge,
+            abi.encodeCall(IGaugeV3.quotaRateParams, (token)),
+            abi.encode(uint16(10), uint16(20), uint96(100), uint96(200))
+        );
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setMaxQuotaRate", 10, 500);
+        controllerTimelock.setPolicyAdmin("setMaxQuotaRate", admin);
+        controllerTimelock.setPolicyDelay("setMaxQuotaRate", 1 days);
+        vm.stopPrank();
 
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setTotalDebtLimit(pool, 2e18);
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setMaxQuotaRate(pool, token, 20);
 
-    //     // VERIFY THAT THE FUNCTION PERFORMS POLICY CHECKS
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setTotalDebtLimit(pool, 3e18);
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 500));
+        vm.prank(admin);
+        controllerTimelock.setMaxQuotaRate(pool, token, 5);
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(abi.encode(admin, pool, "setTotalDebtLimit(uint256)", abi.encode(2e18)));
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 500));
+        vm.prank(admin);
+        controllerTimelock.setMaxQuotaRate(pool, token, 1000);
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash, admin, pool, "setTotalDebtLimit(uint256)", abi.encode(2e18), uint40(block.timestamp + 1 days)
-    //     );
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash =
+            keccak256(abi.encode(admin, gauge, "changeQuotaMaxRate(address,uint16)", abi.encode(token, uint16(25))));
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setTotalDebtLimit(pool, 2e18);
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            gauge,
+            "changeQuotaMaxRate(address,uint16)",
+            abi.encode(token, uint16(25)),
+            uint40(block.timestamp + 1 days)
+        );
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        vm.prank(admin);
+        controllerTimelock.setMaxQuotaRate(pool, token, 25);
 
-    //     assertEq(sanityCheckValue, 1e18, "Sanity check value written incorrectly");
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getTotalDebtLimit, (pool)));
+        assertEq(sanityCheckValue, 20, "Sanity check value written incorrectly");
 
-    //     vm.expectCall(pool, abi.encodeCall(PoolV3.setTotalDebtLimit, (2e18)));
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getMaxQuotaRate, (pool, token)));
 
-    //     vm.warp(block.timestamp + 1 days);
+        vm.expectCall(gauge, abi.encodeCall(GaugeV3.changeQuotaMaxRate, (token, 25)));
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        vm.warp(block.timestamp + 1 days);
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    // /// @dev U:[CT-14]: setWithdrawFee works correctly
-    // function test_U_CT_14_setWithdrawFee_works_correctly() public {
-    //     (,,, address pool,) = _makeMocks();
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     vm.mockCall(pool, abi.encodeCall(IPoolV3.withdrawFee, ()), abi.encode(10));
+    /// @dev U:[CT-16]: setTumblerQuotaRate works correctly
+    function test_U_CT_16_setTumblerQuotaRate_works_correctly() public {
+        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
 
-    //     string memory policyID = "setWithdrawFee";
+        address tumbler = address(new GeneralMock());
 
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 20;
+        vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(tumbler));
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        address token = makeAddr("TOKEN");
 
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setWithdrawFee(pool, 20);
+        address[] memory tokens = new address[](1);
+        tokens[0] = token;
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        uint16[] memory rates = new uint16[](1);
+        rates[0] = 20;
 
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setWithdrawFee(pool, 20);
+        vm.mockCall(tumbler, abi.encodeCall(TumblerV3.getRates, (tokens)), abi.encode(rates));
 
-    //     // VERIFY THAT THE FUNCTION PERFORMS POLICY CHECKS
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setWithdrawFee(pool, 30);
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setRange("setTumblerQuotaRate", 10, 500);
+        controllerTimelock.setPolicyAdmin("setTumblerQuotaRate", admin);
+        controllerTimelock.setPolicyDelay("setTumblerQuotaRate", 1 days);
+        vm.stopPrank();
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(abi.encode(admin, pool, "setWithdrawFee(uint256)", abi.encode(20)));
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.setTumblerQuotaRate(pool, token, 25);
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash, admin, pool, "setWithdrawFee(uint256)", abi.encode(20), uint40(block.timestamp + 1 days)
-    //     );
+        // VERIFY THAT THE FUNCTION CORRECTLY CHECKS RANGE INCLUSION
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 500));
+        vm.prank(admin);
+        controllerTimelock.setTumblerQuotaRate(pool, token, 5);
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setWithdrawFee(pool, 20);
+        vm.expectRevert(abi.encodeWithSelector(UintIsNotInRangeException.selector, 10, 500));
+        vm.prank(admin);
+        controllerTimelock.setTumblerQuotaRate(pool, token, 1000);
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(abi.encode(admin, tumbler, "setRate(address,uint16)", abi.encode(token, uint16(25))));
 
-    //     assertEq(sanityCheckValue, 10, "Sanity check value written incorrectly");
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(
+            txHash,
+            admin,
+            tumbler,
+            "setRate(address,uint16)",
+            abi.encode(token, uint16(25)),
+            uint40(block.timestamp + 1 days)
+        );
 
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getWithdrawFee, (pool)));
+        vm.prank(admin);
+        controllerTimelock.setTumblerQuotaRate(pool, token, 25);
 
-    //     vm.expectCall(pool, abi.encodeCall(PoolV3.setWithdrawFee, (20)));
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.warp(block.timestamp + 1 days);
+        assertEq(sanityCheckValue, 20, "Sanity check value written incorrectly");
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getTumblerRate, (pool, token)));
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        vm.expectCall(tumbler, abi.encodeCall(TumblerV3.setRate, (token, 25)));
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        vm.warp(block.timestamp + 1 days);
 
-    // /// @dev U:[CT-15A]: setMinQuotaRate works correctly
-    // function test_U_CT_15A_setMinQuotaRate_works_correctly() public {
-    //     (,,, address pool, address poolQuotaKeeper) = _makeMocks();
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     address gauge = address(new GeneralMock());
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(gauge));
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     address token = makeAddr("TOKEN");
+    /// @dev U:[CT-17]: updateTumblerRates works correctly
+    function test_U_CT_17_updateTumblerRates_works_correctly() public {
+        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
 
-    //     vm.mockCall(
-    //         gauge,
-    //         abi.encodeCall(IGaugeV3.quotaRateParams, (token)),
-    //         abi.encode(uint16(10), uint16(20), uint96(100), uint96(200))
-    //     );
+        address tumbler = address(new GeneralMock());
 
-    //     string memory policyID = "setMinQuotaRate";
+        vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(tumbler));
 
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 15;
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.setPolicyAdmin("updateTumblerRates", admin);
+        controllerTimelock.setPolicyDelay("updateTumblerRates", 1 days);
+        vm.stopPrank();
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
+        vm.expectRevert(CallerNotPolicyAdminException.selector);
+        vm.prank(USER);
+        controllerTimelock.updateTumblerRates(pool);
 
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMinQuotaRate(pool, token, 15);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(abi.encode(admin, tumbler, "updateRates()", ""));
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        vm.expectEmit(true, false, false, true);
+        emit QueueTransaction(txHash, admin, tumbler, "updateRates()", "", uint40(block.timestamp + 1 days));
 
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setMinQuotaRate(pool, token, 15);
+        vm.prank(admin);
+        controllerTimelock.updateTumblerRates(pool);
 
-    //     // VERIFY THAT THE FUNCTION PERFORMS POLICY CHECKS
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMinQuotaRate(pool, token, 25);
+        (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
+            controllerTimelock.queuedTransactions(txHash);
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash =
-    //         keccak256(abi.encode(admin, gauge, "changeQuotaMinRate(address,uint16)", abi.encode(token, uint16(15))));
+        assertEq(sanityCheckValue, 0, "Sanity check value written incorrectly");
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         gauge,
-    //         "changeQuotaMinRate(address,uint16)",
-    //         abi.encode(token, uint16(15)),
-    //         uint40(block.timestamp + 1 days)
-    //     );
+        assertEq(sanityCheckCallData, "");
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setMinQuotaRate(pool, token, 15);
+        vm.expectCall(tumbler, abi.encodeWithSelector(TumblerV3.updateRates.selector));
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        vm.warp(block.timestamp + 1 days);
 
-    //     assertEq(sanityCheckValue, 10, "Sanity check value written incorrectly");
+        vm.prank(admin);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getMinQuotaRate, (gauge, token)));
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.expectCall(gauge, abi.encodeCall(GaugeV3.changeQuotaMinRate, (token, 15)));
+        assertTrue(!queued, "Transaction is still queued after execution");
+    }
 
-    //     vm.warp(block.timestamp + 1 days);
+    /// @dev U:[CT-18]: cancelTransaction works correctly
+    function test_U_CT_18_cancelTransaction_works_correctly() public {
+        address token = makeAddr("TOKEN");
+        address priceFeed = makeAddr("PRICE_FEED");
+        address priceOracle = makeAddr("PRICE_ORACLE");
+        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
+        vm.mockCall(
+            priceOracle,
+            abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
+            abi.encode(PriceFeedParams(priceFeed, 3000, false, 18))
+        );
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.addAddressToSet("setPriceFeed", token, priceFeed);
+        controllerTimelock.setPolicyAdmin("setPriceFeed", admin);
+        controllerTimelock.setPolicyDelay("setPriceFeed", 1 days);
+        vm.stopPrank();
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(
+            abi.encode(admin, priceOracle, "setPriceFeed(address,address,uint32)", abi.encode(token, priceFeed, 4500))
+        );
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
+        vm.prank(admin);
+        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
 
-    // /// @dev U:[CT-15B]: setMaxQuotaRate works correctly
-    // function test_U_CT_15B_setMaxQuotaRate_works_correctly() public {
-    //     (,,, address pool, address poolQuotaKeeper) = _makeMocks();
+        vm.warp(block.timestamp + 1 days);
 
-    //     address gauge = address(new GeneralMock());
+        vm.expectRevert(CallerNotVetoAdminException.selector);
+        vm.prank(admin);
+        controllerTimelock.cancelTransaction(txHash);
 
-    //     vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(gauge));
+        vm.prank(vetoAdmin);
+        controllerTimelock.cancelTransaction(txHash);
 
-    //     address token = makeAddr("TOKEN");
+        (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
 
-    //     vm.mockCall(
-    //         gauge,
-    //         abi.encodeCall(IGaugeV3.quotaRateParams, (token)),
-    //         abi.encode(uint16(10), uint16(20), uint96(100), uint96(200))
-    //     );
+        assertTrue(!queued, "Transaction is still queued after cancelling");
 
-    //     string memory policyID = "setMaxQuotaRate";
+        vm.expectRevert(TxNotQueuedException.selector);
+        controllerTimelock.executeTransaction(txHash);
+    }
 
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 25;
+    /// @dev U:[CT-19]: executeTransaction works correctly
+    function test_U_CT_19_executeTransaction_works_correctly() public {
+        address token = makeAddr("TOKEN");
+        address priceFeed = makeAddr("PRICE_FEED");
+        address priceOracle = makeAddr("PRICE_ORACLE");
+        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
+        vm.mockCall(
+            priceOracle,
+            abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
+            abi.encode(PriceFeedParams(priceFeed, 3000, false, 18))
+        );
 
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
+        vm.startPrank(CONFIGURATOR);
+        controllerTimelock.addAddressToSet("setPriceFeed", token, priceFeed);
+        controllerTimelock.setPolicyAdmin("setPriceFeed", admin);
+        controllerTimelock.setPolicyDelay("setPriceFeed", 1 days);
+        controllerTimelock.addExecutor(FRIEND);
+        vm.stopPrank();
 
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMaxQuotaRate(pool, token, 25);
+        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
+        bytes32 txHash = keccak256(
+            abi.encode(admin, priceOracle, "setPriceFeed(address,address,uint32)", abi.encode(token, priceFeed, 4500))
+        );
 
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
+        vm.prank(admin);
+        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
 
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setMaxQuotaRate(pool, token, 25);
+        vm.expectRevert(CallerNotExecutorException.selector);
+        vm.prank(USER);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     // VERIFY THAT THE FUNCTION PERFORMS POLICY CHECKS
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setMaxQuotaRate(pool, token, 35);
+        vm.expectRevert(TxExecutedOutsideTimeWindowException.selector);
+        vm.prank(FRIEND);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash =
-    //         keccak256(abi.encode(admin, gauge, "changeQuotaMaxRate(address,uint16)", abi.encode(token, uint16(25))));
+        vm.warp(block.timestamp + 20 days);
 
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         gauge,
-    //         "changeQuotaMaxRate(address,uint16)",
-    //         abi.encode(token, uint16(25)),
-    //         uint40(block.timestamp + 1 days)
-    //     );
+        vm.expectRevert(TxExecutedOutsideTimeWindowException.selector);
+        vm.prank(FRIEND);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     vm.prank(admin);
-    //     controllerTimelock.setMaxQuotaRate(pool, token, 25);
+        vm.warp(block.timestamp - 10 days);
 
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
+        vm.mockCallRevert(
+            priceOracle,
+            abi.encodeWithSelector(IPriceOracleV3.setPriceFeed.selector, token, priceFeed, 4500),
+            abi.encode("error")
+        );
 
-    //     assertEq(sanityCheckValue, 20, "Sanity check value written incorrectly");
+        vm.expectRevert(TxExecutionRevertedException.selector);
+        vm.prank(FRIEND);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     assertEq(sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getMaxQuotaRate, (gauge, token)));
+        vm.clearMockedCalls();
 
-    //     vm.expectCall(gauge, abi.encodeCall(GaugeV3.changeQuotaMaxRate, (token, 25)));
+        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
+        vm.mockCall(
+            priceOracle,
+            abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
+            abi.encode(PriceFeedParams(priceFeed, 3600, false, 18))
+        );
 
-    //     vm.warp(block.timestamp + 1 days);
+        vm.expectRevert(ParameterChangedAfterQueuedTxException.selector);
+        vm.prank(FRIEND);
+        controllerTimelock.executeTransaction(txHash);
 
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
+        vm.mockCall(
+            priceOracle,
+            abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
+            abi.encode(PriceFeedParams(priceFeed, 3000, false, 18))
+        );
 
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
+        vm.expectEmit(true, false, false, false);
+        emit ExecuteTransaction(txHash);
 
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
-
-    // /// @dev U:[CT-16]: forbidBoundsUpdate works correctly
-    // function test_U_CT_16_forbidBoundsUpdate_works_correctly() public {
-    //     address priceFeed = makeAddr("PRICE_FEED");
-    //     vm.mockCall(priceFeed, abi.encodeWithSignature("forbidBoundsUpdate()"), "");
-
-    //     string memory policyID = "forbidBoundsUpdate";
-
-    //     uint256[] memory setValues = new uint256[](0);
-
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: false,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
-
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.forbidBoundsUpdate(priceFeed);
-
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
-
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.forbidBoundsUpdate(priceFeed);
-
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(abi.encode(admin, priceFeed, "forbidBoundsUpdate()", ""));
-
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(txHash, admin, priceFeed, "forbidBoundsUpdate()", "", uint40(block.timestamp + 1 days));
-
-    //     vm.prank(admin);
-    //     controllerTimelock.forbidBoundsUpdate(priceFeed);
-
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
-
-    //     assertEq(sanityCheckValue, 0, "Sanity check value written incorrectly");
-
-    //     assertEq(sanityCheckCallData, "");
-
-    //     vm.expectCall(priceFeed, abi.encodeWithSignature("forbidBoundsUpdate()"));
-
-    //     vm.warp(block.timestamp + 1 days);
-
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
-
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
-
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
-
-    // /// @dev U:[CT-18]: setPriceFeed works correctly
-    // function test_U_CT_18_setPriceFeed_works_correctly() public {
-    //     address token = makeAddr("TOKEN");
-    //     address priceFeed = makeAddr("PRICE_FEED");
-    //     address priceOracle = makeAddr("PRICE_ORACLE");
-    //     vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
-    //     vm.mockCall(
-    //         priceOracle,
-    //         abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
-    //         abi.encode(PriceFeedParams(priceFeed, 3000, false, 18))
-    //     );
-
-    //     string memory policyID = string(abi.encodePacked("setPriceFeed_", Strings.toHexString(token)));
-
-    //     uint256 pfKeccak = uint256(keccak256(abi.encode(priceFeed, uint32(4500))));
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = pfKeccak;
-
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: admin,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
-
-    //     // VERIFY THAT THE FUNCTION CANNOT BE CALLED WITHOUT RESPECTIVE POLICY
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(admin);
-    //     controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
-
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
-
-    //     // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
-    //     vm.expectRevert(ParameterChecksFailedException.selector);
-    //     vm.prank(USER);
-    //     controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
-
-    //     // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-    //     bytes32 txHash = keccak256(
-    //         abi.encode(admin, priceOracle, "setPriceFeed(address,address,uint32)", abi.encode(token, priceFeed, 4500))
-    //     );
-
-    //     vm.expectEmit(true, false, false, true);
-    //     emit QueueTransaction(
-    //         txHash,
-    //         admin,
-    //         priceOracle,
-    //         "setPriceFeed(address,address,uint32)",
-    //         abi.encode(token, priceFeed, 4500),
-    //         uint40(block.timestamp + 1 days)
-    //     );
-
-    //     vm.prank(admin);
-    //     controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
-
-    //     (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
-    //         controllerTimelock.queuedTransactions(txHash);
-
-    //     assertEq(
-    //         sanityCheckValue, uint256(keccak256(abi.encode(priceFeed, 3000))), "Sanity check value written incorrectly"
-    //     );
-
-    //     assertEq(
-    //         sanityCheckCallData, abi.encodeCall(ControllerTimelockV3.getCurrentPriceFeedHash, (priceOracle, token))
-    //     );
-
-    //     vm.expectCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)));
-
-    //     vm.warp(block.timestamp + 1 days);
-
-    //     vm.prank(admin);
-    //     controllerTimelock.executeTransaction(txHash);
-
-    //     (bool queued,,,,,,,) = controllerTimelock.queuedTransactions(txHash);
-
-    //     assertTrue(!queued, "Transaction is still queued after execution");
-    // }
-
-    // /// @dev U:[CT-19]: executor logic is correct
-    // function test_U_CT_19_executor_logic_is_correct() public {
-    //     (,,, address pool, address poolQuotaKeeper) = _makeMocks();
-
-    //     address token = makeAddr("TOKEN");
-
-    //     vm.startPrank(CONFIGURATOR);
-
-    //     vm.expectEmit(true, false, false, true);
-    //     emit SetExecutor(FRIEND2, true);
-
-    //     controllerTimelock.setExecutor(FRIEND2, true);
-
-    //     vm.stopPrank();
-
-    //     vm.mockCall(
-    //         poolQuotaKeeper,
-    //         abi.encodeCall(IPoolQuotaKeeperV3.getTokenQuotaParams, (token)),
-    //         abi.encode(uint16(10), uint192(1e27), uint16(15), uint96(1e17), uint96(1e18), true)
-    //     );
-
-    //     string memory policyID = "setTokenLimit";
-
-    //     uint256[] memory setValues = new uint256[](1);
-    //     setValues[0] = 2e18;
-
-    //     Policy memory policy = Policy({
-    //         enabled: false,
-    //         admin: FRIEND,
-    //         delay: 1 days,
-    //         checkInterval: false,
-    //         checkSet: true,
-    //         intervalMinValue: 0,
-    //         intervalMaxValue: 0,
-    //         setValues: setValues
-    //     });
-
-    //     vm.prank(CONFIGURATOR);
-    //     controllerTimelock.setPolicy(policyID, policy);
-
-    //     vm.prank(FRIEND);
-    //     controllerTimelock.setTokenLimit(pool, token, 2e18);
-
-    //     bytes32 txHash = keccak256(
-    //         abi.encode(FRIEND, poolQuotaKeeper, "setTokenLimit(address,uint96)", abi.encode(token, uint96(2e18)))
-    //     );
-
-    //     vm.warp(block.timestamp + 1 days);
-
-    //     vm.prank(FRIEND2);
-    //     controllerTimelock.executeTransaction(txHash);
-    // }
+        vm.prank(FRIEND);
+        controllerTimelock.executeTransaction(txHash);
+    }
 }

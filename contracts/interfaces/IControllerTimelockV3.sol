@@ -6,6 +6,7 @@ pragma solidity ^0.8.17;
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 enum PolicyType {
+    None,
     UintRange,
     AddressInSet,
     NoValueCheck
@@ -86,11 +87,15 @@ interface IControllerTimelockV3Events {
     /// @notice Emitted when a transaction is cancelled
     event CancelTransaction(bytes32 indexed txHash);
 
-    event UpdatePolicyRange(string policyID, uint256 min, uint256 max);
+    event SetPolicyRange(string policyID, uint256 min, uint256 max);
 
-    event AddToPolicyList(string policyID, address key, address value);
+    event AddAddressToPolicySet(string policyID, address key, address value);
 
-    event RemoveFromPolicyList(string policyID, address key, address value);
+    event RemoveAddressFromPolicySet(string policyID, address key, address value);
+
+    event SetPolicyAdmin(string policyId, address newAdmin);
+
+    event SetPolicyDelay(string policyId, uint40 newDelay);
 }
 
 interface IControllerTimelockV3Exceptions {
@@ -122,10 +127,13 @@ interface IControllerTimelockV3Exceptions {
     error CallerNotPolicyAdminException();
 
     /// @notice Thrown when the new value is not in the range defined by policy
-    error UintIsNotInRange(uint256, uint256);
+    error UintIsNotInRangeException(uint256, uint256);
 
     /// @notice Thrown when the address is not in the set defined by policy
-    error AddressIsNotInSet(address[]);
+    error AddressIsNotInSetException(address[]);
+
+    /// @notice Thrown when attempting to enable a policy that is not known to the controller
+    error InvalidPolicyException();
 }
 
 /// @title Controller timelock V3 interface
@@ -136,9 +144,7 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
 
     function setMaxDebtPerBlockMultiplier(address creditManager, uint8 multiplier) external;
 
-    function setMinDebtLimit(address creditManager, uint128 minDebt) external;
-
-    function setMaxDebtLimit(address creditManager, uint128 maxDebt) external;
+    function setDebtLimits(address creditManager, uint128 minDebt, uint128 maxDebt) external;
 
     function setCreditManagerDebtLimit(address creditManager, uint256 debtLimit) external;
 
@@ -166,16 +172,13 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
 
     function setPriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod) external;
 
-    function removeEmergencyLiquidator(address creditManager, address liquidator)
-        external;
+    function removeEmergencyLiquidator(address creditManager, address liquidator) external;
 
     function allowToken(address creditManager, address token) external;
 
-    function setLiquidationThreshold(address creditManager, address token, uint16 liquidationThreshold)
-        external;
+    function setLiquidationThreshold(address creditManager, address token, uint16 liquidationThreshold) external;
 
-    function setTumblerQuotaRate(address pool, address token, uint16 rate)
-        external;
+    function setTumblerQuotaRate(address pool, address token, uint16 rate) external;
 
     function updateTumblerRates(address pool) external;
 
@@ -184,6 +187,8 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
     // --------- //
 
     function GRACE_PERIOD() external view returns (uint256);
+
+    function DEFAULT_DELAY() external view returns (uint40);
 
     function queuedTransactions(bytes32 txHash)
         external
