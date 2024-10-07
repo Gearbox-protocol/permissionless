@@ -170,7 +170,7 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
 
     function setLPPriceFeedLimiter(address priceFeed, uint256 lowerBound) external;
 
-    function setPriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod) external;
+    function setPriceFeed(address priceOracle, address token, address priceFeed) external;
 
     function removeEmergencyLiquidator(address creditManager, address liquidator) external;
 

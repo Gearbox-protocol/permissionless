@@ -30,6 +30,7 @@ import {
     PolicyAddressSet,
     PolicyUintRange
 } from "../interfaces/IControllerTimelockV3.sol";
+import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
 // TEST
@@ -46,14 +47,16 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     address admin;
     address vetoAdmin;
+    address priceFeedStore;
 
     function setUp() public {
         admin = makeAddr("ADMIN");
         vetoAdmin = makeAddr("VETO_ADMIN");
+        priceFeedStore = makeAddr("PRICE_FEED_STORE");
 
         vm.prank(CONFIGURATOR);
         addressProvider = new AddressProviderV3ACLMock();
-        controllerTimelock = new ControllerTimelockV3(address(addressProvider), vetoAdmin);
+        controllerTimelock = new ControllerTimelockV3(address(addressProvider), vetoAdmin, priceFeedStore);
     }
 
     function _makeMocks()
@@ -174,6 +177,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         address token = makeAddr("TOKEN");
         address priceFeed = makeAddr("PRICE_FEED");
         address priceOracle = makeAddr("PRICE_ORACLE");
+        vm.mockCall(priceFeedStore, abi.encodeCall(IPriceFeedStore.getStalenessPeriod, (priceFeed)), abi.encode(4500));
         vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
         vm.mockCall(
             priceOracle,
@@ -190,7 +194,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
         vm.expectRevert(CallerNotPolicyAdminException.selector);
         vm.prank(USER);
-        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
+        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed);
 
         {
             address[] memory addrSet = new address[](1);
@@ -199,7 +203,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
             vm.expectRevert(abi.encodeWithSelector(AddressIsNotInSetException.selector, addrSet));
 
             vm.prank(admin);
-            controllerTimelock.setPriceFeed(priceOracle, token, makeAddr("WRONG_PF"), 4500);
+            controllerTimelock.setPriceFeed(priceOracle, token, makeAddr("WRONG_PF"));
         }
 
         // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
@@ -218,7 +222,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         );
 
         vm.prank(admin);
-        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
+        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed);
 
         (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
             controllerTimelock.queuedTransactions(txHash);
@@ -1316,6 +1320,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         address token = makeAddr("TOKEN");
         address priceFeed = makeAddr("PRICE_FEED");
         address priceOracle = makeAddr("PRICE_ORACLE");
+        vm.mockCall(priceFeedStore, abi.encodeCall(IPriceFeedStore.getStalenessPeriod, (priceFeed)), abi.encode(4500));
         vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
         vm.mockCall(
             priceOracle,
@@ -1335,7 +1340,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         );
 
         vm.prank(admin);
-        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
+        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed);
 
         vm.warp(block.timestamp + 1 days);
 
@@ -1359,6 +1364,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         address token = makeAddr("TOKEN");
         address priceFeed = makeAddr("PRICE_FEED");
         address priceOracle = makeAddr("PRICE_ORACLE");
+        vm.mockCall(priceFeedStore, abi.encodeCall(IPriceFeedStore.getStalenessPeriod, (priceFeed)), abi.encode(4500));
         vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
         vm.mockCall(
             priceOracle,
@@ -1379,7 +1385,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         );
 
         vm.prank(admin);
-        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed, 4500);
+        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed);
 
         vm.expectRevert(CallerNotExecutorException.selector);
         vm.prank(USER);

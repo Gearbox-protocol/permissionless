@@ -128,7 +128,7 @@ contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
         priceOracleFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_PRICE_ORACLE_FACTORY);
         adapterFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_ADAPTER_FACTORY);
 
-        controller = address(new ControllerTimelockV3(_acl, _vetoAdmin));
+        controller = address(new ControllerTimelockV3(_acl, _vetoAdmin, address(0)));
     }
 
     //

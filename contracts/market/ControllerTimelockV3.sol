@@ -18,6 +18,7 @@ import {
     PolicyNoCheck,
     AddressSet
 } from "../interfaces/IControllerTimelockV3.sol";
+import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
@@ -99,11 +100,15 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @notice Mapping from transaction hashes to their data
     mapping(bytes32 => QueuedTransactionData) public override queuedTransactions;
 
+    /// @notice Address of the price feed store contract to get PF details from
+    address public immutable priceFeedStore;
+
     /// @notice Constructor
     /// @param _acl Address of acl contract
     /// @param _vetoAdmin Admin that can cancel transactions
-    constructor(address _acl, address _vetoAdmin) ACLTrait(_acl) {
+    constructor(address _acl, address _vetoAdmin, address _priceFeedStore) ACLTrait(_acl) {
         vetoAdmin = _vetoAdmin;
+        priceFeedStore = _priceFeedStore;
 
         uint256 len = keys.length;
         unchecked {
@@ -203,12 +208,14 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     // -------- //
 
     /// @notice Queues a transaction to change a price feed for a token
-    function setPriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod)
+    function setPriceFeed(address priceOracle, address token, address priceFeed)
         external
         override
         policyAdminOnly("setPriceFeed")
         checkPolicyAddressInSet("setPriceFeed", token, priceFeed)
     {
+        uint32 stalenessPeriod = IPriceFeedStore(priceFeedStore).getStalenessPeriod(priceFeed);
+
         _queueTransaction({
             policy: "setPriceFeed",
             target: priceOracle,
