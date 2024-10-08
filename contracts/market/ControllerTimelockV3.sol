@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2023.
 pragma solidity ^0.8.17;
 
-import {IACL} from "../interfaces/IACL.sol";
+import {IACLExt} from "../interfaces/extensions/IACLExt.sol";
 import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
 
 import {
@@ -91,7 +91,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
         uint256 len = keys.length;
         unchecked {
             for (uint256 i; i < len; ++i) {
-                policies[keys[i]].admin = IACL(_acl).owner();
+                policies[keys[i]].admin = IACLExt(_acl).getConfigurator();
                 policies[keys[i]].delay = DEFAULT_DELAY;
                 _isValidPolicyKey[keys[i]] = true;
             }
