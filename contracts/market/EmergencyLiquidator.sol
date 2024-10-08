@@ -73,21 +73,7 @@ contract EmergencyLiquidator is ACLTrait, IEmergencyLiquidatorExceptions, IEmerg
                 revert NonWhitelistedLiquidationDuringPauseException();
             }
 
-            uint128 cumulativeLossBefore;
-
-            if (whitelistedOnlyWithLoss) {
-                cumulativeLossBefore = _cumulativeLoss(creditFacade);
-            }
-
             _;
-
-            if (whitelistedOnlyWithLoss) {
-                uint128 cumulativeLossAfter = _cumulativeLoss(creditFacade);
-
-                if (cumulativeLossAfter > cumulativeLossBefore) {
-                    revert NonWhitelistedLiquidationWithLossException();
-                }
-            }
         }
     }
 
@@ -103,7 +89,10 @@ contract EmergencyLiquidator is ACLTrait, IEmergencyLiquidatorExceptions, IEmerg
         checkWithdrawalDestinations(creditFacade, calls)
         checkWhitelistedActions(creditFacade)
     {
-        ICreditFacadeV3(creditFacade).liquidateCreditAccount(creditAccount, address(this), calls);
+        uint256 reportedLoss = ICreditFacadeV3(creditFacade).liquidateCreditAccount(creditAccount, address(this), calls);
+        if (reportedLoss != 0 && whitelistedOnlyWithLoss) {
+            revert NonWhitelistedLiquidationWithLossException();
+        }
     }
 
     /// @notice Liquidates a credit account with max underlying approval, allowing to buy collateral with DAO funds
@@ -139,11 +128,6 @@ contract EmergencyLiquidator is ACLTrait, IEmergencyLiquidatorExceptions, IEmerg
                 ++i;
             }
         }
-    }
-
-    /// @dev Retrieves cumulative loss for a credit facade
-    function _cumulativeLoss(address creditFacade) internal view returns (uint128 cumulativeLoss) {
-        (cumulativeLoss,) = ICreditFacadeV3(creditFacade).lossParams();
     }
 
     /// @notice Sends funds accumulated from liquidations to a specified address

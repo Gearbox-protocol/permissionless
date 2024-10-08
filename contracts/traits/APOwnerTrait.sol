@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
-import {IAddressProviderV3_1} from "../interfaces/IAddressProviderV3_1.sol";
+import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {CallerNotConfiguratorException} from "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 import {SanityCheckTrait} from "@gearbox-protocol/core-v3/contracts/traits/SanityCheckTrait.sol";
 
@@ -28,7 +28,7 @@ abstract contract APOwnerTrait is SanityCheckTrait {
     /// @dev Reverts if the caller is not the configurator
     /// @dev Used to cut contract size on modifiers
     function _ensureCallerIsConfigurator() internal view {
-        if (IAddressProviderV3_1(addressProvider).owner() != msg.sender) {
+        if (IAddressProvider(addressProvider).owner() != msg.sender) {
             revert CallerNotConfiguratorException();
         }
     }

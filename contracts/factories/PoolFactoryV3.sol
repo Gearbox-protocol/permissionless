@@ -13,7 +13,6 @@ import {
     AP_DEGEN_NFT,
     AP_POOL_FACTORY
 } from "../libraries/ContractLiterals.sol";
-import {IMarketConfiguratorV3} from "../interfaces/IMarketConfiguratorV3.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
 
