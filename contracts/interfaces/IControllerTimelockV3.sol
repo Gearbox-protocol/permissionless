@@ -5,6 +5,11 @@ pragma solidity ^0.8.17;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
+struct Policy {
+    address admin;
+    uint40 delay;
+}
+
 struct QueuedTransactionData {
     bool queued;
     address initiator;
@@ -16,12 +21,21 @@ struct QueuedTransactionData {
     bytes sanityCheckCallData;
 }
 
+struct PolicyData {
+    string id;
+    address admin;
+    uint40 delay;
+}
+
 interface IControllerTimelockV3Events {
     /// @notice Emitted when the veto admin of the controller is updated
-    event SetVetoAdmin(address indexed newAdmin);
+    event SetVetoAdmin(address indexed admin);
 
     /// @notice Emitted when an address' status as executor is changed
-    event SetExecutor(address indexed executor, bool status);
+    event AddExecutor(address indexed executor);
+
+    /// @notice Emitted when an address' status as executor is changed
+    event RemoveExecutor(address indexed executor);
 
     /// @notice Emitted when a transaction is queued
     event QueueTransaction(
@@ -33,11 +47,21 @@ interface IControllerTimelockV3Events {
 
     /// @notice Emitted when a transaction is cancelled
     event CancelTransaction(bytes32 indexed txHash);
+
+    event SetPolicyRange(string policyID, uint256 min, uint256 max);
+
+    event AddAddressToPolicySet(string policyID, address key, address value);
+
+    event RemoveAddressFromPolicySet(string policyID, address key, address value);
+
+    event SetPolicyAdmin(string policyId, address newAdmin);
+
+    event SetPolicyDelay(string policyId, uint40 newDelay);
 }
 
 interface IControllerTimelockV3Exceptions {
-    /// @notice Thrown when the new parameter values do not satisfy required conditions
-    error ParameterChecksFailedException();
+    /// @notice Thrown when setPriceFeed is being queued with an invalid price feed address
+    error PriceFeedChecksFailedException();
 
     /// @notice Thrown when attempting to execute a non-queued transaction
     error TxNotQueuedException();
@@ -56,6 +80,15 @@ interface IControllerTimelockV3Exceptions {
 
     /// @notice Thrown on attempting to call an access restricted function not as veto admin
     error CallerNotVetoAdminException();
+
+    /// @notice Thrown when the policy for the called function is not set
+    error PolicyDoesNotExistException();
+
+    /// @notice Thrown when the caller is not the policy admin
+    error CallerNotPolicyAdminException();
+
+    /// @notice Thrown when attempting to enable a policy that is not known to the controller
+    error InvalidPolicyException();
 }
 
 /// @title Controller timelock V3 interface
@@ -64,23 +97,9 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
     // QUEUEING //
     // -------- //
 
-    function setExpirationDate(address creditManager, uint40 expirationDate) external;
-
     function setMaxDebtPerBlockMultiplier(address creditManager, uint8 multiplier) external;
 
-    function setMinDebtLimit(address creditManager, uint128 minDebt) external;
-
-    function setMaxDebtLimit(address creditManager, uint128 maxDebt) external;
-
     function setCreditManagerDebtLimit(address creditManager, uint256 debtLimit) external;
-
-    function rampLiquidationThreshold(
-        address creditManager,
-        address token,
-        uint16 liquidationThresholdFinal,
-        uint40 rampStart,
-        uint24 rampDuration
-    ) external;
 
     function forbidAdapter(address creditManager, address adapter) external;
 
@@ -94,19 +113,23 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
 
     function setMaxQuotaRate(address pool, address token, uint16 rate) external;
 
-    function setWithdrawFee(address pool, uint256 newFee) external;
+    function setPriceFeed(address priceOracle, address token, address priceFeed) external;
 
-    function setLPPriceFeedLimiter(address priceFeed, uint256 lowerBound) external;
+    function removeEmergencyLiquidator(address creditManager, address liquidator) external;
 
-    function forbidBoundsUpdate(address priceFeed) external;
+    function allowToken(address creditManager, address token) external;
 
-    function setPriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod) external;
+    function setTumblerQuotaRate(address pool, address token, uint16 rate) external;
+
+    function updateTumblerRates(address pool) external;
 
     // --------- //
     // EXECUTION //
     // --------- //
 
     function GRACE_PERIOD() external view returns (uint256);
+
+    function DEFAULT_DELAY() external view returns (uint40);
 
     function queuedTransactions(bytes32 txHash)
         external
@@ -136,5 +159,9 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
 
     function setVetoAdmin(address newAdmin) external;
 
-    function setExecutor(address executor, bool status) external;
+    function addExecutor(address executorAddress) external;
+
+    function removeExecutor(address executorAddress) external;
+
+    function executors() external view returns (address[] memory);
 }
