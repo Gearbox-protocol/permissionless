@@ -5,22 +5,9 @@ pragma solidity ^0.8.17;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
-enum PolicyType {
-    None,
-    UintRange,
-    AddressInSet,
-    NoValueCheck
-}
-
 struct Policy {
     address admin;
     uint40 delay;
-    PolicyType policyType;
-}
-
-struct UintRange {
-    uint256 minValue;
-    uint256 maxValue;
 }
 
 struct QueuedTransactionData {
@@ -34,36 +21,10 @@ struct QueuedTransactionData {
     bytes sanityCheckCallData;
 }
 
-struct PolicyUintRange {
+struct PolicyData {
     string id;
     address admin;
     uint40 delay;
-    uint256 minValue;
-    uint256 maxValue;
-}
-
-struct AddressSet {
-    address key;
-    address[] values;
-}
-
-struct PolicyAddressSet {
-    string id;
-    address admin;
-    uint40 delay;
-    AddressSet[] addressSet;
-}
-
-struct PolicyNoCheck {
-    string id;
-    address admin;
-    uint40 delay;
-}
-
-struct PolicyState {
-    PolicyUintRange[] policiesInRange;
-    PolicyAddressSet[] policiesAddressSet;
-    PolicyNoCheck[] policiesNoValueCheck;
 }
 
 interface IControllerTimelockV3Events {
@@ -99,8 +60,8 @@ interface IControllerTimelockV3Events {
 }
 
 interface IControllerTimelockV3Exceptions {
-    /// @notice Thrown when the new parameter values do not satisfy required conditions
-    error ParameterChecksFailedException();
+    /// @notice Thrown when setPriceFeed is being queued with an invalid price feed address
+    error PriceFeedChecksFailedException();
 
     /// @notice Thrown when attempting to execute a non-queued transaction
     error TxNotQueuedException();
@@ -126,12 +87,6 @@ interface IControllerTimelockV3Exceptions {
     /// @notice Thrown when the caller is not the policy admin
     error CallerNotPolicyAdminException();
 
-    /// @notice Thrown when the new value is not in the range defined by policy
-    error UintIsNotInRangeException(uint256, uint256);
-
-    /// @notice Thrown when the address is not in the set defined by policy
-    error AddressIsNotInSetException(address[]);
-
     /// @notice Thrown when attempting to enable a policy that is not known to the controller
     error InvalidPolicyException();
 }
@@ -144,17 +99,7 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
 
     function setMaxDebtPerBlockMultiplier(address creditManager, uint8 multiplier) external;
 
-    function setDebtLimits(address creditManager, uint128 minDebt, uint128 maxDebt) external;
-
     function setCreditManagerDebtLimit(address creditManager, uint256 debtLimit) external;
-
-    function rampLiquidationThreshold(
-        address creditManager,
-        address token,
-        uint16 liquidationThresholdFinal,
-        uint40 rampStart,
-        uint24 rampDuration
-    ) external;
 
     function forbidAdapter(address creditManager, address adapter) external;
 
@@ -168,15 +113,11 @@ interface IControllerTimelockV3 is IControllerTimelockV3Events, IControllerTimel
 
     function setMaxQuotaRate(address pool, address token, uint16 rate) external;
 
-    function setLPPriceFeedLimiter(address priceFeed, uint256 lowerBound) external;
-
     function setPriceFeed(address priceOracle, address token, address priceFeed) external;
 
     function removeEmergencyLiquidator(address creditManager, address liquidator) external;
 
     function allowToken(address creditManager, address token) external;
-
-    function setLiquidationThreshold(address creditManager, address token, uint16 liquidationThreshold) external;
 
     function setTumblerQuotaRate(address pool, address token, uint16 rate) external;
 
