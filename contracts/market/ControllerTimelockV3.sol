@@ -9,7 +9,6 @@ import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol"
 import {
     IControllerTimelockV3, QueuedTransactionData, Policy, PolicyData
 } from "../interfaces/IControllerTimelockV3.sol";
-import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
@@ -21,7 +20,7 @@ import {ITumblerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ITumble
 import {IPriceOracleV3, PriceFeedParams} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {IPriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
 
-import {AP_CONTROLLER_TIMELOCK, AP_PRICE_FEED_STORE} from "../libraries/ContractLiterals.sol";
+import {AP_CONTROLLER_TIMELOCK} from "../libraries/ContractLiterals.sol";
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
@@ -137,6 +136,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     // -------- //
 
     /// @notice Queues a transaction to change a price feed for a token
+    /// @custom:tests U:[CT-2]
     function setPriceFeed(address pool, address token, address priceFeed)
         external
         override
@@ -158,6 +158,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     }
 
     /// @dev Performs validation on the price feed to disallow setting unknown price feeds and other dangerous actions
+    /// @custom:tests U:[CT-2]
     function _checkPriceFeed(
         address priceFeedStore,
         address pool,
@@ -187,6 +188,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @notice Queues a transaction to set a new max debt per block multiplier
     /// @param creditManager Adress of CM to update the multiplier for
     /// @param multiplier The new multiplier value
+    /// @custom:tests U:[CT-3]
     function setMaxDebtPerBlockMultiplier(address creditManager, uint8 multiplier)
         external
         override
@@ -198,7 +200,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setMaxDebtPerBlockMultiplier(uint8)",
             data: abi.encode(multiplier),
             sanityCheckCallData: abi.encodeCall(this.getMaxDebtPerBlockMultiplier, (creditManager))
-        }); // U:[CT-3]
+        }); 
     }
 
     /// @dev Retrieves current max debt per block multiplier for a Credit Facade
@@ -209,6 +211,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @notice Queues a transaction to forbid a third party contract adapter
     /// @param creditManager Adress of CM to forbid an adapter for
     /// @param adapter Address of adapter to forbid
+    /// @custom:tests U:[CT-4]
     function forbidAdapter(address creditManager, address adapter) external override policyAdminOnly("forbidAdapter") {
         _queueTransaction({
             policy: "forbidAdapter",
@@ -216,12 +219,13 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "forbidAdapter(address)",
             data: abi.encode(adapter),
             sanityCheckCallData: ""
-        }); // U: [CT-10]
+        }); 
     }
 
     /// @notice Queues a transaction to allow a previously forbidden token
     /// @param creditManager Adress of CM to allow a token for
     /// @param token Address of token to allow
+    /// @custom:tests U:[CT-5]
     function allowToken(address creditManager, address token) external override policyAdminOnly("allowToken") {
         _queueTransaction({
             policy: "allowToken",
@@ -235,6 +239,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @notice Queues a transaction to remove an emergency liquidator
     /// @param creditManager Adress of CM to remove an emergency liquidator from
     /// @param liquidator Liquidator address to remove
+    /// @custom:tests U:[CT-6]
     function removeEmergencyLiquidator(address creditManager, address liquidator)
         external
         override
@@ -252,6 +257,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @notice Queues a transaction to set a new debt limit for a Credit Manager
     /// @param creditManager Adress of CM to update the debt limit for
     /// @param debtLimit The new debt limit
+    /// @custom:tests U:[CT-7]
     function setCreditManagerDebtLimit(address creditManager, uint256 debtLimit)
         external
         override
@@ -263,7 +269,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setCreditManagerDebtLimit(address,uint256)",
             data: abi.encode(address(creditManager), debtLimit),
             sanityCheckCallData: abi.encodeCall(this.getCreditManagerDebtLimit, (creditManager))
-        }); // U:[CT-5]
+        }); 
     }
 
     /// @dev Retrieves the current total debt limit for Credit Manager from its pool
@@ -275,6 +281,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @notice Queues a transaction to set a new total debt limit for the entire pool
     /// @param pool Pool to update the limit for
     /// @param newLimit The new value of the limit
+    /// @custom:tests U:[CT-8]
     function setTotalDebtLimit(address pool, uint256 newLimit) external override policyAdminOnly("setTotalDebtLimit") {
         _queueTransaction({
             policy: "setTotalDebtLimit",
@@ -282,7 +289,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setTotalDebtLimit(uint256)",
             data: abi.encode(newLimit),
             sanityCheckCallData: abi.encodeCall(this.getTotalDebtLimit, (pool))
-        }); // U: [CT-13]
+        }); 
     }
 
     /// @dev Retrieves the total debt limit for a pool
@@ -294,6 +301,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @param pool Pool to update the limit for
     /// @param token Token to update the limit for
     /// @param limit The new value of the limit
+    /// @custom:tests U:[CT-9]
     function setTokenLimit(address pool, address token, uint96 limit)
         external
         override
@@ -305,7 +313,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setTokenLimit(address,uint96)",
             data: abi.encode(token, limit),
             sanityCheckCallData: abi.encodeCall(this.getTokenLimit, (pool, token))
-        }); // U: [CT-11]
+        }); 
     }
 
     /// @dev Retrieves the per-token quota limit from pool quota keeper
@@ -319,6 +327,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @param pool Pool to update the limit for
     /// @param token Token to update the limit for
     /// @param quotaIncreaseFee The new value of the fee in bp
+    /// @custom:tests U:[CT-10]
     function setTokenQuotaIncreaseFee(address pool, address token, uint16 quotaIncreaseFee)
         external
         override
@@ -330,7 +339,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setTokenQuotaIncreaseFee(address,uint16)",
             data: abi.encode(token, quotaIncreaseFee),
             sanityCheckCallData: abi.encodeCall(this.getTokenQuotaIncreaseFee, (pool, token))
-        }); // U: [CT-12]
+        }); 
     }
 
     /// @dev Retrieves the quota increase fee for a token
@@ -344,6 +353,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @param pool Pool to update the rate for
     /// @param token Token to set the minimal rate for
     /// @param rate The new minimal rate
+    /// @custom:tests U:[CT-11]
     function setMinQuotaRate(address pool, address token, uint16 rate)
         external
         override
@@ -355,7 +365,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "changeQuotaMinRate(address,uint16)",
             data: abi.encode(token, rate),
             sanityCheckCallData: abi.encodeCall(this.getMinQuotaRate, (pool, token))
-        }); // U: [CT-15A]
+        }); 
     }
 
     /// @dev Retrieves the current minimal quota rate for a token in a gauge
@@ -371,6 +381,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @param pool Pool to update the rate for
     /// @param token Token to set the maximal rate for
     /// @param rate The new maximal rate
+    /// @custom:tests U:[CT-12]
     function setMaxQuotaRate(address pool, address token, uint16 rate)
         external
         override
@@ -382,7 +393,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "changeQuotaMaxRate(address,uint16)",
             data: abi.encode(token, rate),
             sanityCheckCallData: abi.encodeCall(this.getMaxQuotaRate, (pool, token))
-        }); // U: [CT-15B]
+        });
     }
 
     /// @dev Retrieves the current maximal quota rate for a token in a gauge
@@ -397,6 +408,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @param pool Pool to update the rate
     /// @param token Token to set the new rate
     /// @param rate The new rate
+    /// @custom:tests U:[CT-13]
     function setTumblerQuotaRate(address pool, address token, uint16 rate)
         external
         override
@@ -426,6 +438,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @notice Queues a transaction to update rates in a Tumbler
     /// @notice Requires the PQK to have a Tumbler set as its gauge, otherwise will revert
     /// @param pool Pool to update rates for
+    /// @custom:tests U:[CT-14]
     function updateTumblerRates(address pool) external override policyAdminOnly("updateTumblerRates") {
         _queueTransaction({
             policy: "updateTumblerRates",
@@ -487,6 +500,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
 
     /// @notice Sets the transaction's queued status as false, effectively cancelling it
     /// @param txHash Hash of the transaction to be cancelled
+    /// @custom:tests U:[CT-15]
     function cancelTransaction(bytes32 txHash)
         external
         override
@@ -498,6 +512,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
 
     /// @notice Executes a queued transaction
     /// @param txHash Hash of the transaction to be executed
+    /// @custom:tests U:[CT-16]
     function executeTransaction(bytes32 txHash) external override {
         QueuedTransactionData memory qtd = queuedTransactions[txHash];
 
@@ -553,6 +568,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     // ------------- //
 
     /// @notice Sets a new veto admin address
+    /// @custom:tests U:[CT-1]
     function setVetoAdmin(address newAdmin)
         external
         override
@@ -565,6 +581,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     }
 
     /// @notice Adds an address as an executor
+    /// @custom:tests U:[CT-1]
     function addExecutor(address executorAddress) external override configuratorOnly {
         if (!_executors.contains(executorAddress)) {
             _executors.add(executorAddress);
@@ -573,6 +590,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     }
 
     /// @notice Removes an address as an executor
+    /// @custom:tests U:[CT-1]
     function removeExecutor(address executorAddress) external override configuratorOnly {
         if (_executors.contains(executorAddress)) {
             _executors.remove(executorAddress);
@@ -590,6 +608,8 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
         return _executors.values();
     }
 
+    /// @notice Sets the admin for a policy
+    /// @custom:tests U:[CT-1]
     function setPolicyAdmin(string memory policyID, address newAdmin) external configuratorOnly {
         if (!_isValidPolicyKey[policyID]) revert InvalidPolicyException();
 
@@ -599,6 +619,8 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
         }
     }
 
+    /// @notice Sets the delay for a policy
+    /// @custom:tests U:[CT-1]
     function setPolicyDelay(string memory policyID, uint40 newDelay) external configuratorOnly {
         if (!_isValidPolicyKey[policyID]) revert InvalidPolicyException();
 
