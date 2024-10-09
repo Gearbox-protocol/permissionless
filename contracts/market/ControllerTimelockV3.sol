@@ -9,6 +9,8 @@ import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol"
 import {
     IControllerTimelockV3, QueuedTransactionData, Policy, PolicyData
 } from "../interfaces/IControllerTimelockV3.sol";
+import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
+import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
@@ -17,9 +19,9 @@ import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces
 import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.sol";
 import {ITumblerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ITumblerV3.sol";
 import {IPriceOracleV3, PriceFeedParams} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
-import {ILPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/interfaces/ILPPriceFeed.sol";
+import {IPriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
 
-import {AP_CONTROLLER_TIMELOCK} from "../libraries/ContractLiterals.sol";
+import {AP_CONTROLLER_TIMELOCK, AP_PRICE_FEED_STORE} from "../libraries/ContractLiterals.sol";
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
@@ -28,9 +30,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 ///         to modify system parameters within set boundaries. This is mostly related to risk parameters that should be
 ///         adjusted frequently or periodic tasks (e.g., updating price feed limiters) that are too trivial to employ
 ///         the full governance for.
-/// @dev The contract uses `PolicyManager` as its underlying engine to set parameter change boundaries and conditions.
-///      In order to schedule a change for a particular contract / function combination, a policy needs to be defined
-///      for it. The policy also determines the address that can change a particular parameter.
 contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -78,15 +77,15 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     /// @notice Mapping from transaction hashes to their data
     mapping(bytes32 => QueuedTransactionData) public override queuedTransactions;
 
-    /// @notice Address of the price feed store contract to get PF details from
-    address public immutable priceFeedStore;
+    /// @notice Address of the market configurator this CT corresponds to
+    address public immutable marketConfigurator;
 
     /// @notice Constructor
     /// @param _acl Address of acl contract
     /// @param _vetoAdmin Admin that can cancel transactions
-    constructor(address _acl, address _vetoAdmin, address _priceFeedStore) ACLTrait(_acl) {
+    constructor(address _acl, address _vetoAdmin, address _marketConfigurator) ACLTrait(_acl) {
         vetoAdmin = _vetoAdmin;
-        priceFeedStore = _priceFeedStore;
+        marketConfigurator = _marketConfigurator;
 
         uint256 len = keys.length;
         unchecked {
@@ -138,14 +137,15 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
     // -------- //
 
     /// @notice Queues a transaction to change a price feed for a token
-    function setPriceFeed(address priceOracle, address token, address priceFeed)
+    function setPriceFeed(address pool, address token, address priceFeed)
         external
         override
         policyAdminOnly("setPriceFeed")
     {
-        if (!IPriceFeedStore(priceFeedStore).isAllowedPriceFeed(token, priceFeed)) {
-            revert PriceFeedChecksFailedException();
-        }
+        address priceFeedStore = IMarketConfigurator(marketConfigurator).priceFeedStore();
+        address priceOracle = IMarketConfigurator(marketConfigurator).priceOracles(pool);
+
+        _checkPriceFeed(priceFeedStore, pool, priceOracle, token, priceFeed);
         uint32 stalenessPeriod = IPriceFeedStore(priceFeedStore).getStalenessPeriod(priceFeed);
 
         _queueTransaction({
@@ -155,6 +155,28 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             data: abi.encode(token, priceFeed, stalenessPeriod),
             sanityCheckCallData: abi.encodeCall(this.getCurrentPriceFeedHash, (priceOracle, token))
         });
+    }
+
+    /// @dev Performs validation on the price feed to disallow setting unknown price feeds and other dangerous actions
+    function _checkPriceFeed(
+        address priceFeedStore,
+        address pool,
+        address priceOracle,
+        address token,
+        address priceFeed
+    ) internal view {
+        if (
+            !IPriceFeedStore(priceFeedStore).isAllowedPriceFeed(token, priceFeed)
+                || IPriceOracleV3(priceOracle).priceFeeds(token) == address(0)
+        ) {
+            revert PriceFeedChecksFailedException();
+        }
+
+        (, int256 price,,,) = IPriceFeed(priceFeed).latestRoundData();
+        address pqk = IPoolV3(pool).poolQuotaKeeper();
+        (,,, uint96 quoted,,) = IPoolQuotaKeeperV3(pqk).getTokenQuotaParams(token);
+
+        if (price == 0 && (token == IPoolV3(pool).asset() || quoted != 0)) revert PriceFeedChecksFailedException();
     }
 
     function getCurrentPriceFeedHash(address priceOracle, address token) public view returns (uint256) {

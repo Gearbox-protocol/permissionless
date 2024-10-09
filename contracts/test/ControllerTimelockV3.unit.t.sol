@@ -17,15 +17,18 @@ import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.so
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.sol";
 import {PoolV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolV3.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {PoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolQuotaKeeperV3.sol";
 import {GaugeV3} from "@gearbox-protocol/core-v3/contracts/pool/GaugeV3.sol";
 import {TumblerV3} from "@gearbox-protocol/core-v3/contracts/pool/TumblerV3.sol";
-import {ILPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/interfaces/ILPPriceFeed.sol";
+import {IPriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
 import {
     IControllerTimelockV3Events,
     IControllerTimelockV3Exceptions,
     Policy
 } from "../interfaces/IControllerTimelockV3.sol";
+import {IACLExt} from "../interfaces/extensions/IACLExt.sol";
+import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
@@ -43,33 +46,37 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     address admin;
     address vetoAdmin;
+
     address priceFeedStore;
+    address marketConfigurator;
+    address creditManager;
+    address creditFacade;
+    address creditConfigurator;
+    address pool;
+    address poolQuotaKeeper;
+    address priceOracle;
 
     function setUp() public {
         admin = makeAddr("ADMIN");
         vetoAdmin = makeAddr("VETO_ADMIN");
-        priceFeedStore = makeAddr("PRICE_FEED_STORE");
+
+        _makeMocks();
 
         vm.prank(CONFIGURATOR);
         addressProvider = new AddressProviderV3ACLMock();
-        controllerTimelock = new ControllerTimelockV3(address(addressProvider), vetoAdmin, priceFeedStore);
+        vm.mockCall(address(addressProvider), abi.encodeCall(IACLExt.getConfigurator, ()), abi.encode(CONFIGURATOR));
+        controllerTimelock = new ControllerTimelockV3(address(addressProvider), vetoAdmin, marketConfigurator);
     }
 
-    function _makeMocks()
-        internal
-        returns (
-            address creditManager,
-            address creditFacade,
-            address creditConfigurator,
-            address pool,
-            address poolQuotaKeeper
-        )
-    {
+    function _makeMocks() internal {
         creditManager = address(new GeneralMock());
         creditFacade = address(new GeneralMock());
         creditConfigurator = address(new GeneralMock());
         pool = address(new GeneralMock());
         poolQuotaKeeper = address(new GeneralMock());
+        marketConfigurator = address(new GeneralMock());
+        priceFeedStore = address(new GeneralMock());
+        priceOracle = address(new GeneralMock());
 
         vm.mockCall(
             creditManager, abi.encodeWithSelector(ICreditManagerV3.creditFacade.selector), abi.encode(creditFacade)
@@ -85,11 +92,21 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
         vm.mockCall(pool, abi.encodeCall(IPoolV3.poolQuotaKeeper, ()), abi.encode(poolQuotaKeeper));
 
+        vm.mockCall(
+            marketConfigurator, abi.encodeCall(IMarketConfigurator.priceFeedStore, ()), abi.encode(priceFeedStore)
+        );
+        vm.mockCall(
+            marketConfigurator, abi.encodeCall(IMarketConfigurator.priceOracles, (pool)), abi.encode(priceOracle)
+        );
+
         vm.label(creditManager, "CREDIT_MANAGER");
         vm.label(creditFacade, "CREDIT_FACADE");
         vm.label(creditConfigurator, "CREDIT_CONFIGURATOR");
         vm.label(pool, "POOL");
         vm.label(poolQuotaKeeper, "PQK");
+        vm.label(marketConfigurator, "MARKET_CONFIGURATOR");
+        vm.label(priceFeedStore, "PRICE_FEED_STORE");
+        vm.label(priceOracle, "PRICE_ORACLE");
     }
 
     ///
@@ -137,19 +154,26 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-2]: setPriceFeed works correctly
     function test_U_CT_02_setPriceFeed_works_correctly() public {
+        address underlying = makeAddr("UNDERLYGING");
         address token = makeAddr("TOKEN");
         address priceFeed = makeAddr("PRICE_FEED");
-        address priceOracle = makeAddr("PRICE_ORACLE");
         vm.mockCall(priceFeedStore, abi.encodeCall(IPriceFeedStore.getStalenessPeriod, (priceFeed)), abi.encode(4500));
         vm.mockCall(
             priceFeedStore, abi.encodeCall(IPriceFeedStore.isAllowedPriceFeed, (token, priceFeed)), abi.encode(true)
         );
-        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
+        vm.mockCall(priceFeed, abi.encodeCall(IPriceFeed.latestRoundData, ()), abi.encode(0, 10000000, 0, 0, 0));
+        vm.mockCall(
+            poolQuotaKeeper,
+            abi.encodeCall(IPoolQuotaKeeperV3.getTokenQuotaParams, (token)),
+            abi.encode(0, 0, 0, 1e18, 0, 0)
+        );
+        vm.mockCall(pool, abi.encodeCall(IERC4626.asset, ()), abi.encode(underlying));
         vm.mockCall(
             priceOracle,
             abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
             abi.encode(PriceFeedParams(priceFeed, 3000, false, 18))
         );
+        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.priceFeeds, (token)), abi.encode(priceFeed));
 
         vm.startPrank(CONFIGURATOR);
         controllerTimelock.setPolicyAdmin("setPriceFeed", admin);
@@ -159,18 +183,41 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         // VERIFY THAT THE FUNCTION IS ONLY CALLABLE BY ADMIN
         vm.expectRevert(CallerNotPolicyAdminException.selector);
         vm.prank(USER);
-        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed);
+        controllerTimelock.setPriceFeed(pool, token, priceFeed);
 
-        // VERIFY THAT THE FUNCTION REVERTS IF THE PRICE FEED IS NOT ALLOWED IN PF STORE
+        // VERIFY THAT THE FUNCTION REVERTS WHEN AUXILLIARY PRICE CHECKS ARE NOT SATISFIED
         vm.mockCall(
             priceFeedStore, abi.encodeCall(IPriceFeedStore.isAllowedPriceFeed, (token, priceFeed)), abi.encode(false)
         );
         vm.expectRevert(PriceFeedChecksFailedException.selector);
         vm.prank(admin);
-        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed);
+        controllerTimelock.setPriceFeed(pool, token, priceFeed);
         vm.mockCall(
             priceFeedStore, abi.encodeCall(IPriceFeedStore.isAllowedPriceFeed, (token, priceFeed)), abi.encode(true)
         );
+
+        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.priceFeeds, (token)), abi.encode(address(0)));
+        vm.expectRevert(PriceFeedChecksFailedException.selector);
+        vm.prank(admin);
+        controllerTimelock.setPriceFeed(pool, token, priceFeed);
+        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.priceFeeds, (token)), abi.encode(priceFeed));
+
+        vm.mockCall(priceFeed, abi.encodeCall(IPriceFeed.latestRoundData, ()), abi.encode(0, 0, 0, 0, 0));
+        vm.expectRevert(PriceFeedChecksFailedException.selector);
+        vm.prank(admin);
+        controllerTimelock.setPriceFeed(pool, token, priceFeed);
+
+        vm.mockCall(pool, abi.encodeCall(IERC4626.asset, ()), abi.encode(token));
+        vm.mockCall(
+            poolQuotaKeeper,
+            abi.encodeCall(IPoolQuotaKeeperV3.getTokenQuotaParams, (token)),
+            abi.encode(0, 0, 0, 0, 0, 0)
+        );
+        vm.expectRevert(PriceFeedChecksFailedException.selector);
+        vm.prank(admin);
+        controllerTimelock.setPriceFeed(pool, token, priceFeed);
+
+        vm.mockCall(priceFeed, abi.encodeCall(IPriceFeed.latestRoundData, ()), abi.encode(0, 10000000, 0, 0, 0));
 
         // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
         bytes32 txHash = keccak256(
@@ -188,7 +235,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         );
 
         vm.prank(admin);
-        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed);
+        controllerTimelock.setPriceFeed(pool, token, priceFeed);
 
         (,,,,,, uint256 sanityCheckValue, bytes memory sanityCheckCallData) =
             controllerTimelock.queuedTransactions(txHash);
@@ -215,8 +262,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-3]: setMaxDebtPerBlockMultiplier works correctly
     function test_U_CT_03_setMaxDebtPerBlockMultiplier_works_correctly() public {
-        (address creditManager, address creditFacade, address creditConfigurator,,) = _makeMocks();
-
         vm.mockCall(
             creditFacade, abi.encodeWithSelector(ICreditFacadeV3.maxDebtPerBlockMultiplier.selector), abi.encode(3)
         );
@@ -273,8 +318,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-4]: forbidAdapter works correctly
     function test_U_CT_04_forbidAdapter_works_correctly() public {
-        (address creditManager,, address creditConfigurator,,) = _makeMocks();
-
         vm.startPrank(CONFIGURATOR);
         controllerTimelock.setPolicyAdmin("forbidAdapter", admin);
         controllerTimelock.setPolicyDelay("forbidAdapter", 1 days);
@@ -325,8 +368,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-5]: allowToken works correctly
     function test_U_CT_05_allowToken_works_correctly() public {
-        (address creditManager,, address creditConfigurator,,) = _makeMocks();
-
         address token = makeAddr("TOKEN");
 
         vm.startPrank(CONFIGURATOR);
@@ -376,8 +417,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-6]: removeEmergencyLiquidator works correctly
     function test_U_CT_06_removeEmergencyLiquidator_works_correctly() public {
-        (address creditManager,, address creditConfigurator,,) = _makeMocks();
-
         vm.startPrank(CONFIGURATOR);
         controllerTimelock.setPolicyAdmin("removeEmergencyLiquidator", admin);
         controllerTimelock.setPolicyDelay("removeEmergencyLiquidator", 1 days);
@@ -430,8 +469,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-7]: setCreditManagerDebtLimit works correctly
     function test_U_CT_07_setCreditManagerDebtLimit_works_correctly() public {
-        (address creditManager,,, address pool,) = _makeMocks();
-
         vm.mockCall(
             pool, abi.encodeWithSelector(IPoolV3.creditManagerDebtLimit.selector, creditManager), abi.encode(1e18)
         );
@@ -485,8 +522,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-8]: setTotalDebtLimit works correctly
     function test_U_CT_08_setTotalDebtLimit_works_correctly() public {
-        (address creditManager,,, address pool,) = _makeMocks();
-
         vm.mockCall(pool, abi.encodeWithSelector(IPoolV3.totalDebtLimit.selector), abi.encode(1e18));
 
         vm.startPrank(CONFIGURATOR);
@@ -531,8 +566,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-9]: setTokenLimit works correctly
     function test_U_CT_09_setTokenLimit_works_correctly() public {
-        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
-
         address token = makeAddr("TOKEN");
 
         vm.mockCall(
@@ -590,8 +623,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-10]: setTokenQuotaIncreaseFee works correctly
     function test_U_CT_10_setTokenQuotaIncreaseFee_works_correctly() public {
-        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
-
         address token = makeAddr("TOKEN");
 
         vm.mockCall(
@@ -651,8 +682,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-11]: setMinQuotaRate works correctly
     function test_U_CT_11_setMinQuotaRate_works_correctly() public {
-        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
-
         address gauge = address(new GeneralMock());
 
         vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(gauge));
@@ -713,8 +742,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-12]: setMaxQuotaRate works correctly
     function test_U_CT_12_setMaxQuotaRate_works_correctly() public {
-        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
-
         address gauge = address(new GeneralMock());
 
         vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(gauge));
@@ -775,8 +802,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-13]: setTumblerQuotaRate works correctly
     function test_U_CT_13_setTumblerQuotaRate_works_correctly() public {
-        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
-
         address tumbler = address(new GeneralMock());
 
         vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(tumbler));
@@ -838,8 +863,6 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-14]: updateTumblerRates works correctly
     function test_U_CT_14_updateTumblerRates_works_correctly() public {
-        (,,, address pool, address poolQuotaKeeper) = _makeMocks();
-
         address tumbler = address(new GeneralMock());
 
         vm.mockCall(poolQuotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.gauge, ()), abi.encode(tumbler));
@@ -884,32 +907,16 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-15]: cancelTransaction works correctly
     function test_U_CT_15_cancelTransaction_works_correctly() public {
-        address token = makeAddr("TOKEN");
-        address priceFeed = makeAddr("PRICE_FEED");
-        address priceOracle = makeAddr("PRICE_ORACLE");
-        vm.mockCall(priceFeedStore, abi.encodeCall(IPriceFeedStore.getStalenessPeriod, (priceFeed)), abi.encode(4500));
-        vm.mockCall(
-            priceFeedStore, abi.encodeCall(IPriceFeedStore.isAllowedPriceFeed, (token, priceFeed)), abi.encode(true)
-        );
-        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
-        vm.mockCall(
-            priceOracle,
-            abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
-            abi.encode(PriceFeedParams(priceFeed, 3000, false, 18))
-        );
-
         vm.startPrank(CONFIGURATOR);
-        controllerTimelock.setPolicyAdmin("setPriceFeed", admin);
-        controllerTimelock.setPolicyDelay("setPriceFeed", 1 days);
+        controllerTimelock.setPolicyAdmin("forbidAdapter", admin);
+        controllerTimelock.setPolicyDelay("forbidAdapter", 1 days);
         vm.stopPrank();
 
-        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
-        bytes32 txHash = keccak256(
-            abi.encode(admin, priceOracle, "setPriceFeed(address,address,uint32)", abi.encode(token, priceFeed, 4500))
-        );
+        bytes32 txHash =
+            keccak256(abi.encode(admin, creditConfigurator, "forbidAdapter(address)", abi.encode(DUMB_ADDRESS)));
 
         vm.prank(admin);
-        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed);
+        controllerTimelock.forbidAdapter(creditManager, DUMB_ADDRESS);
 
         vm.warp(block.timestamp + 1 days);
 
@@ -930,33 +937,22 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
     /// @dev U:[CT-16]: executeTransaction works correctly
     function test_U_CT_16_executeTransaction_works_correctly() public {
-        address token = makeAddr("TOKEN");
-        address priceFeed = makeAddr("PRICE_FEED");
-        address priceOracle = makeAddr("PRICE_ORACLE");
-        vm.mockCall(priceFeedStore, abi.encodeCall(IPriceFeedStore.getStalenessPeriod, (priceFeed)), abi.encode(4500));
         vm.mockCall(
-            priceFeedStore, abi.encodeCall(IPriceFeedStore.isAllowedPriceFeed, (token, priceFeed)), abi.encode(true)
-        );
-        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
-        vm.mockCall(
-            priceOracle,
-            abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
-            abi.encode(PriceFeedParams(priceFeed, 3000, false, 18))
+            pool, abi.encodeWithSelector(IPoolV3.creditManagerDebtLimit.selector, creditManager), abi.encode(1e18)
         );
 
         vm.startPrank(CONFIGURATOR);
-        controllerTimelock.setPolicyAdmin("setPriceFeed", admin);
-        controllerTimelock.setPolicyDelay("setPriceFeed", 1 days);
+        controllerTimelock.setPolicyAdmin("setCreditManagerDebtLimit", admin);
+        controllerTimelock.setPolicyDelay("setCreditManagerDebtLimit", 1 days);
         controllerTimelock.addExecutor(FRIEND);
         vm.stopPrank();
 
-        // VERIFY THAT THE FUNCTION IS QUEUED AND EXECUTED CORRECTLY
         bytes32 txHash = keccak256(
-            abi.encode(admin, priceOracle, "setPriceFeed(address,address,uint32)", abi.encode(token, priceFeed, 4500))
+            abi.encode(admin, pool, "setCreditManagerDebtLimit(address,uint256)", abi.encode(creditManager, 2e18))
         );
 
         vm.prank(admin);
-        controllerTimelock.setPriceFeed(priceOracle, token, priceFeed);
+        controllerTimelock.setCreditManagerDebtLimit(creditManager, 2e18);
 
         vm.expectRevert(CallerNotExecutorException.selector);
         vm.prank(USER);
@@ -975,8 +971,8 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         vm.warp(block.timestamp - 10 days);
 
         vm.mockCallRevert(
-            priceOracle,
-            abi.encodeWithSelector(IPriceOracleV3.setPriceFeed.selector, token, priceFeed, 4500),
+            pool,
+            abi.encodeWithSelector(IPoolV3.setCreditManagerDebtLimit.selector, creditManager, 2e18),
             abi.encode("error")
         );
 
@@ -986,11 +982,9 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
 
         vm.clearMockedCalls();
 
-        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, 4500)), "");
+        vm.mockCall(creditManager, abi.encodeWithSelector(ICreditManagerV3.pool.selector), abi.encode(pool));
         vm.mockCall(
-            priceOracle,
-            abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
-            abi.encode(PriceFeedParams(priceFeed, 3600, false, 18))
+            pool, abi.encodeWithSelector(IPoolV3.creditManagerDebtLimit.selector, creditManager), abi.encode(2e18)
         );
 
         vm.expectRevert(ParameterChangedAfterQueuedTxException.selector);
@@ -998,9 +992,7 @@ contract ControllerTimelockV3UnitTest is Test, IControllerTimelockV3Events, ICon
         controllerTimelock.executeTransaction(txHash);
 
         vm.mockCall(
-            priceOracle,
-            abi.encodeCall(IPriceOracleV3.priceFeedParams, (token)),
-            abi.encode(PriceFeedParams(priceFeed, 3000, false, 18))
+            pool, abi.encodeWithSelector(IPoolV3.creditManagerDebtLimit.selector, creditManager), abi.encode(1e18)
         );
 
         vm.expectEmit(true, false, false, false);
