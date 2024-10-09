@@ -32,10 +32,11 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         address acl_,
         address contractsRegister_,
         address treasury_,
+        bytes memory controllerParams,
         // QUESTION: can we read it from AP?
         address gearStaking_,
         address legacyContractsRegister_
-    ) MarketConfigurator(addressProvider_, acl_, contractsRegister_, treasury_) {
+    ) MarketConfigurator(addressProvider_, acl_, contractsRegister_, treasury_, controllerParams) {
         gearStaking = gearStaking_;
         legacyContractsRegister = legacyContractsRegister_;
     }

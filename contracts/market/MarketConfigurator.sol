@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -16,10 +16,12 @@ import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.
 import {VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
-import {IPriceOracleV3, PriceFeedParams} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
+import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {ITumblerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ITumblerV3.sol";
 import {IControlledTrait} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IControlledTrait.sol";
 import {IPriceFeed, IUpdatablePriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {IVotingContract} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVotingContract.sol";
 import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
 import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v3/contracts/libraries/Constants.sol";
@@ -27,14 +29,13 @@ import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v3/contracts/libraries/C
 import {IACLExt} from "../interfaces/extensions/IACLExt.sol";
 import {IContractsRegisterExt} from "../interfaces/extensions/IContractsRegisterExt.sol";
 import {IRateKeeperExt} from "../interfaces/extensions/IRateKeeperExt.sol";
-import {IVotingContractExt} from "../interfaces/extensions/IVotingContractExt.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IConfiguratorFactory} from "../interfaces/IConfiguratorFactory.sol";
 import {IContractsFactory} from "../interfaces/IContractsFactory.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 
-import {AP_CONTRACTS_FACTORY, AP_PRICE_FEED_STORE} from "../libraries/ContractLiterals.sol";
+import {AP_CONTRACTS_FACTORY, AP_MARKET_CONFIGURATOR, AP_PRICE_FEED_STORE} from "../libraries/ContractLiterals.sol";
 import {NestedPriceFeeds} from "../libraries/NestedPriceFeeds.sol";
 
 // TODO:
@@ -42,19 +43,26 @@ import {NestedPriceFeeds} from "../libraries/NestedPriceFeeds.sol";
 // - degen NFT management
 // - migration to new market configurator
 // - rescue
+// - onInstall / onUninstall callbacks
 
 /// @title Market configurator
-contract MarketConfigurator is Ownable, IMarketConfigurator {
+contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     using Address for address;
     using SafeERC20 for IERC20;
     using NestedPriceFeeds for IPriceFeed;
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    address public immutable configuratorFactory;
-    address public immutable addressProvider;
-    address public immutable acl;
-    address public immutable contractsRegister;
-    address public immutable treasury;
+    uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = AP_MARKET_CONFIGURATOR;
+
+    address public immutable override configuratorFactory;
+    address public immutable override addressProvider;
+    address public immutable override acl;
+    address public immutable override contractsRegister;
+    address public immutable override treasury;
+
+    address public override contractsFactory;
+    address public override priceFeedStore;
 
     mapping(address pool => address) public override priceOracles;
     mapping(address pool => address) public override lossLiquidators;
@@ -79,20 +87,31 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
 
     error LossLiquidatorNotInitializedException(address pool);
 
-    error ControllerNotInitializedException();
-
     error ForbiddenConfigurationCallException(address target, bytes4 selector);
+
+    error NewVersionBelowCurrentException();
 
     // ----------- //
     // CONSTRUCTOR //
     // ----------- //
 
-    constructor(address addressProvider_, address acl_, address contractsRegister_, address treasury_) {
+    constructor(
+        address addressProvider_,
+        address acl_,
+        address contractsRegister_,
+        address treasury_,
+        bytes memory controllerParams
+    ) {
         configuratorFactory = msg.sender;
         addressProvider = addressProvider_;
         acl = acl_;
         contractsRegister = contractsRegister_;
         treasury = treasury_;
+
+        contractsFactory = _getLatestContract(AP_CONTRACTS_FACTORY);
+        priceFeedStore = _getLatestContract(AP_PRICE_FEED_STORE);
+
+        controller = _deployController(controllerParams);
     }
 
     function emergencyLiquidators() external view override returns (address[] memory) {
@@ -117,36 +136,34 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         onlyOwner
         returns (address)
     {
-        uint32 stalenessPeriod = _ensureAllowedPriceFeed(underlying, underlyingPriceFeed);
         MarketParams memory params = abi.decode(encodedParams, (MarketParams));
 
         address irm = _deployInterestRateModel(params.irmType, params.irmParams);
-        (address pool, address quotaKeeper) =
-            _contractsFactory().deployPool(acl, contractsRegister, underlying, treasury, irm, params.poolParams);
-        address rateKeeper = _deployRateKeeper(pool, params.rateKeeperType, params.rateKeeperParams);
-        address priceOracle = _deployPriceOracle(acl, params.priceOracleParams);
 
+        (address pool, address quotaKeeper) = IContractsFactory(contractsFactory).deployPool(
+            acl, contractsRegister, underlying, treasury, irm, params.poolParams
+        );
         IContractsRegisterExt(contractsRegister).addPool(pool);
-
         IPoolV3(pool).setPoolQuotaKeeper(quotaKeeper);
-        _installRateKeeper(quotaKeeper, rateKeeper);
 
         if (IERC20(underlying).balanceOf(address(this)) < 1e5) revert InsufficientBalanceException();
         IERC20(underlying).forceApprove(pool, 1e5);
         IPoolV3(pool).deposit(1e5, address(0xdead));
 
+        address rateKeeper = _deployRateKeeper(pool, params.rateKeeperType, params.rateKeeperParams);
+        _installRateKeeper(quotaKeeper, rateKeeper);
+
+        address priceOracle = _deployPriceOracle(params.priceOracleParams);
         priceOracles[pool] = priceOracle;
         if (_getPrice(underlyingPriceFeed) == 0) revert IncorrectPriceException();
-        _setPriceFeed(priceOracle, underlying, underlyingPriceFeed, stalenessPeriod, false);
+        _setPriceFeed(priceOracle, underlying, underlyingPriceFeed, false);
 
         address controller_ = controller;
-        if (controller_ != address(0)) {
-            _setController(irm, controller_);
-            _setController(pool, controller_);
-            _setController(quotaKeeper, controller_);
-            _setController(rateKeeper, controller_);
-            _setController(priceOracle, controller_);
-        }
+        _setController(irm, controller_);
+        _setController(pool, controller_);
+        _setController(quotaKeeper, controller_);
+        _setController(rateKeeper, controller_);
+        _setController(priceOracle, controller_);
 
         return pool;
     }
@@ -161,6 +178,8 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         _uninstallRateKeeper(_rateKeeper(_quotaKeeper(pool)));
         _setTotalDebtLimit(pool, 0);
         _setWithdrawFee(pool, 0);
+        priceOracles[pool] = address(0);
+        lossLiquidators[pool] = address(0);
         IContractsRegisterExt(contractsRegister).removePool(pool);
     }
 
@@ -179,8 +198,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     function addToken(address pool, address token, address priceFeed) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        uint32 stalenessPeriod = _ensureAllowedPriceFeed(token, priceFeed);
-        _setPriceFeed(priceOracles[pool], token, priceFeed, stalenessPeriod, false);
+        _setPriceFeed(priceOracles[pool], token, priceFeed, false);
 
         address rateKeeper = _rateKeeper(_quotaKeeper(pool));
         _addToken(rateKeeper, token, _getRateKeeperType(rateKeeper));
@@ -227,7 +245,8 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         _ensureRegisteredPool(pool);
         CreditSuiteParams memory params = abi.decode(encodedParams, (CreditSuiteParams));
 
-        address creditManager = _contractsFactory().deployCreditManager(pool, priceOracles[pool], params.managerParams);
+        address creditManager =
+            IContractsFactory(contractsFactory).deployCreditManager(pool, priceOracles[pool], params.managerParams);
         address creditConfigurator = _deployCreditConfigurator(creditManager, params.configuratorParams);
         address creditFacade = _deployCreditFacade(creditManager, params.facadeParams);
 
@@ -258,8 +277,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
             _addEmergencyLiquidator(creditConfigurator, emergencyLiquidators_.at(i));
         }
 
-        address controller_ = controller;
-        if (controller_ != address(0)) _setController(creditConfigurator, controller_);
+        _setController(creditConfigurator, controller);
 
         return creditManager;
     }
@@ -276,21 +294,20 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         IContractsRegisterExt(contractsRegister).removeCreditManager(creditManager);
     }
 
-    function setCreditFacade(address creditManager, bytes calldata params) external onlyOwner {
+    function updateCreditFacade(address creditManager, bytes calldata params) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
 
         address creditFacade = _deployCreditFacade(creditManager, params);
         _setCreditFacade(_creditConfigurator(creditManager), creditFacade, true);
     }
 
-    function setCreditConfigurator(address creditManager, bytes calldata params) external onlyOwner {
+    function updateCreditConfigurator(address creditManager, bytes calldata params) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
 
         address creditConfigurator = _deployCreditConfigurator(creditManager, params);
         ICreditConfiguratorV3(_creditConfigurator(creditManager)).upgradeCreditConfigurator(creditConfigurator);
 
-        address controller_ = controller;
-        if (controller_ != address(0)) _setController(creditConfigurator, controller_);
+        _setController(creditConfigurator, controller);
     }
 
     function setCreditManagerDebtLimit(address creditManager, uint256 newLimit) external onlyOwner {
@@ -386,11 +403,11 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     }
 
     function _deployCreditConfigurator(address creditManager, bytes memory params) internal returns (address) {
-        return _contractsFactory().deployCreditConfigurator(creditManager, params);
+        return IContractsFactory(contractsFactory).deployCreditConfigurator(creditManager, params);
     }
 
     function _deployCreditFacade(address creditManager, bytes memory params) internal returns (address) {
-        return _contractsFactory().deployCreditFacade(creditManager, params);
+        return IContractsFactory(contractsFactory).deployCreditFacade(creditManager, params);
     }
 
     function _setCreditFacade(address creditConfigurator, address newCreditFacade, bool migrateParams) internal {
@@ -424,23 +441,20 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     // PRICE ORACLE MANAGEMENT //
     // ----------------------- //
 
-    function setPriceOracle(address pool, bytes calldata params) external onlyOwner {
+    function updatePriceOracle(address pool, bytes calldata params) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        address priceOracle = _deployPriceOracle(acl, params);
+        address priceOracle = _deployPriceOracle(params);
         address currentPriceOracle = priceOracles[pool];
         priceOracles[pool] = priceOracle;
 
         address[] memory tokens = IPriceOracleV3(currentPriceOracle).getTokens();
         uint256 numTokens = tokens.length;
         for (uint256 i; i < numTokens; ++i) {
-            PriceFeedParams memory main = IPriceOracleV3(currentPriceOracle).priceFeedParams(tokens[i]);
-            _setPriceFeed(priceOracle, tokens[i], main.priceFeed, main.stalenessPeriod, false);
+            _setPriceFeed(priceOracle, tokens[i], _getPriceFeed(currentPriceOracle, tokens[i], false), false);
 
-            PriceFeedParams memory reserve = IPriceOracleV3(currentPriceOracle).reservePriceFeedParams(tokens[i]);
-            if (reserve.priceFeed != address(0)) {
-                _setPriceFeed(priceOracle, tokens[i], reserve.priceFeed, reserve.stalenessPeriod, true);
-            }
+            address reserve = _getPriceFeed(currentPriceOracle, tokens[i], true);
+            if (reserve != address(0)) _setPriceFeed(priceOracle, tokens[i], reserve, true);
         }
 
         address[] memory creditManagers = _creditManagers(pool);
@@ -449,40 +463,36 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
             ICreditConfiguratorV3(_creditConfigurator(creditManagers[i])).setPriceOracle(priceOracle);
         }
 
-        address controller_ = controller;
-        if (controller_ != address(0)) _setController(priceOracle, controller_);
+        _setController(priceOracle, controller);
     }
 
     function setPriceFeed(address pool, address token, address priceFeed) external onlyOwner {
         _ensureRegisteredPool(pool);
 
         address priceOracle = priceOracles[pool];
-        if (IPriceOracleV3(priceOracle).priceFeeds(token) == address(0)) revert PriceFeedDoesNotExistException();
+        if (_getPriceFeed(priceOracle, token, false) == address(0)) revert PriceFeedDoesNotExistException();
 
-        uint32 stalenessPeriod = _ensureAllowedPriceFeed(token, priceFeed);
         if (_getPrice(priceFeed) == 0 && (token == IPoolV3(pool).asset() || _quota(pool, token) != 0)) {
             revert IncorrectPriceException();
         }
-
-        _setPriceFeed(priceOracle, token, priceFeed, stalenessPeriod, false);
+        _setPriceFeed(priceOracle, token, priceFeed, false);
     }
 
     function setReservePriceFeed(address pool, address token, address priceFeed) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        address priceOracle = priceOracles[pool];
-
-        uint32 stalenessPeriod = _ensureAllowedPriceFeed(token, priceFeed);
-        _setPriceFeed(priceOracle, token, priceFeed, stalenessPeriod, true);
+        _setPriceFeed(priceOracles[pool], token, priceFeed, true);
     }
 
-    function _deployPriceOracle(address acl, bytes memory params) internal returns (address) {
-        return _contractsFactory().deployPriceOracle(acl, params);
+    function _deployPriceOracle(bytes memory params) internal returns (address) {
+        return IContractsFactory(contractsFactory).deployPriceOracle(acl, params);
     }
 
-    function _setPriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod, bool reserve)
-        internal
-    {
+    function _setPriceFeed(address priceOracle, address token, address priceFeed, bool reserve) internal {
+        if (!IPriceFeedStore(priceFeedStore).isAllowedPriceFeed(token, priceFeed)) {
+            revert PriceFeedNotAllowedException(token, priceFeed);
+        }
+        uint32 stalenessPeriod = IPriceFeedStore(priceFeedStore).getStalenessPeriod(priceFeed);
         if (reserve) {
             IPriceOracleV3(priceOracle).setReservePriceFeed(token, priceFeed, stalenessPeriod);
         } else {
@@ -491,12 +501,10 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         _addUpdatableFeeds(priceOracle, priceFeed);
     }
 
-    function _ensureAllowedPriceFeed(address token, address priceFeed) internal view returns (uint32) {
-        IPriceFeedStore priceFeedStore = _priceFeedStore();
-        if (!priceFeedStore.isAllowedPriceFeed(token, priceFeed)) {
-            revert PriceFeedNotAllowedException(token, priceFeed);
-        }
-        return priceFeedStore.getStalenessPeriod(priceFeed);
+    function _getPriceFeed(address priceOracle, address token, bool reserve) internal view returns (address) {
+        return reserve
+            ? IPriceOracleV3(priceOracle).reservePriceFeeds(token)
+            : IPriceOracleV3(priceOracle).priceFeeds(token);
     }
 
     function _getPrice(address priceFeed) internal view returns (uint256) {
@@ -520,7 +528,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     // RATE KEEPER MANAGEMENT //
     // ---------------------- //
 
-    function setRateKeeper(address pool, bytes32 type_, bytes calldata params) external onlyOwner {
+    function updateRateKeeper(address pool, bytes32 type_, bytes calldata params) external onlyOwner {
         _ensureRegisteredPool(pool);
 
         address quotaKeeper = _quotaKeeper(pool);
@@ -535,8 +543,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         }
         _installRateKeeper(quotaKeeper, rateKeeper);
 
-        address controller_ = controller;
-        if (controller_ != address(0)) _setController(rateKeeper, controller_);
+        _setController(rateKeeper, controller);
     }
 
     function configureRateKeeper(address pool, bytes calldata data) external onlyOwner {
@@ -552,7 +559,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     }
 
     function _deployRateKeeper(address pool, bytes32 type_, bytes memory params) internal returns (address) {
-        return _contractsFactory().deployRateKeeper(pool, type_, params);
+        return IContractsFactory(contractsFactory).deployRateKeeper(pool, type_, params);
     }
 
     function _addToken(address rateKeeper, address token, bytes32 type_) internal {
@@ -584,22 +591,18 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         IPoolQuotaKeeperV3(quotaKeeper).setGauge(rateKeeper);
         if (_isVotingContract(rateKeeper)) {
             _setVotingContractStatus(rateKeeper, VotingContractStatus.ALLOWED);
-            try IVotingContractExt(rateKeeper).onInstallCallback() {} catch {}
         }
     }
 
     function _uninstallRateKeeper(address rateKeeper) internal {
         if (_isVotingContract(rateKeeper)) {
             _setVotingContractStatus(rateKeeper, VotingContractStatus.UNVOTE_ONLY);
-            try IVotingContractExt(rateKeeper).onUninstallCallback() {}
-            catch {
-                IGaugeV3(rateKeeper).setFrozenEpoch(true);
-            }
+            try IGaugeV3(rateKeeper).setFrozenEpoch(true) {} catch {}
         }
     }
 
     function _isVotingContract(address rateKeeper) internal view returns (bool) {
-        try IVotingContractExt(rateKeeper).voter() returns (address) {
+        try IVotingContract(rateKeeper).voter() returns (address) {
             return true;
         } catch {
             return false;
@@ -614,14 +617,13 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     // IRM MANAGEMENT //
     // -------------- //
 
-    function setInterestRateModel(address pool, bytes32 type_, bytes calldata params) external onlyOwner {
+    function updateInterestRateModel(address pool, bytes32 type_, bytes calldata params) external onlyOwner {
         _ensureRegisteredPool(pool);
 
         address irm = _deployInterestRateModel(type_, params);
         IPoolV3(pool).setInterestRateModel(irm);
 
-        address controller_ = controller;
-        if (controller_ != address(0)) _setController(irm, controller_);
+        _setController(irm, controller);
     }
 
     function configureInterestRateModel(address pool, bytes calldata data) external onlyOwner {
@@ -637,7 +639,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     }
 
     function _deployInterestRateModel(bytes32 type_, bytes memory params) internal returns (address) {
-        return _contractsFactory().deployInterestRateModel(type_, params);
+        return IContractsFactory(contractsFactory).deployInterestRateModel(acl, type_, params);
     }
 
     // ------------------ //
@@ -647,7 +649,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     function allowAdapter(address creditManager, address targetContract, bytes calldata params) external onlyOwner {
         _ensureRegisteredCreditManager(creditManager);
 
-        address adapter = _contractsFactory().deployAdapter(creditManager, targetContract, params);
+        address adapter = IContractsFactory(contractsFactory).deployAdapter(creditManager, targetContract, params);
         ICreditConfiguratorV3(_creditConfigurator(creditManager)).allowAdapter(adapter);
     }
 
@@ -668,6 +670,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     function _getAdapterOrRevert(address creditManager, address targetContract) internal view returns (address) {
         address adapter = ICreditManagerV3(creditManager).contractToAdapter(targetContract);
         if (adapter == address(0)) revert AdapterNotInitializedException(creditManager, targetContract);
+        return adapter;
     }
 
     // ---------------- //
@@ -708,10 +711,10 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         }
     }
 
-    function setLossLiquidator(address pool, bytes32 type_, bytes calldata params) external onlyOwner {
+    function updateLossLiquidator(address pool, bytes32 type_, bytes calldata params) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        address lossLiquidator = _contractsFactory().deployLossLiquidator(pool, type_, params);
+        address lossLiquidator = IContractsFactory(contractsFactory).deployLossLiquidator(pool, type_, params);
 
         address[] memory creditManagers = _creditManagers(pool);
         uint256 numManagers = creditManagers.length;
@@ -721,8 +724,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
 
         lossLiquidators[pool] = lossLiquidator;
 
-        address controller_ = controller;
-        if (controller_ != address(0)) _setController(lossLiquidator, controller_);
+        _setController(lossLiquidator, controller);
     }
 
     function configureLossLiquidator(address pool, bytes calldata data) external onlyOwner {
@@ -738,8 +740,8 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         lossLiquidator.functionCall(data);
     }
 
-    function setController(bytes calldata params) external onlyOwner {
-        address controller_ = _contractsFactory().deployController(acl, params);
+    function updateController(bytes calldata params) external onlyOwner {
+        address controller_ = _deployController(params);
 
         address[] memory pools = _pools();
         uint256 numPools = pools.length;
@@ -767,10 +769,7 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
     }
 
     function configureController(bytes calldata data) external onlyOwner {
-        address controller_ = controller;
-        if (controller_ == address(0)) revert ControllerNotInitializedException();
-
-        controller_.functionCall(data);
+        controller.functionCall(data);
     }
 
     function _addEmergencyLiquidator(address creditConfigurator, address liquidator) internal {
@@ -781,20 +780,37 @@ contract MarketConfigurator is Ownable, IMarketConfigurator {
         ICreditConfiguratorV3(creditConfigurator).setLossLiquidator(lossLiquidator);
     }
 
+    function _deployController(bytes memory params) internal returns (address) {
+        return IContractsFactory(contractsFactory).deployController(acl, params);
+    }
+
     function _setController(address contract_, address controller_) internal {
         try IControlledTrait(contract_).setController(controller_) {} catch {}
+    }
+
+    // ------------- //
+    // MISCELLANEOUS //
+    // ------------- //
+
+    function upgradeContractsFactory(uint256 newVersion) external onlyOwner {
+        contractsFactory = _upgradeContract(contractsFactory, AP_CONTRACTS_FACTORY, newVersion);
+    }
+
+    function upgradePriceFeedStore(uint256 newVersion) external onlyOwner {
+        priceFeedStore = _upgradeContract(priceFeedStore, AP_PRICE_FEED_STORE, newVersion);
+    }
+
+    function _upgradeContract(address contract_, bytes32 type_, uint256 newVersion) internal view returns (address) {
+        if (newVersion <= IVersion(contract_).version()) revert NewVersionBelowCurrentException();
+        return _getContract(type_, newVersion);
     }
 
     // --------- //
     // INTERNALS //
     // --------- //
 
-    function _contractsFactory() internal view returns (IContractsFactory) {
-        return IContractsFactory(_getLatestContract(AP_CONTRACTS_FACTORY));
-    }
-
-    function _priceFeedStore() internal view returns (IPriceFeedStore) {
-        return IPriceFeedStore(_getLatestContract(AP_PRICE_FEED_STORE));
+    function _getContract(bytes32 type_, uint256 version_) internal view returns (address) {
+        return IAddressProvider(addressProvider).getAddressOrRevert(type_, version_);
     }
 
     function _getLatestContract(bytes32 type_) internal view returns (address) {

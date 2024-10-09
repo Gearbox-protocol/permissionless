@@ -3,7 +3,9 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-interface IContractsFactory {
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+
+interface IContractsFactory is IVersion {
     function deployPool(
         address acl,
         address contractsRegister,
@@ -25,7 +27,7 @@ interface IContractsFactory {
 
     function deployController(address acl, bytes calldata params) external returns (address);
 
-    function deployInterestRateModel(bytes32 type_, bytes calldata params) external returns (address);
+    function deployInterestRateModel(address acl, bytes32 type_, bytes calldata params) external returns (address);
 
     // should take latest `gearStaking` from AP
     function deployRateKeeper(address pool, bytes32 type_, bytes calldata params) external returns (address);
