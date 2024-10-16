@@ -103,7 +103,7 @@ contract Migrate is Script {
             APMigration({name: AP_ZERO_PRICE_FEED, version: 0}),
             APMigration({name: AP_ZAPPER_REGISTER, version: 300}),
             APMigration({name: AP_MULTI_PAUSE, version: 0}),
-            APMigration({name: AP_DEGEN_DISTRIBUTOR, version: 300}),
+            APMigration({name: AP_DEGEN_DISTRIBUTOR, version: 0}),
             APMigration({name: "PARTIAL_LIQUIDATION_BOT", version: 300}),
             APMigration({name: "DELEVERAGE_BOT_PEGGED", version: 300}),
             APMigration({name: "DELEVERAGE_BOT_LV", version: 300}),
