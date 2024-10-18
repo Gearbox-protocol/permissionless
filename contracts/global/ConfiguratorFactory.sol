@@ -3,6 +3,6 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {IConfiguratorFactory} from "../interfaces/IConfiguratorFactory.sol";
+import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
 
-abstract contract ConfiguratorFactory is IConfiguratorFactory {}
+abstract contract ConfiguratorFactory is IMarketConfiguratorFactory {}

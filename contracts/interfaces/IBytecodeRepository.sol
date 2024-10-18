@@ -13,6 +13,14 @@ interface IBytecodeRepository is IBytecodeRepositoryEvents, IVersion {
         external
         returns (address);
 
+    function deployByDomain(
+        bytes32 _domain,
+        bytes32 _postfix,
+        uint256 _version,
+        bytes memory constructorParams,
+        bytes32 salt
+    ) external returns (address newContract);
+
     function getAddress(bytes32 contractType, uint256 _version, bytes memory constructorParams, bytes32 salt)
         external
         view

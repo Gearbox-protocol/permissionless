@@ -35,20 +35,26 @@ contract MarketConfiguratorFactoryV3 is AbstractFactory, IVersion {
 
     constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
 
-    function addMarketConfigurator(
-        address riskCurator,
-        address _treasury,
-        string calldata name,
-        address _vetoAdmin,
-        bytes32 _salt
-    ) external apOwnerOnly {
+    /**
+     * @notice Creates a new MarketConfigurator instance
+     * @param _treasury Address of the treasury contract
+     * @param name Name of the market configurator
+     * @param _vetoAdmin Address of the veto admin
+     * @param _salt Unique salt for deterministic address generation
+     * @dev This function deploys a new ACL and ContractsRegister, then creates a MarketConfigurator
+     *      using these contracts and the provided parameters. The new MarketConfigurator is then
+     *      added to the AddressProvider.
+     */
+    function createMarketConfigurator(address _treasury, string calldata name, address _vetoAdmin) external {
         ACL acl = new ACL();
         ContractsRegister contractsRegister = new ContractsRegister(address(acl));
+
+        // TODO: add selecting / deploying of treasury splitter
         bytes memory constructorParams =
-            abi.encode(addressProvider, acl, contractsRegister, _treasury, name, _vetoAdmin);
+            abi.encode(msg, sender, addressProvider, acl, contractsRegister, _treasury, name, _vetoAdmin);
 
         address _marketConfigurator = IBytecodeRepository(bytecodeRepository).deploy(
-            AP_MARKET_CONFIGURATOR, latestMCversion, constructorParams, _salt
+            AP_MARKET_CONFIGURATOR, latestMCversion, constructorParams, bytes32(msg.sender)
         );
 
         /// Makes market configurator contract owner

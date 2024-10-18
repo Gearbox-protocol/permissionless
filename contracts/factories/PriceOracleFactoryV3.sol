@@ -30,32 +30,75 @@ contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait, IVer
     uint256 public constant override version = 3_10;
     bytes32 public constant override contractType = AP_PRICE_ORACLE_FACTORY;
 
-    uint256 poLatestVersion;
-
-    /// @dev Mapping from token address to price feed parameters
-    mapping(address => EnumerableSet.AddressSet) internal _priceFeeds;
+    address public constant priceFeedStore;
 
     /// @notice Constructor
     /// @param addressProvider Address provider contract address
-    constructor(address addressProvider) AbstractFactory(addressProvider) {}
+    constructor(address addressProvider) AbstractFactory(addressProvider) {
+        priceFeedStore = IAddressProvider(addressProvider).getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_);
+    }
 
     function deployPriceOracle(address _acl, uint256 _version, bytes32 _salt) external returns (address) {
         bytes memory constructorParams = abi.encode(_acl);
         return IBytecodeRepository(bytecodeRepository).deploy("PRICE_ORACLE", _version, constructorParams, _salt);
     }
 
-    function isRegisteredOracle(address token, address priceFeed) external view returns (bool) {}
+    function onUpdatePriceOracle(address pool, address priceOracle, address prevOracle)
+        external
+        returns (Call[] memory calls)
+    {
+        address[] memory tokens = IPriceOracleV3(prevPriceOracle).getTokens();
 
-    function stalenessPeriod(address priceFeed) external view returns (uint32) {}
+        uint256 numTokens = tokens.length;
+        for (uint256 i; i < numTokens; ++i) {
+            _setPriceFeed(priceOracle, tokens[i], _getPriceFeed(prevPriceOracle, tokens[i], false), false);
 
-    /// @dev Validates that `token` is a contract that returns `decimals` within allowed range
-    function _validateToken(address token) internal view returns (uint8 decimals) {
-        if (!Address.isContract(token)) revert AddressIsNotContractException(token); // U:[PO-4]
-        try ERC20(token).decimals() returns (uint8 _decimals) {
-            if (_decimals == 0 || _decimals > 18) revert IncorrectTokenContractException(); // U:[PO-4]
-            decimals = _decimals; // U:[PO-4]
-        } catch {
-            revert IncorrectTokenContractException(); // U:[PO-4]
+            address reserve = _getPriceFeed(prevPriceOracle, tokens[i], true);
+            if (reserve != address(0)) _setPriceFeed(priceOracle, tokens[i], reserve, true);
+        }
+    }
+
+    //
+    // HOOKS
+
+    function onSetPriceFeed(address pool, address token, address priceFeed) external returns (Call[] memory calls) {
+        address priceOracle = IMarketConfigurator(marketConfigurator).priceOracles(pool);
+
+        // TODO: compute call length somehow?
+        // IDEA: limit number of recursive oracles up to 10?
+        _setPriceFeed(priceOracle, token, priceFeed, false);
+        _addUpdatableFeeds(priceOracle, priceFeed);
+    }
+
+    //
+    // INTERNAL
+
+    // @price
+    function _setPriceFeed(address priceOracle, address token, address priceFeed, bool reserve)
+        internal
+        view
+        returns (Call[] memory calls)
+    {
+        if (!IPriceFeedStore(priceFeedStore).isAllowedPriceFeed(token, priceFeed)) {
+            revert PriceFeedNotAllowedException(token, priceFeed);
+        }
+        uint32 stalenessPeriod = IPriceFeedStore(priceFeedStore).getStalenessPeriod(priceFeed);
+        if (reserve) {
+            IPriceOracleV3(priceOracle).setReservePriceFeed(token, priceFeed, stalenessPeriod);
+        } else {
+            IPriceOracleV3(priceOracle).setPriceFeed(token, priceFeed, stalenessPeriod);
+        }
+        _addUpdatableFeeds(priceOracle, priceFeed);
+    }
+
+    function _addUpdatableFeeds(address priceOracle, address priceFeed) internal view returns (Call[] memory calls) {
+        try IUpdatablePriceFeed(priceFeed).updatable() returns (bool updatable) {
+            if (updatable) IPriceOracleV3(priceOracle).addUpdatablePriceFeed(priceFeed);
+        } catch {}
+        address[] memory underlyingFeeds = IPriceFeed(priceFeed).getUnderlyingFeeds();
+        uint256 numFeeds = underlyingFeeds.length;
+        for (uint256 i; i < numFeeds; ++i) {
+            _addUpdatableFeeds(priceOracle, underlyingFeeds[i]);
         }
     }
 }

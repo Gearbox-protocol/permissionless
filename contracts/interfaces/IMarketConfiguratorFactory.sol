@@ -7,7 +7,9 @@ import {VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfac
 
 // NOTE: owns new AF, BL and GS, can call legacy market configurator to access old AF, BL and GS
 
-interface IConfiguratorFactory {
+interface IMarketConfiguratorFactory {
+    function isMarketConfigurator(address) external view returns (bool);
+
     function marketConfigurators() external view returns (address[] memory);
     function createMarketConfigurator() external returns (address);
     function removeMarketConfigurator(address configurator) external;

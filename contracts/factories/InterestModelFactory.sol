@@ -4,13 +4,15 @@
 pragma solidity ^0.8.17;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {AbstractFactory} from "./AbstractFactory.sol";
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 import {AP_INTEREST_MODEL_FACTORY} from "../libraries/ContractLiterals.sol";
 
-contract InterestModelFactory is IVersion {
+// QUESTION: are models autonomous or could be configured?
+contract InterestModelFactory is AbstractFactory {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     error ModelDeployersOnlyException();

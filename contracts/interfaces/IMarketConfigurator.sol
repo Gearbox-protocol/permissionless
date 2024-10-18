@@ -5,6 +5,23 @@ pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
+struct CreateMarketParams {
+    address underlying;
+    // Pool params
+    string symbol;
+    string name;
+    bytes poolParams;
+    // PriceOracle params
+    address underlyingPriceFeed;
+    bytes priceOracleParams;
+    // InterestRateModel par
+    bytes32 irmPostFix;
+    bytes irmParams;
+    // RateKeeper
+    bytes32 rateKeeperPosfix;
+    bytes rateKeeperParams;
+}
+
 interface IMarketConfigurator is IVersion {
     function configuratorFactory() external view returns (address);
     function addressProvider() external view returns (address);
