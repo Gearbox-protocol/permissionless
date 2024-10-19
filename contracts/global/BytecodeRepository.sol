@@ -11,7 +11,7 @@ import {AP_BYTECODE_REPOSITORY} from "../libraries/ContractLiterals.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {SanityCheckTrait} from "@gearbox-protocol/core-v3/contracts/traits/SanityCheckTrait.sol";
 
-import {SecurityReport, Source, BytecodeInfo} from "../interfaces/Types.sol";
+import {SecurityReport, Source, BytecodeInfo, AuditorInfo} from "../interfaces/Types.sol";
 
 // EXCEPTIONS
 import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
@@ -121,7 +121,7 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
     // Motivation: store hashes to make possible to list all store contracts inside
     mapping(bytes32 => BytecodeInfo) public bytecodeInfo;
 
-    mapping(bytes32 => bytes) internal _byteCode;
+    mapping(bytes32 => bytes) internal _bytecode;
 
     EnumerableSet.UintSet internal _hashStorage;
 
@@ -168,8 +168,8 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
 
         // Check if a contract already exists at the address
         newContract = Create2.computeAddress(salt, keccak256(bytecodeWithParams));
-        if (predictedAddress.code.length != 0) {
-            revert BytecodeAlreadyExistsAtAddressException(predictedAddress);
+        if (newContract.code.length != 0) {
+            revert BytecodeAlreadyExistsAtAddressException(newContract);
         }
 
         // Deploy smart contract and return the address
@@ -216,25 +216,12 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
             if (contractTypeWithDomain.length() > 31) {
                 revert TooLongContractTypeException(contractTypeWithDomain);
             }
-            _contractType = contratTypeWithDomain.toSmallString();
+            _contractType = contractTypeWithDomain.toSmallString();
         }
 
         return deploy(_contractType, _version, constructorParams, salt);
     }
 
-    /**
-     * @notice Deploys a contract using the specified contract type and version.
-     * @param _contractType The type of the contract to be deployed.
-     * @param _version The version of the contract to be deployed.
-     * @param constructorParams The constructor parameters to be passed to the contract.
-     * @param salt A salt used for the Create2 deployment to ensure a unique address.
-     * @param comment A comment describing linkToSource (could be 'github', 'ipfs', or even 'correct_version')
-     * @param linkToSource A link to the source code or documentation of the contract.
-     * @return newContract The address of the newly deployed contract.
-     * @dev Reverts if the bytecode for the specified contract type and version is not found.
-     *      Reverts if the deployed contract's type or version does not match the expected values.
-     *      If the deployed contract is ownable, ownership is automatically transferred to the caller.
-     */
     function uploadByteCode(
         bytes32 _contractType,
         uint256 _version,
@@ -347,7 +334,7 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
     // AUDITOR MANAGEMENT
     //
     function addAuditor(address auditor, string memory _name) external onlyOwner nonZeroAddress(auditor) {
-        if (bytes(name).length == 0) {
+        if (_name.length == 0) {
             revert IncorrectParameterException();
         }
         if (_auditors.contains(auditor)) {
@@ -356,7 +343,7 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
 
         _auditors.add(auditor);
         auditorInfo[auditor].name = _name;
-        emit AddAuditor(auditor, name);
+        emit AddAuditor(auditor, _name);
     }
 
     function forbidAuditor(address auditor) external onlyOwner nonZeroAddress(auditor) {
@@ -365,7 +352,7 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
         }
 
         auditorInfo[auditor].forbidden = true;
-        emit AuditorForbidden(auditor, name);
+        emit ForbidAuditor(auditor, auditorInfo[auditor].name);
     }
 
     /**
@@ -429,4 +416,7 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
 
         bytecodeWithParams = abi.encodePacked(bytecode, constructorParams);
     }
+
+    // TODO:
+    function hasTokenSpecificPrefix(address) external view returns (bytes32) {}
 }

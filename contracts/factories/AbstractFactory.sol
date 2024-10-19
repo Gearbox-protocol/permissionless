@@ -3,18 +3,20 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
+import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
+
 import {
     AP_BYTECODE_REPOSITORY,
     AP_MARKET_CONFIGURATOR_FACTORY,
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
 import {Call} from "../interfaces/Types.sol";
-import {IModularFactory} from "../interfaces/IModularFactory.sol";
-import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
+
 import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
 
-abstract contract AbstractFactory is IModularFactory {
+abstract contract AbstractFactory is IVersion {
     address public immutable bytecodeRepository;
 
     address public immutable marketConfiguratorFactory;
@@ -39,40 +41,4 @@ abstract contract AbstractFactory is IModularFactory {
 
         addressProvider = _addressProvider;
     }
-
-    //
-    // HOOKS
-    //
-    function onAddToken(address pool, address token, address priceFeed) external view returns (Call[] memory calls) {}
-
-    function onUpdateInterestModel(address pool, address newModel)
-        external
-        virtual
-        marketConfiguratorOnly
-        returns (Call[] memory calls)
-    {}
-
-    function onAddCreditManager(address newCreditManager)
-        external
-        virtual
-        marketConfiguratorOnly
-        returns (Call[] memory calls)
-    {}
-
-    function onUpdatePriceOracle(address newPriceOracle)
-        external
-        virtual
-        marketConfiguratorOnly
-        returns (Call[] memory calls)
-    {}
-
-    // MIGRATION
-    function onMigrate(address _contract, address prevFactory)
-        external
-        virtual
-        marketConfiguratorOnly
-        returns (Call[] memory calls)
-    {}
-
-    function onUninstall(address _contract) external virtual marketConfiguratorOnly returns (Call[] memory calls) {}
 }

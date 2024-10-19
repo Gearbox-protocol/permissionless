@@ -7,6 +7,7 @@ import {IConfigurableFactory} from "./IConfigurableFactory.sol";
 import {ICreditHooks} from "./ICreditHooks.sol";
 import {DeployResult} from "./Types.sol";
 
-interface ICreditFactory is ICreditHooks, IConfigurableFactory {
-    function createCreditSuite(address pool, bytes calldata encodedParams) external returns (DeployResult memory);
+// QUESTION: is it configurable factory?
+interface IPriceOracleFactory is IConfigurableFactory {
+    function deployPriceOracle(bytes calldata constructorParams) external returns (DeployResult memory);
 }

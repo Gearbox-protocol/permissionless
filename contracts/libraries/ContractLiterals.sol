@@ -49,8 +49,9 @@ bytes32 constant AP_ADAPTER_FACTORY = "ADAPTER_FACTORY";
 bytes32 constant AP_POOL_FACTORY = "POOL_FACTORY";
 bytes32 constant AP_CREDIT_FACTORY = "CREDIT_FACTORY";
 bytes32 constant AP_PRICE_ORACLE_FACTORY = "PRICE_ORACLE_FACTORY";
-bytes32 constant AP_RATE_FACTORY = "RATE_FACTORY";
+bytes32 constant AP_RATE_KEEPER_FACTORY = "RATE_KEEPER_FACTORY";
 
+bytes32 constant AP_DEFAULT_IRM = "DEFAULT_IRM";
 // DOMAINS
 
 bytes32 constant DOMAIN_POOL = "POOL";
@@ -58,3 +59,4 @@ bytes32 constant DOMAIN_CREDIT_MANAGER = "CREDIT_MANAGER";
 bytes32 constant DOMAIN_ADAPTER = "ADAPTER";
 bytes32 constant DOMAIN_DEGEN_NFT = "DEGEN_NFT";
 bytes32 constant DOMAIN_RATE_KEEPER = "RK";
+bytes32 constant DOMAIN_IRM = "IRM";

@@ -16,4 +16,17 @@ interface IContractsRegisterExt is IContractsRegister, IVersion {
     function removePool(address pool) external;
     function addCreditManager(address creditManager) external;
     function removeCreditManager(address creditManager) external;
+
+    function getCreditManagersByPool(address pool) external view returns (address[] memory);
+
+    function getPriceOracle(address pool) external view returns (address);
+
+    // Factories
+    function getPoolFactory(address pool) external view returns (address);
+    function getCreditManagerFactory(address creditManager) external view returns (address);
+    function getPriceOracleFactory(address pool) external view returns (address);
+
+    function setPoolFactory(address pool, address factory) external;
+    function setCreditManagerFactory(address creditManager, address factory) external;
+    function setPriceOracleFactory(address pool, address factory) external;
 }

@@ -8,6 +8,12 @@ struct Call {
     bytes callData;
 }
 
+struct DeployResult {
+    address newContract;
+    address[] accessList;
+    Call[] onInstallOps;
+}
+
 // The `BytecodeInfo` struct holds metadata about a bytecode in BytecodeRepository
 //
 // - `author`: A person who first upload smart-contract to BCR

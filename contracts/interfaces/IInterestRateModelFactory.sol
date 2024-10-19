@@ -7,6 +7,8 @@ import {IConfigurableFactory} from "./IConfigurableFactory.sol";
 import {ICreditHooks} from "./ICreditHooks.sol";
 import {DeployResult} from "./Types.sol";
 
-interface ICreditFactory is ICreditHooks, IConfigurableFactory {
-    function createCreditSuite(address pool, bytes calldata encodedParams) external returns (DeployResult memory);
+interface IInterestRateModelFactory is IConfigurableFactory {
+    function deployInterestRateModel(bytes32 postfix, bytes calldata encodedParams)
+        external
+        returns (DeployResult memory);
 }

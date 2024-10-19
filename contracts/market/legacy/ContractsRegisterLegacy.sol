@@ -97,4 +97,18 @@ contract ContractsRegisterLegacy is ACLTrait, IContractsRegisterExt {
             return false;
         }
     }
+
+    //
+    function getCreditManagersByPool(address pool) external view returns (address[] memory) {}
+
+    function getPriceOracle(address pool) external view returns (address) {}
+
+    // Factories
+    function getPoolFactory(address pool) external view returns (address) {}
+    function getCreditManagerFactory(address creditManager) external view returns (address) {}
+    function getPriceOracleFactory(address pool) external view returns (address) {}
+
+    function setPoolFactory(address pool, address factory) external {}
+    function setCreditManagerFactory(address creditManager, address factory) external {}
+    function setPriceOracleFactory(address pool, address factory) external {}
 }

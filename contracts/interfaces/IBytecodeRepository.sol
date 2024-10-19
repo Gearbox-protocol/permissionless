@@ -21,8 +21,10 @@ interface IBytecodeRepository is IBytecodeRepositoryEvents, IVersion {
         bytes32 salt
     ) external returns (address newContract);
 
-    function getAddress(bytes32 contractType, uint256 _version, bytes memory constructorParams, bytes32 salt)
+    function computeAddress(bytes32 _contractType, uint256 _version, bytes memory constructorParams, bytes32 salt)
         external
         view
         returns (address);
+
+    function hasTokenSpecificPrefix(address) external view returns (bytes32);
 }

@@ -3,8 +3,7 @@
 // (c) Gearbox Foundation, 2023.
 pragma solidity ^0.8.17;
 
-import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
-
+import {Call} from "./Types.sol";
 /// @notice Interface for market hooks
 /// @dev These hooks are called by the MarketConfigurator during various configuration events
 /// Each hook returns an array of Call structs, allowing for flexible actions to be executed
