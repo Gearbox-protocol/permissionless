@@ -78,7 +78,7 @@ contract PoolFactoryV3 is AbstractFactory, MarketHookFactory, IPoolFactory {
 
         // deploy pool
         address pool = _deployPool({
-            martketConfigurator: msg.sender,
+            marketConfigurator: msg.sender,
             underlying: underlying,
             contractsRegister: contractsRegister,
             acl: acl,
@@ -208,7 +208,7 @@ contract PoolFactoryV3 is AbstractFactory, MarketHookFactory, IPoolFactory {
     // INTERNAL
     //
     function _deployPool(
-        address martketConfigurator,
+        address marketConfigurator,
         address underlying,
         address contractsRegister,
         address acl,
@@ -222,12 +222,14 @@ contract PoolFactoryV3 is AbstractFactory, MarketHookFactory, IPoolFactory {
             abi.encode(acl, contractsRegister, underlying, treasury, interestRateModel, uint256(0), name, symbol);
         bytes32 postfix = IBytecodeRepository(bytecodeRepository).hasTokenSpecificPrefix(underlying);
 
+        bytes32 salt = bytes32(bytes20(marketConfigurator));
+
         return IBytecodeRepository(bytecodeRepository).deployByDomain(
-            DOMAIN_POOL, postfix, _version, constructorParams, bytes32(martketConfigurator)
+            DOMAIN_POOL, postfix, _version, constructorParams, salt
         );
     }
 
-    function _deployPoolQuotaKeeper(address marketConfigurator, address pool, address _version)
+    function _deployPoolQuotaKeeper(address marketConfigurator, address pool, uint256 _version)
         internal
         returns (address pqk)
     {

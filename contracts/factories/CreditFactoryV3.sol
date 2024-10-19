@@ -226,11 +226,13 @@ contract CreditFactoryV3 is AbstractFactory, ICreditFactory {
         string memory _name,
         uint256 _version
     ) internal returns (address) {
-        // check prefix
-        address underlying = IPoolV3(_pool).asset();
-
         // TODO: move mapping back to factory
-        bytes32 postfix = IBytecodeRepository(bytecodeRepository).hasTokenSpecificPrefix(underlying);
+        bytes32 postfix;
+        {
+            // check prefix
+            address underlying = IPoolV3(_pool).asset();
+            postfix = IBytecodeRepository(bytecodeRepository).hasTokenSpecificPrefix(underlying);
+        }
 
         // CreditManager  constructor parameters:
         //   (
@@ -244,8 +246,10 @@ contract CreditFactoryV3 is AbstractFactory, ICreditFactory {
         bytes memory constructorParams =
             abi.encode(_pool, accountFactory, _priceOracle, _maxEnabledTokens, _feeInterest, _name);
 
+        bytes32 salt = bytes32(bytes20(marketConfigurator));
+
         return IBytecodeRepository(bytecodeRepository).deployByDomain(
-            DOMAIN_CREDIT_MANAGER, postfix, _version, constructorParams, bytes32(bytes20(marketConfigurator))
+            DOMAIN_CREDIT_MANAGER, postfix, _version, constructorParams, salt
         );
     }
 

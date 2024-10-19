@@ -111,4 +111,9 @@ contract ContractsRegisterLegacy is ACLTrait, IContractsRegisterExt {
     function setPoolFactory(address pool, address factory) external {}
     function setCreditManagerFactory(address creditManager, address factory) external {}
     function setPriceOracleFactory(address pool, address factory) external {}
+
+    function getRateKeeperFactory(address pool) external view returns (address) {}
+    function getInterestRateModelFactory(address model) external view returns (address) {}
+    function setRateKeeperFactory(address pool, address factory) external {}
+    function setInterestRateModelFactory(address model, address factory) external {}
 }

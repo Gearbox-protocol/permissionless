@@ -44,6 +44,7 @@ import {LibString} from "@solady/utils/LibString.sol";
  */
 contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeRepository {
     using EnumerableSet for EnumerableSet.UintSet;
+    using EnumerableSet for EnumerableSet.AddressSet;
     using LibString for bytes32;
     using LibString for string;
 
@@ -164,7 +165,7 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
             revert ContractIsNotAuditedException();
         }
 
-        bytes memory bytecodeWithParams = _getBytecodeWithParamsOrRevert(_contractType, _version);
+        bytes memory bytecodeWithParams = _getBytecodeWithParamsOrRevert(_contractType, _version, constructorParams);
 
         // Check if a contract already exists at the address
         newContract = Create2.computeAddress(salt, keccak256(bytecodeWithParams));
@@ -213,7 +214,7 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
             string memory contractTypeWithDomain =
                 string.concat(_domain.fromSmallString(), "_", _postfix.fromSmallString());
 
-            if (contractTypeWithDomain.length() > 31) {
+            if (bytes(contractTypeWithDomain).length > 31) {
                 revert TooLongContractTypeException(contractTypeWithDomain);
             }
             _contractType = contractTypeWithDomain.toSmallString();
@@ -250,8 +251,8 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
         _bytecode[_hash] = bytecode;
 
         // Update bytecodeInfo
-        bytecodeInfo[_hash].deployer = msg.sender;
-        bytecodeInfo[_hash].sources.push(Source({comment: comment, linkToSource: linkToSource}));
+        bytecodeInfo[_hash].author = msg.sender;
+        bytecodeInfo[_hash].sources.push(Source({comment: comment, link: linkToSource}));
 
         bytecodeInfo[_hash].contractType = _contractType;
         bytecodeInfo[_hash].version = version;
@@ -266,12 +267,12 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
         bytes32 _hash = computeBytecodeHash(_contractType, _version);
 
         // Check if the caller is the deployer of the bytecode
-        if (msg.sender != bytecodeInfo[_hash].deployer) {
+        if (msg.sender != bytecodeInfo[_hash].author) {
             revert NotDeployerException();
         }
 
         // Add the new source to the bytecodeInfo
-        bytecodeInfo[_hash].linkToSource.push(Source({comment: comment, link: linkToSource}));
+        bytecodeInfo[_hash].sources.push(Source({comment: comment, link: linkToSource}));
 
         // Emit event after adding the source
         emit SourceAdded(_contractType, _version, comment, linkToSource);
@@ -327,14 +328,14 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
         BytecodeInfo memory info = bytecodeInfo[computeBytecodeHash(_contractType, _version)];
 
         // QUESTION: should we have more complex rules depending on domain?
-        return info.auditors.length() >= AUDITOR_THRESHOLD;
+        return info.auditors.length >= AUDITOR_THRESHOLD;
     }
 
     //
     // AUDITOR MANAGEMENT
     //
     function addAuditor(address auditor, string memory _name) external onlyOwner nonZeroAddress(auditor) {
-        if (_name.length == 0) {
+        if (bytes(_name).length == 0) {
             revert IncorrectParameterException();
         }
         if (_auditors.contains(auditor)) {

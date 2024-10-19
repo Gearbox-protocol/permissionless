@@ -43,7 +43,6 @@ contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperF
      * @param postfix The postfix identifying the type of rate keeper to deploy
      * @param encodedParams Additional encoded parameters specific to the rate keeper type
      * @return rateKeeper The address of the newly deployed rate keeper
-     * @return onInstallOps An array of Call structs representing operations to perform after installation
      */
     function deployRateKeeper(address pool, bytes32 postfix, bytes calldata encodedParams)
         external

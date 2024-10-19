@@ -29,7 +29,7 @@ interface IMarketConfigurator is IVersion {
     function contractsRegister() external view returns (address);
     function treasury() external view returns (address);
 
-    // function priceFeedStore() external view returns (address);
+    function priceFeedStore() external view returns (address);
 
     function priceOracles(address pool) external view returns (address);
     // function lossLiquidators(address pool) external view returns (address);

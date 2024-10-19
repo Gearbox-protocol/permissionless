@@ -39,7 +39,7 @@ contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait {
     // Thrown if an unauthorized price feed is used for a token
     error PriceFeedNotAllowedException(address token, address priceFeed);
 
-    address public constant priceFeedStore;
+    address public immutable priceFeedStore;
 
     /// @notice Constructor
     /// @param addressProvider Address provider contract address
@@ -105,7 +105,6 @@ contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait {
     // @price
     function _setPriceFeed(address priceOracle, address token, address priceFeed, bool reserve)
         internal
-        view
         returns (Call[] memory calls)
     {
         if (!IPriceFeedStore(priceFeedStore).isAllowedPriceFeed(token, priceFeed)) {
@@ -150,7 +149,7 @@ contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait {
         });
     }
 
-    function _addUpdatableFeeds(address priceOracle, address priceFeed) internal view returns (Call[] memory calls) {
+    function _addUpdatableFeeds(address priceOracle, address priceFeed) internal returns (Call[] memory calls) {
         try IUpdatablePriceFeed(priceFeed).updatable() returns (bool updatable) {
             if (updatable) IPriceOracleV3(priceOracle).addUpdatablePriceFeed(priceFeed);
         } catch {}

@@ -77,4 +77,23 @@ contract ContractsRegister is ACLTrait, IContractsRegisterExt {
     function removeCreditManager(address creditManager) external override configuratorOnly {
         if (_creditManagersSet.remove(creditManager)) emit RemoveCreditManager(creditManager);
     }
+
+    //
+    function getCreditManagersByPool(address pool) external view returns (address[] memory) {}
+
+    function getPriceOracle(address pool) external view returns (address) {}
+
+    // Factories
+    function getPoolFactory(address pool) external view returns (address) {}
+    function getCreditManagerFactory(address creditManager) external view returns (address) {}
+    function getPriceOracleFactory(address pool) external view returns (address) {}
+
+    function setPoolFactory(address pool, address factory) external {}
+    function setCreditManagerFactory(address creditManager, address factory) external {}
+    function setPriceOracleFactory(address pool, address factory) external {}
+
+    function getRateKeeperFactory(address pool) external view returns (address) {}
+    function getInterestRateModelFactory(address model) external view returns (address) {}
+    function setRateKeeperFactory(address pool, address factory) external {}
+    function setInterestRateModelFactory(address model, address factory) external {}
 }

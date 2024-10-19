@@ -28,6 +28,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     }
 
     constructor(
+        address riskCurator_,
         address addressProvider_,
         address acl_,
         address contractsRegister_,
@@ -36,7 +37,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         // QUESTION: can we read it from AP?
         address gearStaking_,
         address legacyContractsRegister_
-    ) MarketConfigurator(addressProvider_, acl_, contractsRegister_, treasury_, controllerParams) {
+    ) MarketConfigurator(riskCurator_, addressProvider_, acl_, contractsRegister_, treasury_, controllerParams) {
         gearStaking = gearStaking_;
         legacyContractsRegister = legacyContractsRegister_;
     }

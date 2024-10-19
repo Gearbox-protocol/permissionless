@@ -200,7 +200,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setMaxDebtPerBlockMultiplier(uint8)",
             data: abi.encode(multiplier),
             sanityCheckCallData: abi.encodeCall(this.getMaxDebtPerBlockMultiplier, (creditManager))
-        }); 
+        });
     }
 
     /// @dev Retrieves current max debt per block multiplier for a Credit Facade
@@ -219,7 +219,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "forbidAdapter(address)",
             data: abi.encode(adapter),
             sanityCheckCallData: ""
-        }); 
+        });
     }
 
     /// @notice Queues a transaction to allow a previously forbidden token
@@ -269,7 +269,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setCreditManagerDebtLimit(address,uint256)",
             data: abi.encode(address(creditManager), debtLimit),
             sanityCheckCallData: abi.encodeCall(this.getCreditManagerDebtLimit, (creditManager))
-        }); 
+        });
     }
 
     /// @dev Retrieves the current total debt limit for Credit Manager from its pool
@@ -289,7 +289,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setTotalDebtLimit(uint256)",
             data: abi.encode(newLimit),
             sanityCheckCallData: abi.encodeCall(this.getTotalDebtLimit, (pool))
-        }); 
+        });
     }
 
     /// @dev Retrieves the total debt limit for a pool
@@ -313,7 +313,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setTokenLimit(address,uint96)",
             data: abi.encode(token, limit),
             sanityCheckCallData: abi.encodeCall(this.getTokenLimit, (pool, token))
-        }); 
+        });
     }
 
     /// @dev Retrieves the per-token quota limit from pool quota keeper
@@ -339,7 +339,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "setTokenQuotaIncreaseFee(address,uint16)",
             data: abi.encode(token, quotaIncreaseFee),
             sanityCheckCallData: abi.encodeCall(this.getTokenQuotaIncreaseFee, (pool, token))
-        }); 
+        });
     }
 
     /// @dev Retrieves the quota increase fee for a token
@@ -365,7 +365,7 @@ contract ControllerTimelockV3 is ACLTrait, IControllerTimelockV3 {
             signature: "changeQuotaMinRate(address,uint16)",
             data: abi.encode(token, rate),
             sanityCheckCallData: abi.encodeCall(this.getMinQuotaRate, (pool, token))
-        }); 
+        });
     }
 
     /// @dev Retrieves the current minimal quota rate for a token in a gauge

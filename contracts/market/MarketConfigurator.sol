@@ -67,16 +67,16 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     // TODO: move all things below to ContractsRegister
     // address public override contractsFactory;
-    // address public override priceFeedStore;
+    address public override priceFeedStore;
 
     // mapping(address => address) public poolToPoolFactories;
     // mapping(address => address) public creditManagerToCreditFactories;
 
     // // PriceOracle 1:1
-    // mapping(address pool => address) public override priceOracles;
+    mapping(address pool => address) public override priceOracles;
 
     // // LossLiquidator 1:1 for market policy
-    // mapping(address pool => address) public override lossLiquidators;
+    mapping(address pool => address) public lossLiquidators;
 
     address latestInterestRateModelFactory;
     address latestPoolFactory;
@@ -92,7 +92,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     // Access list is additional protection measure to restrict contracts
     // which could be called via cooks.
-    mapping(address => mapping(address => bool)) public accessList;
+    mapping(address => address) public accessList;
 
     // ------ //
     // ERRORS //
@@ -224,7 +224,10 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     {
         _ensureRegisteredPool(pool);
 
-        creditManager = ICreditFactory(latestCreditFactory).createCreditSuite(pool, encodedParams);
+        DeployResult memory deployResult = ICreditFactory(latestCreditFactory).createCreditSuite(pool, encodedParams);
+        creditManager = deployResult.newContract;
+
+        _executeOnDeploy(latestCreditFactory, deployResult);
 
         // Validation. Better to move it into contracts register
         // assert priceOracle is correct
@@ -242,7 +245,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
         _setCreditManagerFactory(creditManager, latestCreditFactory);
 
-        _executeHook(IHook(contractsRegister).addCreditManager(pool, creditManager));
+        _executeHook(IHook(contractsRegister).onAddCreditManager(pool, creditManager));
         _executeHook(IHook(_getPoolFactory(pool)).onAddCreditManager(pool, creditManager));
     }
 
@@ -252,9 +255,9 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         address pool = ICreditManagerV3(creditManager).pool();
 
         // onCreditSuite hook
-        _executeHook(IHook(_getCreditManagerFactory(creditManager)).onRemoveCreditManager(creditManager));
-        _executeHook(IHook(_getPoolFactory(pool))).onRemoveCreditManager(creditManager);
-        _executeHook(IHook(contractsRegister)).removeCreditManager(creditManager);
+        _executeHook(IHook(_getCreditManagerFactory(creditManager)).onRemoveCreditManager(pool, creditManager));
+        _executeHook(IHook(_getPoolFactory(pool)).onRemoveCreditManager(pool, creditManager));
+        _executeHook(IHook(contractsRegister).onRemoveCreditManager(pool, creditManager));
     }
 
     function configureCreditSuite(address creditManager, bytes calldata data) external onlyOwner {
@@ -303,10 +306,8 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         for (uint256 i; i < numManagers; ++i) {
             address creditManager = creditManagers[i];
             _executeHook(
-                IHook(
-                    _getCreditManagerFactory(creditManager).onPriceOracleUpdate(
-                        creditManager, priceOracle, prevPriceOracle
-                    )
+                IHook(_getCreditManagerFactory(creditManager)).onUpdatePriceOracle(
+                    creditManager, priceOracle, prevPriceOracle
                 )
             );
         }
@@ -346,7 +347,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     }
 
     function _updateRateKeeper(address pool, bytes32 postfix, bytes calldata params) internal {
-        address rateKeeper = IRateKeeperFactory(latestRateKeeperFactory).deployRateKeeper(pool, postfix, params);
+        address rateKeeper = _deployRateKeeper(pool, postfix, params);
 
         _executeHook(IHook(contractsRegister).onUpdateRateKeeper(pool, rateKeeper));
         _executeHook(IHook(_getPoolFactory(pool)).onUpdateRateKeeper(pool, rateKeeper));
@@ -478,7 +479,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         for (uint256 i; i < numManagers; ++i) {
             address creditManager = creditManagers[i];
             _executeHook(
-                IHook(_getCreditManagerFactory(creditManager).onAddEmergencyLiquidator(creditManager, liquidator))
+                IHook(_getCreditManagerFactory(creditManager)).onAddEmergencyLiquidator(creditManager, liquidator)
             );
         }
     }
@@ -490,7 +491,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         for (uint256 i; i < numManagers; ++i) {
             address creditManager = creditManagers[i];
             _executeHook(
-                IHook(_getCreditManagerFactory(creditManager).onRemoveEmergencyLiquidator(creditManager, liquidator))
+                IHook(_getCreditManagerFactory(creditManager)).onRemoveEmergencyLiquidator(creditManager, liquidator)
             );
         }
     }
@@ -509,7 +510,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         for (uint256 i; i < numManagers; ++i) {
             address creditManager = creditManagers[i];
             _executeHook(
-                IHook(_getCreditManagerFactory(creditManager).onUpdateLossLiquidator(creditManager, lossLiquidator))
+                IHook(_getCreditManagerFactory(creditManager)).onUpdateLossLiquidator(creditManager, lossLiquidator)
             );
         }
 
@@ -613,7 +614,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     function _executeOnDeploy(address factory, DeployResult memory deployResult) internal {
         _addToAccessList(factory, deployResult.accessList);
-        _executeHook(HookCheck({factory: factory, calls: deployResult.installOps}));
+        _executeHook(HookCheck({factory: factory, calls: deployResult.onInstallOps}));
     }
 
     function _executeHook(HookCheck memory hookCheck) internal {
