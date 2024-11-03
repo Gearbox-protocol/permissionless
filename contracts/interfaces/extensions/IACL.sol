@@ -3,10 +3,10 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {IACL} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IACL.sol";
+import {IACL as IACLBase} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IACL.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
-interface IACLExt is IACL, IVersion {
+interface IACL is IACLBase, IVersion {
     event AddPausableAdmin(address indexed admin);
     event RemovePausableAdmin(address indexed admin);
     event AddUnpausableAdmin(address indexed admin);

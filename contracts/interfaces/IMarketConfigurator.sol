@@ -14,25 +14,29 @@ struct CreateMarketParams {
     // PriceOracle params
     address underlyingPriceFeed;
     bytes priceOracleParams;
-    // InterestRateModel par
-    bytes32 irmPostFix;
+    // InterestRateModel params
+    bytes32 irmPostfix;
     bytes irmParams;
     // RateKeeper
-    bytes32 rateKeeperPosfix;
+    bytes32 rateKeeperPostfix;
     bytes rateKeeperParams;
 }
 
 interface IMarketConfigurator is IVersion {
-    function configuratorFactory() external view returns (address);
+    // ------ //
+    // ERRORS //
+    // ------ //
+
+    // Thrown if hook attempting to call a contract which is node in accessList
+    error ContractNotAssignedToFactoryException(address);
+
+    // Thrown if factory attempting to overwrite exsting addess in accessList
+    error ContractAlreadyInAccessListException(address);
+
     function addressProvider() external view returns (address);
     function acl() external view returns (address);
     function contractsRegister() external view returns (address);
     function treasury() external view returns (address);
 
-    function priceFeedStore() external view returns (address);
-
-    function priceOracles(address pool) external view returns (address);
-    // function lossLiquidators(address pool) external view returns (address);
-    // function controller() external view returns (address);
     function emergencyLiquidators() external view returns (address[] memory);
 }

@@ -6,11 +6,11 @@ pragma solidity ^0.8.23;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import {IACLExt} from "../interfaces/extensions/IACLExt.sol";
+import {IACL} from "../interfaces/extensions/IACL.sol";
 import {AP_ACL} from "../libraries/ContractLiterals.sol";
 
 /// @title Access control list
-contract ACL is IACLExt, Ownable {
+contract ACL is IACL, Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice Contract version

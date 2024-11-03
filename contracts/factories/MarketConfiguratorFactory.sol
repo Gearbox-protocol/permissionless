@@ -13,11 +13,7 @@ import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {AP_MARKET_CONFIGURATOR, AP_MARKET_CONFIGURATOR_FACTORY} from "../libraries/ContractLiterals.sol";
 
-interface IAdapterDeployer {
-    function deploy(address creditManager, address target, bytes calldata specificParams) external returns (address);
-}
-
-contract MarketConfiguratorFactoryV3 is AbstractFactory {
+contract MarketConfiguratorFactory is AbstractFactory {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice Contract version
@@ -48,8 +44,6 @@ contract MarketConfiguratorFactoryV3 is AbstractFactory {
 
         /// Makes market configurator contract owner
         acl.transferOwnership(_marketConfigurator);
-
-        IAddressProvider(addressProvider).addMarketConfigurator(_marketConfigurator);
     }
 
     // function removeMarketConfigurator(address _marketConfigurator) external apOwnerOnly {

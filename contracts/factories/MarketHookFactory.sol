@@ -29,7 +29,7 @@ contract MarketHookFactory is IMarketHooks {
     /// @param pool The address of the pool (represents market)
     /// @param newModel The address of the new interest model
     /// @return calls An array of Call structs to be executed
-    function onUpdateInterestModel(address pool, address newModel) external virtual returns (Call[] memory calls) {}
+    function onUpdateInterestRateModel(address pool, address newModel) external virtual returns (Call[] memory calls) {}
 
     function onUpdateRateKeeper(address pool, address newKeeper) external virtual returns (Call[] memory calls) {}
 
@@ -41,7 +41,7 @@ contract MarketHookFactory is IMarketHooks {
     /// @notice Hook that executes when a new credit manager is added
     /// @param newCreditManager The address of the new credit manager
     /// @return calls An array of Call structs to be executed
-    function onAddCreditManager(address pool, address newCreditManager)
+    function onCreateCreditSuite(address pool, address newCreditManager)
         external
         virtual
         returns (Call[] memory calls)
@@ -50,7 +50,7 @@ contract MarketHookFactory is IMarketHooks {
     /// @notice Hook that executes when a credit manager is removed
     /// @param _creditManager The address of the credit manager being removed
     /// @return calls An array of Call structs to be executed
-    function onRemoveCreditManager(address pool, address _creditManager)
+    function onShutdownCreditSuite(address pool, address _creditManager)
         external
         virtual
         returns (Call[] memory calls)

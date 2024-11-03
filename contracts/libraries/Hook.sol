@@ -36,10 +36,13 @@ library HookExecutor {
         });
     }
 
-    function onUpdateInterestModel(IHook factory, address pool, address newModel) internal returns (HookCheck memory) {
+    function onUpdateInterestRateModel(IHook factory, address pool, address newModel)
+        internal
+        returns (HookCheck memory)
+    {
         return HookCheck({
             factory: address(factory),
-            calls: IMarketHooks(address(factory)).onUpdateInterestModel(pool, newModel)
+            calls: IMarketHooks(address(factory)).onUpdateInterestRateModel(pool, newModel)
         });
     }
 
@@ -57,23 +60,23 @@ library HookExecutor {
         });
     }
 
-    function onAddCreditManager(IHook factory, address pool, address newCreditManager)
+    function onCreateCreditSuite(IHook factory, address pool, address newCreditManager)
         internal
         returns (HookCheck memory)
     {
         return HookCheck({
             factory: address(factory),
-            calls: IMarketHooks(address(factory)).onAddCreditManager(pool, newCreditManager)
+            calls: IMarketHooks(address(factory)).onCreateCreditSuite(pool, newCreditManager)
         });
     }
 
-    function onRemoveCreditManager(IHook factory, address pool, address _creditManager)
+    function onShutdownCreditSuite(IHook factory, address pool, address _creditManager)
         internal
         returns (HookCheck memory)
     {
         return HookCheck({
             factory: address(factory),
-            calls: IMarketHooks(address(factory)).onRemoveCreditManager(pool, _creditManager)
+            calls: IMarketHooks(address(factory)).onShutdownCreditSuite(pool, _creditManager)
         });
     }
 

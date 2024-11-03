@@ -31,6 +31,7 @@ import {
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
+import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
 import {Call, DeployResult} from "../interfaces/Types.sol";
 import {CallBuilder} from "../libraries/CallBuilder.sol";
 
@@ -79,11 +80,11 @@ contract CreditFactoryV3 is AbstractFactory, ICreditFactory {
         weth = IAddressProvider(_addressProvider).getAddressOrRevert(AP_WETH_TOKEN, NO_VERSION_CONTROL);
     }
 
-    /// @notice Creates a new credit suite for the specified pool with provided parameters.
+    /// @notice Deploys a new credit suite for the specified pool with provided parameters.
     /// @param pool The address of the pool for which to create the credit suite.
     /// @param encodedParams The encoded deployment parameters for the credit suite.
     /// @return creditManager The address of the deployed credit manager.
-    function createCreditSuite(address pool, bytes calldata encodedParams)
+    function deployCreditSuite(address pool, bytes calldata encodedParams)
         external
         override
         marketConfiguratorOnly
@@ -92,7 +93,8 @@ contract CreditFactoryV3 is AbstractFactory, ICreditFactory {
         // Control pool version
         CreditSuiteDeployParams memory params = abi.decode(encodedParams, (CreditSuiteDeployParams));
 
-        address priceOracle = IMarketConfigurator(msg.sender).priceOracles(pool);
+        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
+        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
         address[] memory emergencyLiquidators = IMarketConfigurator(msg.sender).emergencyLiquidators();
 
         address creditManager = _deployCreditManager({
@@ -229,9 +231,9 @@ contract CreditFactoryV3 is AbstractFactory, ICreditFactory {
         // TODO: move mapping back to factory
         bytes32 postfix;
         {
-            // check prefix
+            // check postfix
             address underlying = IPoolV3(_pool).asset();
-            postfix = IBytecodeRepository(bytecodeRepository).hasTokenSpecificPrefix(underlying);
+            postfix = IBytecodeRepository(bytecodeRepository).getTokenSpecificPostfix(underlying);
         }
 
         // CreditManager  constructor parameters:

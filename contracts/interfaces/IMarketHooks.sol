@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Gearbox Protocol. Generalized leverage for DeFi protocols
-// (c) Gearbox Foundation, 2023.
-pragma solidity ^0.8.17;
+// (c) Gearbox Foundation, 2024.
+pragma solidity ^0.8.23;
 
 import {Call} from "./Types.sol";
+
+// TODO: consider moving to libraries/Hook.sol
 
 /// @notice Interface for market hooks
 /// @dev These hooks are called by the MarketConfigurator during various configuration events
@@ -32,7 +34,7 @@ interface IMarketHooks {
     /// @param pool The address of the pool (represents market)
     /// @param newModel The address of the new interest model
     /// @return calls An array of Call structs to be executed
-    function onUpdateInterestModel(address pool, address newModel) external returns (Call[] memory calls);
+    function onUpdateInterestRateModel(address pool, address newModel) external returns (Call[] memory calls);
 
     function onUpdateRateKeeper(address pool, address newKeeper) external returns (Call[] memory calls);
 
@@ -45,12 +47,12 @@ interface IMarketHooks {
     /// @notice Hook that executes when a new credit manager is added
     /// @param newCreditManager The address of the new credit manager
     /// @return calls An array of Call structs to be executed
-    function onAddCreditManager(address pool, address newCreditManager) external returns (Call[] memory calls);
+    function onCreateCreditSuite(address pool, address newCreditManager) external returns (Call[] memory calls);
 
-    /// @notice Hook that executes when a credit manager is removed
+    /// @notice Hook that executes when a credit manager is shut down
     /// @param _creditManager The address of the credit manager being removed
     /// @return calls An array of Call structs to be executed
-    function onRemoveCreditManager(address pool, address _creditManager) external returns (Call[] memory calls);
+    function onShutdownCreditSuite(address pool, address _creditManager) external returns (Call[] memory calls);
 
     //
     // PRICE ORACLE

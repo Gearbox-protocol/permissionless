@@ -419,5 +419,5 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
     }
 
     // TODO:
-    function hasTokenSpecificPrefix(address) external view returns (bytes32) {}
+    function getTokenSpecificPostfix(address) external view returns (bytes32) {}
 }

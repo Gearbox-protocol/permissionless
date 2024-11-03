@@ -18,6 +18,7 @@ import {
 
 import {PriceFeedValidationTrait} from "@gearbox-protocol/core-v3/contracts/traits/PriceFeedValidationTrait.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
+import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
 import {AbstractFactory} from "./AbstractFactory.sol";
 
 import {
@@ -31,8 +32,8 @@ import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPr
 
 contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait {
     using NestedPriceFeeds for IPriceFeed;
-    /// @notice Contract version
 
+    /// @notice Contract version
     uint256 public constant override version = 3_10;
     bytes32 public constant override contractType = AP_PRICE_ORACLE_FACTORY;
 
@@ -70,6 +71,7 @@ contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait {
     //
     function onUpdatePriceOracle(address pool, address priceOracle, address prevOracle)
         external
+        marketConfiguratorOnly
         returns (Call[] memory calls)
     {
         address[] memory tokens = IPriceOracleV3(prevOracle).getTokens();
@@ -83,8 +85,13 @@ contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait {
         }
     }
 
-    function onSetPriceFeed(address pool, address token, address priceFeed) external returns (Call[] memory calls) {
-        address priceOracle = IMarketConfigurator(msg.sender).priceOracles(pool);
+    function onSetPriceFeed(address pool, address token, address priceFeed)
+        external
+        marketConfiguratorOnly
+        returns (Call[] memory calls)
+    {
+        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
+        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
 
         // TODO: compute call length somehow?
         // IDEA: limit number of recursive oracles up to 10?
@@ -93,9 +100,11 @@ contract PriceOracleFactoryV3 is AbstractFactory, PriceFeedValidationTrait {
 
     function onSetReservePriceFeed(address pool, address token, address priceFeed)
         external
+        marketConfiguratorOnly
         returns (Call[] memory calls)
     {
-        address priceOracle = IMarketConfigurator(msg.sender).priceOracles(pool);
+        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
+        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
         _setPriceFeed(priceOracle, token, priceFeed, true);
     }
 

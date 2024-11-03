@@ -32,6 +32,7 @@ import {DeployResult} from "../interfaces/Types.sol";
 import {IPoolFactory} from "../interfaces/IPoolFactory.sol";
 import {Call, DeployResult} from "../interfaces/Types.sol";
 import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
+import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
 import {
     IncorrectPriceException,
     InsufficientBalanceException
@@ -121,7 +122,7 @@ contract PoolFactoryV3 is AbstractFactory, MarketHookFactory, IPoolFactory {
     // @param pool - pool address
     // @param newModel - new interest model address
     // @return calls - array of calls to be executed
-    function onUpdateInterestModel(address pool, address newModel)
+    function onUpdateInterestRateModel(address pool, address newModel)
         external
         view
         override(IMarketHooks, MarketHookFactory)
@@ -136,7 +137,7 @@ contract PoolFactoryV3 is AbstractFactory, MarketHookFactory, IPoolFactory {
      * @param _creditManager The address of the creditManager being removed.
      * @return calls An array of Call structs to be executed, setting the credit manager's debt limit to zero.
      */
-    function onRemoveCreditManager(address pool, address _creditManager)
+    function onShutdownCreditSuite(address pool, address _creditManager)
         external
         view
         override(IMarketHooks, MarketHookFactory)
@@ -196,7 +197,8 @@ contract PoolFactoryV3 is AbstractFactory, MarketHookFactory, IPoolFactory {
         override(IMarketHooks, MarketHookFactory)
         returns (Call[] memory calls)
     {
-        address priceOracle = IMarketConfigurator(msg.sender).priceOracles(pool);
+        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
+        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
         // Check that underlying price is non-zero
         if (
             (IPriceOracleV3(priceOracle).getPrice(token) == 0)
@@ -220,7 +222,7 @@ contract PoolFactoryV3 is AbstractFactory, MarketHookFactory, IPoolFactory {
     ) internal returns (address pool) {
         bytes memory constructorParams =
             abi.encode(acl, contractsRegister, underlying, treasury, interestRateModel, uint256(0), name, symbol);
-        bytes32 postfix = IBytecodeRepository(bytecodeRepository).hasTokenSpecificPrefix(underlying);
+        bytes32 postfix = IBytecodeRepository(bytecodeRepository).getTokenSpecificPostfix(underlying);
 
         bytes32 salt = bytes32(bytes20(marketConfigurator));
 

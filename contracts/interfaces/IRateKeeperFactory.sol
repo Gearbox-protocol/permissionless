@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Gearbox Protocol. Generalized leverage for DeFi protocols
-// (c) Gearbox Foundation, 2023.
-pragma solidity ^0.8.17;
+// (c) Gearbox Foundation, 2024.
+pragma solidity ^0.8.23;
 
-import {IConfigurableFactory} from "./IConfigurableFactory.sol";
+import {IConfiguratingFactory} from "./IConfiguratingFactory.sol";
+import {IMarketHooks} from "./IMarketHooks.sol";
 import {Call, DeployResult} from "./Types.sol";
 
-interface IRateKeeperFactory is IConfigurableFactory {
+interface IRateKeeperFactory is IMarketHooks, IConfiguratingFactory {
     function deployRateKeeper(address pool, bytes32 rateKeeperPostfix, bytes calldata encodedParams)
         external
         returns (DeployResult memory);

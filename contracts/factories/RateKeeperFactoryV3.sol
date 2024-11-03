@@ -9,6 +9,7 @@ import {IRateKeeperFactory} from "../interfaces/IRateKeeperFactory.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
+import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 
@@ -22,7 +23,7 @@ import {
 } from "../libraries/ContractLiterals.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
-import {IRateKeeperExt} from "../interfaces/extensions/IRateKeeperExt.sol";
+import {IRateKeeper} from "../interfaces/extensions/IRateKeeper.sol";
 import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.sol";
 import {ITumblerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ITumblerV3.sol";
 
@@ -97,7 +98,7 @@ contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperF
     function onAddToken(address pool, address token, address priceFeed)
         external
         view
-        override
+        override(IMarketHooks, MarketHookFactory)
         returns (Call[] memory calls)
     {
         address rateKeeper = _rateKeeperByPool(pool);
@@ -108,7 +109,11 @@ contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperF
     // rate keeper is removed from the market (replaced with a new one)
     // @param rateKeeper - rate keeper address
     // @return calls - array of calls to be execute
-    function onRemoveRateKeeper(address pool, address rateKeeper) external override returns (Call[] memory calls) {
+    function onRemoveRateKeeper(address pool, address rateKeeper)
+        external
+        override(IMarketHooks, MarketHookFactory)
+        returns (Call[] memory calls)
+    {
         bytes32 type_ = _getRateKeeperType(rateKeeper);
         if (type_ == "RK_GAUGE") {
             calls = CallBuilder.build(_gaugeSetFrozenEpoch(rateKeeper));
@@ -127,7 +132,7 @@ contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperF
     }
 
     function _getRateKeeperType(address rateKeeper) internal view returns (bytes32) {
-        try IRateKeeperExt(rateKeeper).contractType() returns (bytes32 type_) {
+        try IRateKeeper(rateKeeper).contractType() returns (bytes32 type_) {
             return type_;
         } catch {
             return "RK_GAUGE";
@@ -148,7 +153,7 @@ contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperF
             // ({token: token, rate: 1})
             callData = abi.encodeCall(ITumblerV3.addToken, (token, 1));
         } else {
-            callData = abi.encodeCall(IRateKeeperExt.addToken, token);
+            callData = abi.encodeCall(IRateKeeper.addToken, token);
         }
         call = Call({target: rateKeeper, callData: callData});
     }

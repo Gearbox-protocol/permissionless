@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Gearbox Protocol. Generalized leverage for DeFi protocols
 // (c) Gearbox Foundation, 2024.
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.23;
 
-import {VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 struct ContractValue {
@@ -12,19 +11,10 @@ struct ContractValue {
     uint256 version;
 }
 
-interface IAddressProviderEvents {
-    /// @notice Emitted when an address is set for a contract key
-    event SetAddress(string key, address indexed value, uint256 version);
-
-    /// @notice Emitted when a new market configurator added
-    event AddMarketConfigurator(address indexed marketConfigurator);
-
-    /// @notice Emitted when existing market configurator was removed
-    event RemoveMarketConfigurator(address indexed marketConfigurator);
-}
-
 /// @title Address provider interface
-interface IAddressProvider is IAddressProviderEvents, IVersion {
+interface IAddressProvider is IVersion {
+    event SetAddress(string indexed key, uint256 indexed version, address indexed value);
+
     function owner() external view returns (address);
 
     function addresses(string memory key, uint256 _version) external view returns (address);
@@ -42,22 +32,4 @@ interface IAddressProvider is IAddressProviderEvents, IVersion {
     function setAddress(string memory key, address addr, bool saveVersion) external;
 
     function setAddress(address addr, bool saveVersion) external;
-
-    function addMarketConfigurator(address _marketConfigurator) external;
-
-    function removeMarketConfigurator(address _marketConfigurator) external;
-
-    function marketConfigurators() external view returns (address[] memory);
-
-    function isMarketConfigurator(address riskCurator) external view returns (bool);
-
-    function registerPool(address pool) external;
-
-    function registerCreditManager(address creditManager) external;
-
-    function setVotingContractStatus(address votingContract, VotingContractStatus status) external;
-
-    function marketConfiguratorByPool(address pool) external view returns (address);
-
-    function marketConfiguratorByCreditManager(address creditManager) external view returns (address);
 }
