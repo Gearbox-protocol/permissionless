@@ -38,7 +38,7 @@ interface IMarketHooks {
 
     function onUpdateRateKeeper(address pool, address newKeeper) external returns (Call[] memory calls);
 
-    function onRemoveRateKeeper(address pool, address newKeeper) external returns (Call[] memory calls);
+    function onRemoveRateKeeper(address pool) external returns (Call[] memory calls);
 
     //
     // CREDIT MANAGER

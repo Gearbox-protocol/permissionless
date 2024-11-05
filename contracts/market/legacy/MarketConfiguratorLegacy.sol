@@ -3,62 +3,114 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-// import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
+import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
+import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
+import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
-// import {IContractsRegister} from "../../interfaces/extensions/IContractsRegister.sol";
-// import {MarketConfigurator} from "../MarketConfigurator.sol";
+import {IContractsRegister} from "../../interfaces/extensions/IContractsRegister.sol";
+import {IContractsRegisterLegacy} from "../../interfaces/extensions/IContractsRegisterLegacy.sol";
+import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
+import {IMarketConfiguratorFactory} from "../../interfaces/IMarketConfiguratorFactory.sol";
 
-// /// @dev While newer implementations of account factory, bot list and GEAR staking are ownable,
-// ///      older ones share the same ACL as deployed markets, so market configurator of the latter
-// ///      automatically becomes the only entrypoint to those three contracts.
-// contract MarketConfiguratorLegacy is MarketConfigurator {
-//     address public immutable accountFactory;
-//     address public immutable botList;
-//     address public immutable gearStaking;
-//     address public immutable legacyContractsRegister;
+import {AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL} from "../../libraries/ContractLiterals.sol";
 
-//     modifier onlyConfiguratorFactory() {
-//         require(msg.sender == configuratorFactory);
-//         _;
-//     }
+import {CreateMarketParams, MarketConfigurator} from "../MarketConfigurator.sol";
 
-//     modifier onlyContractsRegister() {
-//         require(msg.sender == contractsRegister);
-//         _;
-//     }
+contract MarketConfiguratorLegacy is MarketConfigurator {
+    address public immutable marketConfiguratorFactory;
 
-//     constructor(
-//         address riskCurator_,
-//         address addressProvider_,
-//         address acl_,
-//         address contractsRegister_,
-//         address treasury_,
-//         // QUESTION: can we read it from AP?
-//         address gearStaking_,
-//         address legacyContractsRegister_
-//     ) MarketConfigurator(riskCurator_, addressProvider_, acl_, contractsRegister_, treasury_) {
-//         gearStaking = gearStaking_;
-//         legacyContractsRegister = legacyContractsRegister_;
-//     }
+    address public immutable gearStaking;
+    address public immutable contractsRegisterLegacy;
 
-//     function addPool(address pool) external onlyContractsRegister {
-//         IContractsRegister(legacyContractsRegister).addPool(pool);
-//     }
+    error CallerIsNotMarketConfiguratorException();
 
-//     function addCreditManager(address creditManager) external onlyContractsRegister {
-//         IContractsRegister(legacyContractsRegister).addCreditManager(creditManager);
-//     }
+    modifier marketConfiguratorsOnly() {
+        if (!IMarketConfiguratorFactory(marketConfiguratorFactory).isMarketConfigurator(msg.sender)) {
+            revert CallerIsNotMarketConfiguratorException();
+        }
+        _;
+    }
 
-//     function addCreditManagerToFactory(address creditManager) external onlyConfiguratorFactory {}
+    // TODO: reduce the number of constructor arguments
+    constructor(
+        address riskCurator_,
+        address addressProvider_,
+        address acl_,
+        address contractsRegister_,
+        address treasury_,
+        address gearStaking_,
+        address contractsRegisterLegacy_
+    ) MarketConfigurator(riskCurator_, addressProvider_, acl_, contractsRegister_, treasury_) {
+        marketConfiguratorFactory =
+            IAddressProvider(addressProvider).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
 
-//     function addCreditManagerToBotList(address creditManager) external onlyConfiguratorFactory {
-//         // setCreditManagerApprovedStatus(address,bool)
-//     }
+        gearStaking = gearStaking_;
+        contractsRegisterLegacy = contractsRegisterLegacy_;
 
-//     function setVotingContractStatus(address votingContract, VotingContractStatus status)
-//         external
-//         onlyConfiguratorFactory
-//     {
-//         IGearStakingV3(gearStaking).setVotingContractStatus(votingContract, status);
-//     }
-// }
+        address[] memory pools = IContractsRegisterLegacy(contractsRegisterLegacy).getPools();
+        uint256 numPools = pools.length;
+        for (uint256 i; i < numPools; ++i) {
+            address pool = pools[i];
+            if (!_matchVersion(pool)) continue;
+
+            address[] memory creditManagers = IPoolV3(pool).creditManagers();
+            uint256 numCreditManagers = creditManagers.length;
+            if (numCreditManagers == 0) continue;
+
+            // QUESTION: shall we verify the consistency across all credit managers?
+            address priceOracle = ICreditManagerV3(creditManagers[0]).priceOracle();
+            IContractsRegister(contractsRegister).createMarket(pool, priceOracle);
+
+            address lossLiquidator =
+                ICreditFacadeV3(ICreditManagerV3(creditManagers[0]).creditFacade()).lossLiquidator();
+            if (lossLiquidator != address(0)) {
+                IContractsRegister(contractsRegister).setLossLiquidator(pool, lossLiquidator);
+            }
+
+            for (uint256 j; j < numCreditManagers; ++j) {
+                IContractsRegister(contractsRegister).createCreditSuite(pool, creditManagers[j]);
+            }
+
+            // TODO: set factories
+        }
+    }
+
+    function createMarket(CreateMarketParams calldata params) public override onlyOwner returns (address) {
+        address pool = super.createMarket(params);
+        IContractsRegisterLegacy(contractsRegisterLegacy).addPool(pool);
+        return pool;
+    }
+
+    function createCreditSuite(address pool, bytes calldata encodedParams)
+        public
+        override
+        onlyOwner
+        returns (address)
+    {
+        address creditManager = super.createCreditSuite(pool, encodedParams);
+        IContractsRegisterLegacy(contractsRegisterLegacy).addCreditManager(creditManager);
+        return creditManager;
+    }
+
+    function setVotingContractStatus(address votingContract, VotingContractStatus status)
+        external
+        marketConfiguratorsOnly
+    {
+        // TODO: check that `votingContract` belongs to caller (how though? might not even implement `ACLTrait`)
+        IGearStakingV3(gearStaking).setVotingContractStatus(votingContract, status);
+    }
+
+    // --------- //
+    // INTERNALS //
+    // --------- //
+
+    function _matchVersion(address contract_) internal view returns (bool) {
+        try IVersion(contract_).version() returns (uint256 version_) {
+            return version_ >= 300 && version_ < 400;
+        } catch {
+            return false;
+        }
+    }
+}

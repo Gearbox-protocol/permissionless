@@ -53,11 +53,8 @@ library HookExecutor {
         });
     }
 
-    function onRemoveRateKeeper(IHook factory, address pool, address newKeeper) internal returns (HookCheck memory) {
-        return HookCheck({
-            factory: address(factory),
-            calls: IMarketHooks(address(factory)).onRemoveRateKeeper(pool, newKeeper)
-        });
+    function onRemoveRateKeeper(IHook factory, address pool) internal returns (HookCheck memory) {
+        return HookCheck({factory: address(factory), calls: IMarketHooks(address(factory)).onRemoveRateKeeper(pool)});
     }
 
     function onCreateCreditSuite(IHook factory, address pool, address newCreditManager)

@@ -12,12 +12,15 @@ import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
+import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
+import {IVotingContract} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVotingContract.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
 import {MarketHookFactory} from "./MarketHookFactory.sol";
 import {
     DOMAIN_RATE_KEEPER,
     AP_RATE_KEEPER_FACTORY,
+    AP_MARKET_CONFIGURATOR_LEGACY,
     NO_VERSION_CONTROL,
     AP_GEAR_STAKING
 } from "../libraries/ContractLiterals.sol";
@@ -30,12 +33,17 @@ import {ITumblerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ITumble
 import {Call, DeployResult} from "../interfaces/Types.sol";
 import {CallBuilder} from "../libraries/CallBuilder.sol";
 
-contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperFactory {
+contract RateKeeperFactory is AbstractFactory, MarketHookFactory, IRateKeeperFactory {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
     bytes32 public constant override contractType = AP_RATE_KEEPER_FACTORY;
 
-    constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
+    address public immutable marketConfiguratorLegacy;
+
+    constructor(address addressProvider_) AbstractFactory(addressProvider_) {
+        marketConfiguratorLegacy =
+            IAddressProvider(addressProvider_).getAddressOrRevert(AP_MARKET_CONFIGURATOR_LEGACY, NO_VERSION_CONTROL);
+    }
 
     //
     /**
@@ -72,10 +80,18 @@ contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperF
             DOMAIN_RATE_KEEPER, postfix, version, constructorParams, bytes32(bytes20(msg.sender))
         );
 
-        address[] memory accessList = new address[](1);
+        address[] memory accessList;
+        Call[] memory onInstallOps;
+        if (_isVotingContract(rateKeeper)) {
+            accessList = new address[](2);
+            accessList[1] = marketConfiguratorLegacy;
+            onInstallOps = CallBuilder.build(_setVotingContractStatus(rateKeeper, VotingContractStatus.ALLOWED));
+        } else {
+            accessList = new address[](1);
+        }
         accessList[0] = rateKeeper;
 
-        return DeployResult({newContract: rateKeeper, accessList: accessList, onInstallOps: new Call[](0)});
+        return DeployResult({newContract: rateKeeper, accessList: accessList, onInstallOps: onInstallOps});
     }
 
     // @dev Hook which is called when rate keeper is configured
@@ -105,20 +121,24 @@ contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperF
         calls = CallBuilder.build(_addToken(rateKeeper, token, _getRateKeeperType(rateKeeper)));
     }
 
-    // @dev This hook exists for RateKeeperFactoryV3 only, and it's called when
+    // @dev This hook exists for RateKeeperFactory only, and it's called when
     // rate keeper is removed from the market (replaced with a new one)
-    // @param rateKeeper - rate keeper address
     // @return calls - array of calls to be execute
-    function onRemoveRateKeeper(address pool, address rateKeeper)
+    function onRemoveRateKeeper(address pool)
         external
         override(IMarketHooks, MarketHookFactory)
         returns (Call[] memory calls)
     {
+        address rateKeeper = _rateKeeperByPool(pool);
         bytes32 type_ = _getRateKeeperType(rateKeeper);
         if (type_ == "RK_GAUGE") {
             calls = CallBuilder.build(_gaugeSetFrozenEpoch(rateKeeper));
         } else {
             // TODO: add generic function for all rate keepers
+        }
+
+        if (_isVotingContract(rateKeeper)) {
+            calls = CallBuilder.append(calls, _setVotingContractStatus(rateKeeper, VotingContractStatus.UNVOTE_ONLY));
         }
     }
 
@@ -139,6 +159,14 @@ contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperF
         }
     }
 
+    function _isVotingContract(address rateKeeper) internal view returns (bool) {
+        try IVotingContract(rateKeeper).voter() returns (address) {
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     function _gaugeSetFrozenEpoch(address rateKeeper) internal pure returns (Call memory call) {
         call = Call({target: rateKeeper, callData: abi.encodeCall(IGaugeV3.setFrozenEpoch, true)});
     }
@@ -156,5 +184,16 @@ contract RateKeeperFactoryV3 is AbstractFactory, MarketHookFactory, IRateKeeperF
             callData = abi.encodeCall(IRateKeeper.addToken, token);
         }
         call = Call({target: rateKeeper, callData: callData});
+    }
+
+    function _setVotingContractStatus(address rateKeeper, VotingContractStatus status)
+        internal
+        view
+        returns (Call memory call)
+    {
+        call = Call({
+            target: marketConfiguratorLegacy,
+            callData: abi.encodeCall(IGearStakingV3.setVotingContractStatus, (rateKeeper, status))
+        });
     }
 }

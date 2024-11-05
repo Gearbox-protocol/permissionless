@@ -18,7 +18,6 @@ import {IACL} from "../interfaces/extensions/IACL.sol";
 import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
 
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
-import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
 import {IRateKeeperFactory} from "../interfaces/IRateKeeperFactory.sol";
 import {IMarketConfigurator, CreateMarketParams} from "../interfaces/IMarketConfigurator.sol";
 import {IInterestRateModelFactory} from "../interfaces/IInterestRateModelFactory.sol";
@@ -26,7 +25,7 @@ import {IPriceOracleFactory} from "../interfaces/IPriceOracleFactory.sol";
 import {ICreditFactory} from "../interfaces/ICreditFactory.sol";
 import {IPoolFactory} from "../interfaces/IPoolFactory.sol";
 
-import {AP_MARKET_CONFIGURATOR, AP_PRICE_FEED_STORE} from "../libraries/ContractLiterals.sol";
+import {AP_MARKET_CONFIGURATOR} from "../libraries/ContractLiterals.sol";
 
 import {Call, DeployResult} from "../interfaces/Types.sol";
 import {IConfiguratingFactory} from "../interfaces/IConfiguratingFactory.sol";
@@ -58,7 +57,6 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     address latestRateKeeperFactory;
     address latestPriceOracleFactory;
     address latestCreditFactory;
-    address gearStakingFactory;
 
     // TODO: potentially move to contracts register as well
     // ACL seems to be a better place for it though since this list is the same for all markets
@@ -117,7 +115,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
      *        - rateKeeperPostfix: The postfix for the Rate Keeper
      *        - rateKeeperParams: Encoded parameters for Rate Keeper creation
      */
-    function createMarket(CreateMarketParams calldata params) external onlyOwner returns (address pool) {
+    function createMarket(CreateMarketParams calldata params) public virtual onlyOwner returns (address pool) {
         DeployResult memory deployResult =
             IPoolFactory(latestPoolFactory).deployPool(params.underlying, params.name, params.symbol);
         _executeOnDeploy(latestPoolFactory, deployResult);
@@ -144,11 +142,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     function shutdownMarket(address pool) external onlyOwner {
         _ensureRegisteredPool(pool);
 
-        // remove rate keeper from gearstakring
-        // QUESTION: should we move it to pool factory?
-
-        // TODO: compute rateKeeper?
-        // _executeHook(IHook(gearStakingFactory).onRemoveRateKeeper(pool, rateKeeper));
+        _executeHook(IHook(_getRateKeeperFactory(pool)).onRemoveRateKeeper(pool));
         _executeHook(IHook(_getPoolFactory(pool)).onShutdownMarket(pool));
 
         IContractsRegister(contractsRegister).shutdownMarket(pool);
@@ -180,7 +174,8 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     // ----------------------- //
 
     function createCreditSuite(address pool, bytes calldata encodedParams)
-        external
+        public
+        virtual
         onlyOwner
         returns (address creditManager)
     {
@@ -298,8 +293,8 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     function updateRateKeeper(address pool, bytes32 postfix, bytes calldata params) external onlyOwner {
         _ensureRegisteredPool(pool);
-        // TODO: check if rate keeper is already set (it is set for sure)
-        // then execute onRemoveRateKeeper hook
+
+        _executeHook(IHook(_getRateKeeperFactory(pool)).onRemoveRateKeeper(pool));
         _updateRateKeeper(pool, postfix, params);
     }
 
@@ -313,7 +308,6 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _setRateKeeperFactory(pool, latestRateKeeperFactory);
 
         _executeHook(IHook(_getPoolFactory(pool)).onUpdateRateKeeper(pool, rateKeeper));
-        _executeHook(IHook(gearStakingFactory).onUpdateRateKeeper(pool, rateKeeper));
     }
 
     function _deployRateKeeper(address pool, bytes32 postfix, bytes memory params) internal returns (address) {

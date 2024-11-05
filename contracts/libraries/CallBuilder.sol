@@ -71,4 +71,13 @@ library CallBuilder {
         calls[4] = call5;
         calls[5] = call6;
     }
+
+    function append(Call[] memory calls, Call memory call) internal pure returns (Call[] memory newCalls) {
+        uint256 numCalls = calls.length;
+        newCalls = new Call[](numCalls + 1);
+        for (uint256 i; i < numCalls; ++i) {
+            newCalls[i] = calls[i];
+        }
+        newCalls[numCalls] = call;
+    }
 }

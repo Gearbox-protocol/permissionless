@@ -33,7 +33,7 @@ contract MarketHookFactory is IMarketHooks {
 
     function onUpdateRateKeeper(address pool, address newKeeper) external virtual returns (Call[] memory calls) {}
 
-    function onRemoveRateKeeper(address pool, address newKeeper) external virtual returns (Call[] memory calls) {}
+    function onRemoveRateKeeper(address pool) external virtual returns (Call[] memory calls) {}
     //
     // CREDIT MANAGER
     //

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Gearbox Protocol. Generalized leverage for DeFi protocols
 // (c) Gearbox Foundation, 2024.
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.23;
 
 uint256 constant NO_VERSION_CONTROL = 0;
 
@@ -40,6 +40,7 @@ bytes32 constant AP_CREDIT_FACADE = "CREDIT_FACADE";
 bytes32 constant AP_CREDIT_CONFIGURATOR = "CREDIT_CONFIGURATOR";
 bytes32 constant AP_DEGEN_NFT = "DEGEN_NFT";
 bytes32 constant AP_MARKET_CONFIGURATOR = "MARKET_CONFIGURATOR";
+bytes32 constant AP_MARKET_CONFIGURATOR_LEGACY = "MARKET_CONFIGURATOR_LEGACY";
 bytes32 constant AP_MARKET_CONFIGURATOR_FACTORY = "MARKET_CONFIGURATOR_FACTORY";
 
 bytes32 constant AP_INTEREST_MODEL_FACTORY = "INTEREST_MODEL_FACTORY";
