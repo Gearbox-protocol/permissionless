@@ -4,9 +4,9 @@
 pragma solidity ^0.8.23;
 
 import {IConfiguratingFactory} from "./IConfiguratingFactory.sol";
-import {ICreditHooks} from "./ICreditHooks.sol";
+import {ICreditSuiteHooks} from "./ICreditSuiteHooks.sol";
 import {DeployResult} from "./Types.sol";
 
-interface ICreditFactory is ICreditHooks, IConfiguratingFactory {
+interface ICreditFactory is ICreditSuiteHooks, IConfiguratingFactory {
     function deployCreditSuite(address pool, bytes calldata encodedParams) external returns (DeployResult memory);
 }

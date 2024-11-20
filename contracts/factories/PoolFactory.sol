@@ -10,7 +10,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
-import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
+import {IPriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
 import {
     IncorrectPriceException,
     InsufficientBalanceException
@@ -21,7 +21,7 @@ import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {MarketHookFactory} from "./MarketHookFactory.sol";
+import {MarketHooks} from "./MarketHooks.sol";
 import {
     AP_POOL_QUOTA_KEEPER,
     AP_POOL_FACTORY,
@@ -31,13 +31,11 @@ import {
 } from "../libraries/ContractLiterals.sol";
 
 import {CallBuilder} from "../libraries/CallBuilder.sol";
-import {DeployResult} from "../interfaces/Types.sol";
 import {IPoolFactory} from "../interfaces/IPoolFactory.sol";
 import {Call, DeployResult} from "../interfaces/Types.sol";
 import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
-import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
 
-contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
+contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
     using SafeERC20 for IERC20;
     using CallBuilder for Call;
 
@@ -66,7 +64,7 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
     function deployPool(address underlying, string calldata name, string calldata symbol)
         external
         override
-        marketConfiguratorsOnly
+        onlyMarketConfigurators
         returns (DeployResult memory)
     {
         address acl = IMarketConfigurator(msg.sender).acl();
@@ -81,11 +79,10 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
             treasury: treasury,
             interestRateModel: defaultInterestRateModel,
             name: name,
-            symbol: symbol,
-            version_: version
+            symbol: symbol
         });
 
-        address quotaKeeper = _deployQuotaKeeper({marketConfigurator: msg.sender, pool: pool, version_: version});
+        address quotaKeeper = _deployQuotaKeeper({marketConfigurator: msg.sender, pool: pool});
 
         // Inflation attack protection
         if (IERC20(underlying).balanceOf(address(this)) < 1e5) revert InsufficientBalanceException();
@@ -107,10 +104,10 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
     // MARKET HOOKS //
     // ------------ //
 
-    function onCreateMarket(address pool, address, address interestRateModel, address rateKeeper, address)
+    function onCreateMarket(address pool, address, address interestRateModel, address rateKeeper, address, address)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
+        override(IMarketHooks, MarketHooks)
         returns (Call[] memory calls)
     {
         calls = CallBuilder.build(
@@ -121,7 +118,7 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
     function onShutdownMarket(address pool)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
+        override(IMarketHooks, MarketHooks)
         returns (Call[] memory calls)
     {
         if (IPoolV3(pool).totalBorrowed() != 0) {
@@ -134,7 +131,7 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
     function onCreateCreditSuite(address pool, address creditManager)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
+        override(IMarketHooks, MarketHooks)
         returns (Call[] memory)
     {
         return CallBuilder.build(
@@ -151,7 +148,7 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
     function onShutdownCreditSuite(address creditManager)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
+        override(IMarketHooks, MarketHooks)
         returns (Call[] memory calls)
     {
         address pool = ICreditManagerV3(creditManager).pool();
@@ -170,7 +167,7 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
     function onUpdateInterestRateModel(address pool, address newInterestRateModel, address)
         external
         pure
-        override(IMarketHooks, MarketHookFactory)
+        override(IMarketHooks, MarketHooks)
         returns (Call[] memory)
     {
         return CallBuilder.build(_setInterestRateModel(pool, newInterestRateModel));
@@ -186,7 +183,7 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
     function onUpdateRateKeeper(address pool, address newRateKeeper, address)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
+        override(IMarketHooks, MarketHooks)
         returns (Call[] memory)
     {
         return CallBuilder.build(_setRateKeeper(_quotaKeeper(pool), newRateKeeper));
@@ -202,16 +199,14 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
     function onSetPriceFeed(address pool, address token, address priceFeed)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
-        returns (Call[] memory calls)
+        override(IMarketHooks, MarketHooks)
+        returns (Call[] memory)
     {
-        // FIXME: seems like we must validate `priceFeed`'s price, not price oracle's
-        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
-        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
-        if (
-            IPriceOracleV3(priceOracle).getPrice(token) == 0
-                && (token == IPoolV3(pool).asset() || _quota(pool, token) != 0)
-        ) revert IncorrectPriceException();
+        (, int256 answer,,,) = IPriceFeed(priceFeed).latestRoundData();
+        if (answer == 0 && (token == IPoolV3(pool).asset() || _quota(pool, token) != 0)) {
+            revert IncorrectPriceException();
+        }
+        return CallBuilder.build();
     }
 
     // ------------- //
@@ -235,6 +230,16 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
         }
     }
 
+    function manage(address, bytes calldata callData)
+        external
+        override
+        onlyMarketConfigurators
+        returns (Call[] memory)
+    {
+        // TODO: implement
+        revert ForbiddenManagementCall(bytes4(callData));
+    }
+
     // --------- //
     // INTERNALS //
     // --------- //
@@ -247,8 +252,7 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
         address treasury,
         address interestRateModel,
         string calldata name,
-        string calldata symbol,
-        uint256 version_
+        string calldata symbol
     ) internal returns (address) {
         bytes32 postfix = IBytecodeRepository(bytecodeRepository).getTokenSpecificPostfix(underlying);
         bytes memory constructorParams =
@@ -257,19 +261,16 @@ contract PoolFactory is AbstractFactory, MarketHookFactory, IPoolFactory {
         return _deployByDomain({
             domain: DOMAIN_POOL,
             postfix: postfix,
-            version_: version_,
+            version_: version,
             constructorParams: constructorParams,
             salt: salt
         });
     }
 
-    function _deployQuotaKeeper(address marketConfigurator, address pool, uint256 version_)
-        internal
-        returns (address)
-    {
+    function _deployQuotaKeeper(address marketConfigurator, address pool) internal returns (address) {
         return _deploy({
             type_: AP_POOL_QUOTA_KEEPER,
-            version_: version_,
+            version_: version,
             constructorParams: abi.encode(pool),
             salt: bytes32(bytes20(marketConfigurator))
         });

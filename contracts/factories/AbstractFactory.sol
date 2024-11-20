@@ -16,6 +16,8 @@ import {
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
 
+// TODO: maybe move IVersion somewhere else to avoid name clashing
+// QUESTION: shall it be ownable?
 abstract contract AbstractFactory is IVersion {
     address public immutable addressProvider;
     address public immutable bytecodeRepository;
@@ -23,7 +25,9 @@ abstract contract AbstractFactory is IVersion {
 
     error CallerIsNotMarketConfiguratorException();
 
-    modifier marketConfiguratorsOnly() {
+    error InvalidConstructorParamsException();
+
+    modifier onlyMarketConfigurators() {
         _ensureCallerIsMarketConfigurator();
         _;
     }

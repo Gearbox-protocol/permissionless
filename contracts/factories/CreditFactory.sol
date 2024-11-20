@@ -88,7 +88,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     function deployCreditSuite(address pool, bytes calldata encodedParams)
         external
         override
-        marketConfiguratorsOnly
+        onlyMarketConfigurators
         returns (DeployResult memory)
     {
         // Control pool version
@@ -144,7 +144,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     function configure(address creditManager, bytes calldata callData)
         external
         override
-        marketConfiguratorsOnly
+        onlyMarketConfigurators
         returns (Call[] memory calls)
     {
         bytes4 selector = bytes4(callData);
@@ -166,6 +166,16 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         }
 
         // QUESTION: mapping for other functions of if..else statements?
+    }
+
+    function manage(address, bytes calldata callData)
+        external
+        override
+        onlyMarketConfigurators
+        returns (Call[] memory)
+    {
+        // TODO: implement
+        revert ForbiddenManagementCall(bytes4(callData));
     }
 
     // // add as subfuncton of creditManager

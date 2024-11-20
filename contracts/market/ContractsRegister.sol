@@ -194,26 +194,6 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
     }
 
     // --------- //
-    // FACTORIES //
-    // --------- //
-
-    // QUESTION: are we sure we want to keep them here?
-
-    function getPoolFactory(address pool) external view override returns (address) {}
-    function getCreditFactory(address creditManager) external view override returns (address) {}
-    function getPriceOracleFactory(address pool) external view override returns (address) {}
-    function getLossLiquidatorFactory(address pool) external view override returns (address) {}
-    function getRateKeeperFactory(address pool) external view override returns (address) {}
-    function getInterestRateModelFactory(address pool) external view override returns (address) {}
-
-    function setPoolFactory(address pool, address factory) external override configuratorOnly {}
-    function setCreditFactory(address creditManager, address factory) external override configuratorOnly {}
-    function setPriceOracleFactory(address pool, address factory) external override configuratorOnly {}
-    function setLossLiquidatorFactory(address pool, address factory) external override configuratorOnly {}
-    function setRateKeeperFactory(address pool, address factory) external override configuratorOnly {}
-    function setInterestRateModelFactory(address pool, address factory) external override configuratorOnly {}
-
-    // --------- //
     // INTERNALS //
     // --------- //
 

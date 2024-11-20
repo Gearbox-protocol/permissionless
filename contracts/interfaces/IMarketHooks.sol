@@ -5,8 +5,6 @@ pragma solidity ^0.8.23;
 
 import {Call} from "./Types.sol";
 
-// TODO: consider moving to libraries/Hook.sol
-
 /// @notice Interface for market hooks
 /// @dev These hooks are called by the MarketConfigurator during various configuration events
 /// Each hook returns an array of Call structs, allowing for flexible actions to be executed
@@ -17,6 +15,7 @@ interface IMarketHooks {
         address priceOracle,
         address interestRateModel,
         address rateKeeper,
+        address lossLiquidator,
         address underlyingPriceFeed
     ) external returns (Call[] memory calls);
 
@@ -26,14 +25,14 @@ interface IMarketHooks {
     function onShutdownMarket(address pool) external returns (Call[] memory calls);
 
     /// @notice Hook that executes when a new credit manager is added
-    /// @param newCreditManager The address of the new credit manager
+    /// @param creditManager The address of the new credit manager
     /// @return calls An array of Call structs to be executed
-    function onCreateCreditSuite(address pool, address newCreditManager) external returns (Call[] memory calls);
+    function onCreateCreditSuite(address pool, address creditManager) external returns (Call[] memory calls);
 
     /// @notice Hook that executes when a credit manager is shut down
-    /// @param _creditManager The address of the credit manager being removed
+    /// @param creditManager The address of the credit manager being removed
     /// @return calls An array of Call structs to be executed
-    function onShutdownCreditSuite(address _creditManager) external returns (Call[] memory calls);
+    function onShutdownCreditSuite(address creditManager) external returns (Call[] memory calls);
 
     /// @notice Hook that executes when the price oracle is updated
     /// @param pool The address of the pool (represents market)

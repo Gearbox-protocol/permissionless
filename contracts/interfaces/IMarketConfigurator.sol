@@ -17,13 +17,15 @@ interface IMarketConfigurator is IVersion {
     // Thrown if factory attempting to overwrite exsting addess in accessList
     error ContractAlreadyInAccessListException(address);
 
+    error CallerIsNotSelfException();
+
     function addressProvider() external view returns (address);
     function marketConfiguratorFactory() external view returns (address);
     function acl() external view returns (address);
     function contractsRegister() external view returns (address);
     function treasury() external view returns (address);
 
-    function emergencyLiquidators() external view returns (address[] memory);
+    function callMarketConfiguratorFactory(bytes calldata data) external;
 
     // ----------------- //
     // MARKET MANAGEMENT //
@@ -31,11 +33,12 @@ interface IMarketConfigurator is IVersion {
 
     function createMarket(
         address underlying,
-        address underlyingPriceFeed,
         string calldata name,
         string calldata symbol,
         DeployParams calldata interestRateModelParams,
-        DeployParams calldata rateKeeperParams
+        DeployParams calldata rateKeeperParams,
+        DeployParams calldata lossLiquidatorParams,
+        address underlyingPriceFeed
     ) external returns (address pool);
 
     function shutdownMarket(address pool) external;
@@ -48,7 +51,6 @@ interface IMarketConfigurator is IVersion {
     // CREDIT SUITE MANAGEMENT //
     // ----------------------- //
 
-    // TODO: probably remove postfix
     function createCreditSuite(address pool, bytes calldata encdodedParams) external returns (address creditManager);
 
     function shutdownCreditSuite(address creditManager) external;
@@ -102,6 +104,8 @@ interface IMarketConfigurator is IVersion {
     function removePausableAdmin(address admin) external;
 
     function removeUnpausableAdmin(address admin) external;
+
+    function emergencyLiquidators() external view returns (address[] memory);
 
     function addEmergencyLiquidator(address liquidator) external;
 

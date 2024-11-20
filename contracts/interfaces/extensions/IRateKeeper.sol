@@ -7,4 +7,5 @@ import {IRateKeeper as IRateKeeperBase} from "@gearbox-protocol/core-v3/contract
 
 interface IRateKeeper is IRateKeeperBase {
     function addToken(address token) external;
+    // TODO: introduce generalized functions for activation/deactivation (separate cases for tumbler and gauge)
 }

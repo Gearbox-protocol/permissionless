@@ -24,9 +24,9 @@ import {
 import {NestedPriceFeeds} from "../libraries/NestedPriceFeeds.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {MarketHookFactory} from "./MarketHookFactory.sol";
+import {MarketHooks} from "./MarketHooks.sol";
 
-contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHookFactory {
+contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks {
     using CallBuilder for Call[];
     using NestedPriceFeeds for IPriceFeed;
 
@@ -36,7 +36,7 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHookF
     /// @notice Contract type
     bytes32 public constant override contractType = AP_PRICE_ORACLE_FACTORY;
 
-    /// @notice TODO
+    /// @notice Address of the price feed store contract
     address public immutable priceFeedStore;
 
     /// @notice Thrown if an unauthorized price feed is used for a token
@@ -48,7 +48,7 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHookF
         priceFeedStore = _getContract(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
     }
 
-    function deployPriceOracle(address pool) external override marketConfiguratorsOnly returns (DeployResult memory) {
+    function deployPriceOracle(address pool) external override onlyMarketConfigurators returns (DeployResult memory) {
         address acl = IPoolV3(pool).acl();
 
         address priceOracle = _deploy({
@@ -68,10 +68,10 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHookF
     // MARKET HOOKS //
     // ------------ //
 
-    function onCreateMarket(address pool, address priceOracle, address, address, address underlyingPriceFeed)
+    function onCreateMarket(address pool, address priceOracle, address, address, address, address underlyingPriceFeed)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
+        override(IMarketHooks, MarketHooks)
         returns (Call[] memory)
     {
         return _setPriceFeed(priceOracle, IPoolV3(pool).underlyingToken(), underlyingPriceFeed, false);
@@ -80,14 +80,11 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHookF
     function onUpdatePriceOracle(address, address newPriceOracle, address oldPriceOracle)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
-        marketConfiguratorsOnly
+        override(IMarketHooks, MarketHooks)
+        onlyMarketConfigurators
         returns (Call[] memory calls)
     {
-        // QUESTION: how come pool never pops up in this function?
-        // seems like either `priceOracle` or `prevOracle` is redundant as it can be read from the contracts register
         address[] memory tokens = IPriceOracleV3(oldPriceOracle).getTokens();
-
         uint256 numTokens = tokens.length;
         for (uint256 i; i < numTokens; ++i) {
             // FIXME: reallocating the whole array is not the most optimal solution
@@ -106,8 +103,8 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHookF
     function onAddToken(address pool, address token, address priceFeed)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
-        marketConfiguratorsOnly
+        override(IMarketHooks, MarketHooks)
+        onlyMarketConfigurators
         returns (Call[] memory)
     {
         // TODO: reconsider, maybe should add other checks
@@ -119,8 +116,8 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHookF
     function onSetPriceFeed(address pool, address token, address priceFeed)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
-        marketConfiguratorsOnly
+        override(IMarketHooks, MarketHooks)
+        onlyMarketConfigurators
         returns (Call[] memory)
     {
         address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
@@ -131,8 +128,8 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHookF
     function onSetReservePriceFeed(address pool, address token, address priceFeed)
         external
         view
-        override(IMarketHooks, MarketHookFactory)
-        marketConfiguratorsOnly
+        override(IMarketHooks, MarketHooks)
+        onlyMarketConfigurators
         returns (Call[] memory)
     {
         address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
@@ -160,11 +157,11 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHookF
         }
         uint32 stalenessPeriod = IPriceFeedStore(priceFeedStore).getStalenessPeriod(priceFeed);
 
-        Call[] memory calls = new Call[](1);
-        calls[0] = reserve
-            ? _setReservePriceFeed(priceOracle, token, priceFeed, stalenessPeriod)
-            : _setPriceFeed(priceOracle, token, priceFeed, stalenessPeriod);
-
+        Call[] memory calls = CallBuilder.build(
+            reserve
+                ? _setReservePriceFeed(priceOracle, token, priceFeed, stalenessPeriod)
+                : _setPriceFeed(priceOracle, token, priceFeed, stalenessPeriod)
+        );
         return _addUpdatableFeeds(priceOracle, priceFeed, calls);
     }
 

@@ -32,28 +32,23 @@ import {
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
 
-import {ICreditHooks} from "../interfaces/ICreditHooks.sol";
+import {ICreditSuiteHooks} from "../interfaces/ICreditSuiteHooks.sol";
 import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
 import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 import {IConfiguratingFactory} from "../interfaces/IConfiguratingFactory.sol";
 
-import {IHook, HookCheck, HookExecutor} from "../libraries/Hook.sol";
-
 import {ContractsRegister} from "./ContractsRegister.sol";
 
 // TODO:
-// - degen NFT management
+// - factories upgradability
 // - migration to new market configurator
 // - rescue
+// - management functions (i.e., shorter timelock but less checks)
 
 /// @title Market configurator
 contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
-    using HookExecutor for IHook;
-
-    uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = AP_MARKET_CONFIGURATOR;
 
     address public immutable override addressProvider;
     address public immutable override marketConfiguratorFactory;
@@ -61,16 +56,6 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     address public immutable override contractsRegister;
     address public immutable override treasury;
 
-    address latestInterestRateModelFactory;
-    address latestPoolFactory;
-    address latestRateKeeperFactory;
-    address latestPriceOracleFactory;
-    address latestLossLiquidatorFactory;
-
-    address latestCreditFactory;
-
-    // TODO: potentially move to contracts register as well
-    // ACL seems to be a better place for it though since this list is the same for all markets
     EnumerableSet.AddressSet internal _emergencyLiquidators;
 
     // Access list is additional protection measure to restrict contracts
@@ -80,7 +65,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     mapping(address contract_ => address factory) public accessList;
 
     modifier onlySelf() {
-        if (msg.sender != address(this)) revert();
+        if (msg.sender != address(this)) revert CallerIsNotSelfException();
         _;
     }
 
@@ -100,13 +85,23 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
         acl = acl_;
         treasury = treasury_;
-
         contractsRegister = address(new ContractsRegister(acl));
     }
 
-    // QUESTION: switch to role model?
-    function emergencyLiquidators() external view override returns (address[] memory) {
-        return _emergencyLiquidators.values();
+    /// @notice Contract version
+    /// @dev `MarketConfiguratorLegacy` might have different version, hence the `virtual` modifier
+    function version() external view virtual override returns (uint256) {
+        return 3_10;
+    }
+
+    /// @notice Contract type
+    /// @dev `MarketConfiguratorLegacy` has different type, hence the `virtual` modifier
+    function contractType() external view virtual override returns (bytes32) {
+        return AP_MARKET_CONFIGURATOR;
+    }
+
+    function callMarketConfiguratorFactory(bytes calldata data) external override onlySelf {
+        marketConfiguratorFactory.functionCall(data);
     }
 
     // ----------------- //
@@ -115,29 +110,25 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     function createMarket(
         address underlying,
-        address underlyingPriceFeed,
         string calldata name,
         string calldata symbol,
         DeployParams calldata interestRateModelParams,
-        DeployParams calldata rateKeeperParams
+        DeployParams calldata rateKeeperParams,
+        DeployParams calldata lossLiquidatorParams,
+        address underlyingPriceFeed
     ) external override onlyOwner returns (address pool) {
         pool = _deployPool(underlying, name, symbol);
         address priceOracle = _deployPriceOracle(pool);
         address interestRateModel = _deployInterestRateModel(pool, interestRateModelParams);
         address rateKeeper = _deployRateKeeper(pool, rateKeeperParams);
+        address lossLiquidator = _deployLossLiquidator(pool, lossLiquidatorParams);
 
         IContractsRegister(contractsRegister).createMarket(pool, priceOracle);
-        _setPoolFactory(pool, latestPoolFactory);
-        _setPriceOracleFactory(pool, latestPriceOracleFactory);
-        _setInterestRateModelFactory(pool, latestInterestRateModelFactory);
-        _setRateKeeperFactory(pool, latestRateKeeperFactory);
-
-        // yes, it's november 2024 and we still get stack too deep; no, we're not gonna use IR
-        address underlyingPriceFeed_ = underlyingPriceFeed;
         _executeMarketHooks(
             pool,
             abi.encodeCall(
-                IMarketHooks.onCreateMarket, (pool, priceOracle, interestRateModel, rateKeeper, underlyingPriceFeed_)
+                IMarketHooks.onCreateMarket,
+                (pool, priceOracle, interestRateModel, rateKeeper, lossLiquidator, underlyingPriceFeed)
             )
         );
     }
@@ -160,16 +151,22 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _configureContract(_getPoolFactory(pool), pool, data);
     }
 
-    function _deployPool(address underlying, string calldata name, string calldata symbol) internal returns (address) {
-        DeployResult memory deployResult = IPoolFactory(latestPoolFactory).deployPool(underlying, name, symbol);
-        _executeOnDeploy(latestPoolFactory, deployResult);
-        return deployResult.newContract;
+    function _deployPool(address underlying, string calldata name, string calldata symbol)
+        internal
+        returns (address pool)
+    {
+        address factory = _getLatestPoolFactory();
+        DeployResult memory deployResult = IPoolFactory(factory).deployPool(underlying, name, symbol);
+        _executeOnDeploy(factory, deployResult);
+        pool = deployResult.newContract;
+        _setPoolFactory(pool, factory);
     }
 
     // ----------------------- //
     // CREDIT SUITE MANAGEMENT //
     // ----------------------- //
 
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
     function createCreditSuite(address pool, bytes calldata encodedParams)
         public
         virtual
@@ -180,7 +177,6 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _ensureRegisteredPool(pool);
 
         creditManager = _deployCreditSuite(pool, encodedParams);
-        _setCreditFactory(creditManager, latestCreditFactory);
 
         IContractsRegister(contractsRegister).createCreditSuite(pool, creditManager);
         _executeMarketHooks(pool, abi.encodeCall(IMarketHooks.onCreateCreditSuite, (pool, creditManager)));
@@ -200,10 +196,12 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _configureContract(_getCreditFactory(creditManager), creditManager, data);
     }
 
-    function _deployCreditSuite(address pool, bytes calldata encodedParams) internal returns (address) {
-        DeployResult memory deployResult = ICreditFactory(latestCreditFactory).deployCreditSuite(pool, encodedParams);
-        _executeOnDeploy(latestCreditFactory, deployResult);
-        return deployResult.newContract;
+    function _deployCreditSuite(address pool, bytes calldata encodedParams) internal returns (address creditManager) {
+        address factory = _getLatestCreditFactory();
+        DeployResult memory deployResult = ICreditFactory(factory).deployCreditSuite(pool, encodedParams);
+        _executeOnDeploy(factory, deployResult);
+        creditManager = deployResult.newContract;
+        _setCreditFactory(creditManager, factory);
     }
 
     // ----------------------- //
@@ -215,7 +213,6 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         address oldPriceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
 
         priceOracle = _deployPriceOracle(pool);
-        _setPriceOracleFactory(pool, latestPriceOracleFactory);
 
         IContractsRegister(contractsRegister).setPriceOracle(pool, priceOracle);
         _executeMarketHooks(pool, abi.encodeCall(IMarketHooks.onUpdatePriceOracle, (pool, priceOracle, oldPriceOracle)));
@@ -225,7 +222,8 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         for (uint256 i; i < numManagers; ++i) {
             address creditManager = creditManagers[i];
             _executeHook(
-                IHook(_getCreditFactory(creditManager)).onUpdatePriceOracle(creditManager, priceOracle, oldPriceOracle)
+                _getCreditFactory(creditManager),
+                abi.encodeCall(ICreditSuiteHooks.onUpdatePriceOracle, (creditManager, priceOracle, oldPriceOracle))
             );
         }
     }
@@ -240,10 +238,12 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _executeMarketHooks(pool, abi.encodeCall(IMarketHooks.onSetReservePriceFeed, (pool, token, priceFeed)));
     }
 
-    function _deployPriceOracle(address pool) internal returns (address) {
-        DeployResult memory deployResult = IPriceOracleFactory(latestPriceOracleFactory).deployPriceOracle(pool);
-        _executeOnDeploy(latestPriceOracleFactory, deployResult);
-        return deployResult.newContract;
+    function _deployPriceOracle(address pool) internal returns (address priceOracle) {
+        address factory = _getLatestPriceOracleFactory();
+        DeployResult memory deployResult = IPriceOracleFactory(factory).deployPriceOracle(pool);
+        _executeOnDeploy(factory, deployResult);
+        priceOracle = deployResult.newContract;
+        _setPriceOracleFactory(pool, factory);
     }
 
     // -------------- //
@@ -260,7 +260,6 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         address oldInterestRateModel = _interestRateModel(pool);
 
         interestRateModel = _deployInterestRateModel(pool, params);
-        _setInterestRateModelFactory(pool, latestInterestRateModelFactory);
 
         _executeMarketHooks(
             pool,
@@ -273,11 +272,15 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _configureContract(_getInterestRateModelFactory(pool), _interestRateModel(pool), data);
     }
 
-    function _deployInterestRateModel(address pool, DeployParams calldata params) internal returns (address) {
-        DeployResult memory deployResult =
-            IInterestRateModelFactory(latestInterestRateModelFactory).deployInterestRateModel(pool, params);
-        _executeOnDeploy(latestInterestRateModelFactory, deployResult);
-        return deployResult.newContract;
+    function _deployInterestRateModel(address pool, DeployParams calldata params)
+        internal
+        returns (address interestRateModel)
+    {
+        address factory = _getLatestInterestRateModelFactory();
+        DeployResult memory deployResult = IInterestRateModelFactory(factory).deployInterestRateModel(pool, params);
+        _executeOnDeploy(factory, deployResult);
+        interestRateModel = deployResult.newContract;
+        _setInterestRateModelFactory(pool, factory);
     }
 
     // ---------------------- //
@@ -294,7 +297,6 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         address oldRateKeeper = _rateKeeper(pool);
 
         rateKeeper = _deployRateKeeper(pool, params);
-        _setRateKeeperFactory(pool, latestRateKeeperFactory);
 
         _executeMarketHooks(pool, abi.encodeCall(IMarketHooks.onUpdateRateKeeper, (pool, rateKeeper, oldRateKeeper)));
     }
@@ -304,10 +306,12 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _configureContract(_getRateKeeperFactory(pool), _rateKeeper(pool), data);
     }
 
-    function _deployRateKeeper(address pool, DeployParams calldata params) internal returns (address) {
-        DeployResult memory deployResult = IRateKeeperFactory(latestRateKeeperFactory).deployRateKeeper(pool, params);
-        _executeOnDeploy(latestRateKeeperFactory, deployResult);
-        return deployResult.newContract;
+    function _deployRateKeeper(address pool, DeployParams calldata params) internal returns (address rateKeeper) {
+        address factory = _getLatestRateKeeperFactory();
+        DeployResult memory deployResult = IRateKeeperFactory(factory).deployRateKeeper(pool, params);
+        _executeOnDeploy(factory, deployResult);
+        rateKeeper = deployResult.newContract;
+        _setRateKeeperFactory(pool, factory);
     }
 
     // -------------------------- //
@@ -324,7 +328,6 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         address oldLossLiquidator = IContractsRegister(contractsRegister).getLossLiquidator(pool);
 
         lossLiquidator = _deployLossLiquidator(pool, params);
-        _setLossLiquidatorFactory(pool, latestLossLiquidatorFactory);
 
         IContractsRegister(contractsRegister).setLossLiquidator(pool, lossLiquidator);
         _executeMarketHooks(
@@ -336,8 +339,9 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         for (uint256 i; i < numManagers; ++i) {
             address creditManager = creditManagers[i];
             _executeHook(
-                IHook(_getCreditFactory(creditManager)).onUpdateLossLiquidator(
-                    creditManager, lossLiquidator, oldLossLiquidator
+                _getCreditFactory(creditManager),
+                abi.encodeCall(
+                    ICreditSuiteHooks.onUpdateLossLiquidator, (creditManager, lossLiquidator, oldLossLiquidator)
                 )
             );
         }
@@ -349,51 +353,65 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _configureContract(_getLossLiquidatorFactory(pool), lossLiquidator, data);
     }
 
-    function _deployLossLiquidator(address pool, DeployParams calldata params) internal returns (address) {
-        DeployResult memory deployResult =
-            ILossLiquidatorFactory(latestLossLiquidatorFactory).deployLossLiquidator(pool, params);
-        _executeOnDeploy(latestLossLiquidatorFactory, deployResult);
-        return deployResult.newContract;
+    function _deployLossLiquidator(address pool, DeployParams calldata params)
+        internal
+        returns (address lossLiquidator)
+    {
+        address factory = _getLatestLossLiquidatorFactory();
+        DeployResult memory deployResult = ILossLiquidatorFactory(factory).deployLossLiquidator(pool, params);
+        _executeOnDeploy(factory, deployResult);
+        lossLiquidator = deployResult.newContract;
+        _setLossLiquidatorFactory(pool, factory);
     }
 
     // ---------------- //
     // ROLES MANAGEMENT //
     // ---------------- //
 
-    function addPausableAdmin(address admin) external onlyOwner {
+    function addPausableAdmin(address admin) external override onlyOwner {
         IACL(acl).addPausableAdmin(admin);
     }
 
-    function addUnpausableAdmin(address admin) external onlyOwner {
+    function addUnpausableAdmin(address admin) external override onlyOwner {
         IACL(acl).addUnpausableAdmin(admin);
     }
 
-    function removePausableAdmin(address admin) external onlyOwner {
+    function removePausableAdmin(address admin) external override onlyOwner {
         IACL(acl).removePausableAdmin(admin);
     }
 
-    function removeUnpausableAdmin(address admin) external onlyOwner {
+    function removeUnpausableAdmin(address admin) external override onlyOwner {
         IACL(acl).removeUnpausableAdmin(admin);
     }
 
+    function emergencyLiquidators() external view override returns (address[] memory) {
+        return _emergencyLiquidators.values();
+    }
+
     // QUESTION: rewrite using role model?
-    function addEmergencyLiquidator(address liquidator) external onlyOwner {
+    function addEmergencyLiquidator(address liquidator) external override onlyOwner {
         if (!_emergencyLiquidators.add(liquidator)) return;
         address[] memory creditManagers = _creditManagers();
         uint256 numManagers = creditManagers.length;
         for (uint256 i; i < numManagers; ++i) {
             address creditManager = creditManagers[i];
-            _executeHook(IHook(_getCreditFactory(creditManager)).onAddEmergencyLiquidator(creditManager, liquidator));
+            _executeHook(
+                _getCreditFactory(creditManager),
+                abi.encodeCall(ICreditSuiteHooks.onAddEmergencyLiquidator, (creditManager, liquidator))
+            );
         }
     }
 
-    function removeEmergencyLiquidator(address liquidator) external onlyOwner {
+    function removeEmergencyLiquidator(address liquidator) external override onlyOwner {
         if (!_emergencyLiquidators.remove(liquidator)) return;
         address[] memory creditManagers = _creditManagers();
         uint256 numManagers = creditManagers.length;
         for (uint256 i; i < numManagers; ++i) {
             address creditManager = creditManagers[i];
-            _executeHook(IHook(_getCreditFactory(creditManager)).onRemoveEmergencyLiquidator(creditManager, liquidator));
+            _executeHook(
+                _getCreditFactory(creditManager),
+                abi.encodeCall(ICreditSuiteHooks.onRemoveEmergencyLiquidator, (creditManager, liquidator))
+            );
         }
     }
 
@@ -427,25 +445,39 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     function _executeOnDeploy(address factory, DeployResult memory deployResult) internal {
         _addToAccessList(factory, deployResult.accessList);
-        _executeHook(HookCheck({factory: factory, calls: deployResult.onInstallOps}));
+        _executeHook({factory: factory, calls: deployResult.onInstallOps});
     }
 
     function _executeMarketHooks(address pool, bytes memory data) internal {
-        // TODO: implement
+        _executeHook(_getPoolFactory(pool), data);
+        _executeHook(_getPriceOracleFactory(pool), data);
+        _executeHook(_getInterestRateModelFactory(pool), data);
+        _executeHook(_getRateKeeperFactory(pool), data);
+        _executeHook(_getLossLiquidatorFactory(pool), data);
     }
 
-    function _executeHook(HookCheck memory hookCheck) internal virtual {
-        uint256 len = hookCheck.calls.length;
+    function _executeHook(address factory, bytes memory data) internal {
+        _executeHook(factory, abi.decode(factory.functionCall(data), (Call[])));
+    }
+
+    /// @dev `MarketConfiguratorLegacy` performs additional checks, hence the `virtual` modifier
+    function _executeHook(address factory, Call[] memory calls) internal virtual {
+        uint256 len = calls.length;
         for (uint256 i; i < len; ++i) {
-            // TODO: override in MCLegacy to forbid calling gear staking
-            Call memory call = hookCheck.calls[i];
-            if (accessList[call.target] != hookCheck.factory) revert ContractNotAssignedToFactoryException(call.target);
+            Call memory call = calls[i];
+            if (call.target != address(this) && accessList[call.target] != factory) {
+                revert ContractNotAssignedToFactoryException(call.target);
+            }
             call.target.functionCall(call.callData);
         }
     }
 
     function _configureContract(address factory, address target, bytes calldata callData) internal {
-        _executeHook(HookCheck({factory: factory, calls: IConfiguratingFactory(factory).configure(target, callData)}));
+        _executeHook(factory, IConfiguratingFactory(factory).configure(target, callData));
+    }
+
+    function _manageContract(address factory, address target, bytes calldata callData) internal {
+        _executeHook(factory, IConfiguratingFactory(factory).manage(target, callData));
     }
 
     function _creditManagers() internal view returns (address[] memory) {
@@ -464,51 +496,46 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         return IPoolQuotaKeeperV3(IPoolV3(pool).poolQuotaKeeper()).gauge();
     }
 
-    function _getPoolFactory(address pool) internal view returns (address) {
-        return IContractsRegister(contractsRegister).getPoolFactory(pool);
-    }
+    // ---- //
+    // LMAO //
+    // ---- //
 
-    function _getCreditFactory(address creditManager) internal view returns (address) {
-        return IContractsRegister(contractsRegister).getCreditFactory(creditManager);
-    }
+    // TODO: all these functions should forward to MarketConfiguratorFactory
+    // the only issue is updating the access list when factory is upgraded
 
-    function _getPriceOracleFactory(address pool) internal view returns (address) {
-        return IContractsRegister(contractsRegister).getPriceOracleFactory(pool);
-    }
+    function _getLatestPoolFactory() internal view returns (address factory) {}
 
-    function _getLossLiquidatorFactory(address pool) internal view returns (address) {
-        return IContractsRegister(contractsRegister).getLossLiquidatorFactory(pool);
-    }
+    function _setPoolFactory(address pool, address factory) internal {}
 
-    function _getRateKeeperFactory(address pool) internal view returns (address) {
-        return IContractsRegister(contractsRegister).getRateKeeperFactory(pool);
-    }
+    function _getPoolFactory(address pool) internal view returns (address factory) {}
 
-    function _getInterestRateModelFactory(address pool) internal view returns (address) {
-        return IContractsRegister(contractsRegister).getInterestRateModelFactory(pool);
-    }
+    function _getLatestPriceOracleFactory() internal view returns (address factory) {}
 
-    function _setPoolFactory(address pool, address factory) internal {
-        IContractsRegister(contractsRegister).setPoolFactory(pool, factory);
-    }
+    function _setPriceOracleFactory(address pool, address factory) internal {}
 
-    function _setCreditFactory(address creditManager, address factory) internal {
-        IContractsRegister(contractsRegister).setCreditFactory(creditManager, factory);
-    }
+    function _getPriceOracleFactory(address pool) internal view returns (address factory) {}
 
-    function _setPriceOracleFactory(address pool, address factory) internal {
-        IContractsRegister(contractsRegister).setPriceOracleFactory(pool, factory);
-    }
+    function _getLatestInterestRateModelFactory() internal view returns (address factory) {}
 
-    function _setLossLiquidatorFactory(address pool, address factory) internal {
-        IContractsRegister(contractsRegister).setLossLiquidatorFactory(pool, factory);
-    }
+    function _setInterestRateModelFactory(address pool, address factory) internal {}
 
-    function _setInterestRateModelFactory(address pool, address factory) internal {
-        IContractsRegister(contractsRegister).setInterestRateModelFactory(pool, factory);
-    }
+    function _getInterestRateModelFactory(address pool) internal view returns (address factory) {}
 
-    function _setRateKeeperFactory(address pool, address factory) internal {
-        IContractsRegister(contractsRegister).setRateKeeperFactory(pool, factory);
-    }
+    function _getLatestRateKeeperFactory() internal view returns (address factory) {}
+
+    function _setRateKeeperFactory(address pool, address factory) internal {}
+
+    function _getRateKeeperFactory(address pool) internal view returns (address factory) {}
+
+    function _getLatestLossLiquidatorFactory() internal view returns (address factory) {}
+
+    function _setLossLiquidatorFactory(address pool, address factory) internal {}
+
+    function _getLossLiquidatorFactory(address pool) internal view returns (address factory) {}
+
+    function _getLatestCreditFactory() internal view returns (address factory) {}
+
+    function _setCreditFactory(address creditManager, address factory) internal {}
+
+    function _getCreditFactory(address creditManager) internal view returns (address factory) {}
 }
