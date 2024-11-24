@@ -3,12 +3,9 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
-
-import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
-import {IInterestRateModelFactory} from "../interfaces/IInterestRateModelFactory.sol";
-import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
-import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
+import {IInterestRateModelFactory} from "../interfaces/factories/IInterestRateModelFactory.sol";
+import {IMarketHooks} from "../interfaces/factories/IMarketHooks.sol";
+import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
 import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 
 import {CallBuilder} from "../libraries/CallBuilder.sol";
@@ -31,6 +28,7 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
     function deployInterestRateModel(address pool, DeployParams calldata params)
         external
         override
+        onlyMarketConfigurators
         returns (DeployResult memory)
     {
         if (params.postfix != "IRM_LINEAR") {
@@ -44,7 +42,7 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
         address irm = _deployByDomain({
             domain: DOMAIN_IRM,
             postfix: params.postfix,
-            version_: version,
+            version: version,
             constructorParams: params.constructorParams,
             salt: bytes32(bytes20(msg.sender))
         });
@@ -59,6 +57,7 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
     // MARKET HOOKS //
     // ------------ //
 
+    // QUESTION: shall it (and similar functions in other factories) be `onlyMarketConfigurators`?
     function onUpdateInterestRateModel(address, address newInterestRateModel, address oldInterestRateModel)
         external
         view
@@ -66,10 +65,10 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
         returns (Call[] memory calls)
     {
         if (_isVotingContract(oldInterestRateModel)) {
-            calls = calls.append(_setVotingContractStatus(oldInterestRateModel, VotingContractStatus.UNVOTE_ONLY));
+            calls = calls.append(_setVotingContractStatus(oldInterestRateModel, false));
         }
         if (_isVotingContract(newInterestRateModel)) {
-            calls = calls.append(_setVotingContractStatus(newInterestRateModel, VotingContractStatus.ALLOWED));
+            calls = calls.append(_setVotingContractStatus(newInterestRateModel, true));
         }
     }
 
@@ -77,33 +76,15 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
     // CONFIGURATION //
     // ------------- //
 
-    function configure(address irm, bytes calldata callData) external pure returns (Call[] memory calls) {
+    function configure(address irm, bytes calldata callData) external pure override returns (Call[] memory calls) {
         // TODO: consider explicity forbidding `setController` just in case, though it can be restricted in spec
         return CallBuilder.build(Call({target: irm, callData: callData}));
     }
 
-    function manage(address, bytes calldata callData)
-        external
-        override
-        onlyMarketConfigurators
-        returns (Call[] memory)
-    {
-        // TODO: implement
-        revert ForbiddenManagementCall(bytes4(callData));
-    }
-
-    // --------- //
-    // INTERNALS //
-    // --------- //
-
-    function _setVotingContractStatus(address interestRateModel, VotingContractStatus status)
-        internal
-        view
-        returns (Call memory)
-    {
-        return Call({
-            target: msg.sender,
-            callData: abi.encodeCall(IGearStakingV3.setVotingContractStatus, (interestRateModel, status))
-        });
+    function manage(address, bytes calldata callData) external pure override returns (Call[] memory) {
+        // TODO: maybe introduce `IConfigurableContract` that provides `isConfigurationMethod(bytes4 selector)`
+        // and `isManagementMethod(bytes4 selector)`.
+        // Can further generalize it to also have `onInstall()` and `onUninstall()`
+        revert ForbiddenManagementCallException(bytes4(callData));
     }
 }

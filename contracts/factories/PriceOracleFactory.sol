@@ -8,10 +8,10 @@ import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.so
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 
 import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
+import {IMarketHooks} from "../interfaces/factories/IMarketHooks.sol";
+import {IPriceOracleFactory} from "../interfaces/factories/IPriceOracleFactory.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
-import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
 import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
-import {IPriceOracleFactory} from "../interfaces/IPriceOracleFactory.sol";
 import {Call, DeployResult} from "../interfaces/Types.sol";
 
 import {CallBuilder} from "../libraries/CallBuilder.sol";
@@ -52,8 +52,8 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks
         address acl = IPoolV3(pool).acl();
 
         address priceOracle = _deploy({
-            type_: AP_PRICE_ORACLE,
-            version_: version,
+            contractType: AP_PRICE_ORACLE,
+            version: version,
             constructorParams: abi.encode(acl),
             salt: bytes32(bytes20(msg.sender))
         });
@@ -81,7 +81,6 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks
         external
         view
         override(IMarketHooks, MarketHooks)
-        onlyMarketConfigurators
         returns (Call[] memory calls)
     {
         address[] memory tokens = IPriceOracleV3(oldPriceOracle).getTokens();
@@ -104,7 +103,6 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks
         external
         view
         override(IMarketHooks, MarketHooks)
-        onlyMarketConfigurators
         returns (Call[] memory)
     {
         // TODO: reconsider, maybe should add other checks
@@ -117,7 +115,6 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks
         external
         view
         override(IMarketHooks, MarketHooks)
-        onlyMarketConfigurators
         returns (Call[] memory)
     {
         address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
@@ -129,7 +126,6 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks
         external
         view
         override(IMarketHooks, MarketHooks)
-        onlyMarketConfigurators
         returns (Call[] memory)
     {
         address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();

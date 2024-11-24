@@ -5,14 +5,14 @@ pragma solidity ^0.8.23;
 
 import {IControlledTrait} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IControlledTrait.sol";
 import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.sol";
-import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {ITumblerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ITumblerV3.sol";
 
 import {IRateKeeper} from "../interfaces/extensions/IRateKeeper.sol";
-import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
-import {IRateKeeperFactory} from "../interfaces/IRateKeeperFactory.sol";
+import {IMarketHooks} from "../interfaces/factories/IMarketHooks.sol";
+import {IRateKeeperFactory} from "../interfaces/factories/IRateKeeperFactory.sol";
+import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
 import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 
 import {CallBuilder} from "../libraries/CallBuilder.sol";
@@ -65,7 +65,7 @@ contract RateKeeperFactory is AbstractFactory, MarketHooks, IRateKeeperFactory {
         address rateKeeper = _deployByDomain({
             domain: DOMAIN_RATE_KEEPER,
             postfix: params.postfix,
-            version_: version,
+            version: version,
             constructorParams: params.constructorParams,
             salt: bytes32(bytes20(msg.sender))
         });
@@ -116,7 +116,7 @@ contract RateKeeperFactory is AbstractFactory, MarketHooks, IRateKeeperFactory {
     // CONFIGURATION //
     // ------------- //
 
-    function configure(address rateKeeper, bytes calldata callData) external view returns (Call[] memory) {
+    function configure(address rateKeeper, bytes calldata callData) external view override returns (Call[] memory) {
         bytes4 selector = bytes4(callData);
         // TODO: block activate/deactive (or `setFrozenEpoch`, in the case of gauge)
         if (selector == IControlledTrait.setController.selector || selector == _getAddTokenSelector(rateKeeper)) {
@@ -125,14 +125,9 @@ contract RateKeeperFactory is AbstractFactory, MarketHooks, IRateKeeperFactory {
         return CallBuilder.build(Call({target: rateKeeper, callData: callData}));
     }
 
-    function manage(address, bytes calldata callData)
-        external
-        override
-        onlyMarketConfigurators
-        returns (Call[] memory)
-    {
+    function manage(address, bytes calldata callData) external pure override returns (Call[] memory) {
         // TODO: implement
-        revert ForbiddenManagementCall(bytes4(callData));
+        revert ForbiddenManagementCallException(bytes4(callData));
     }
 
     // --------- //
@@ -171,7 +166,7 @@ contract RateKeeperFactory is AbstractFactory, MarketHooks, IRateKeeperFactory {
         }
 
         if (_isVotingContract(rateKeeper)) {
-            calls = calls.append(_setVotingContractStatus(rateKeeper, VotingContractStatus.ALLOWED));
+            calls = calls.append(_setVotingContractStatus(rateKeeper, true));
         }
     }
 
@@ -184,7 +179,7 @@ contract RateKeeperFactory is AbstractFactory, MarketHooks, IRateKeeperFactory {
         }
 
         if (_isVotingContract(rateKeeper)) {
-            calls = calls.append(_setVotingContractStatus(rateKeeper, VotingContractStatus.UNVOTE_ONLY));
+            calls = calls.append(_setVotingContractStatus(rateKeeper, false));
         }
     }
 
@@ -198,16 +193,5 @@ contract RateKeeperFactory is AbstractFactory, MarketHooks, IRateKeeperFactory {
             callData = abi.encodeCall(IRateKeeper.addToken, token);
         }
         return Call({target: rateKeeper, callData: callData});
-    }
-
-    function _setVotingContractStatus(address rateKeeper, VotingContractStatus status)
-        internal
-        view
-        returns (Call memory)
-    {
-        return Call({
-            target: msg.sender,
-            callData: abi.encodeCall(IGearStakingV3.setVotingContractStatus, (rateKeeper, status))
-        });
     }
 }

@@ -6,66 +6,56 @@ pragma solidity ^0.8.23;
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {LibString} from "@solady/utils/LibString.sol";
 
-import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
+import {
+    RegisteredPoolOnlyException,
+    RegisteredCreditManagerOnlyException
+} from "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
-import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
+import {IConfiguratingFactory} from "../interfaces/factories/IConfiguratingFactory.sol";
+import {ICreditFactory} from "../interfaces/factories/ICreditFactory.sol";
+import {IInterestRateModelFactory} from "../interfaces/factories/IInterestRateModelFactory.sol";
+import {ILossLiquidatorFactory} from "../interfaces/factories/ILossLiquidatorFactory.sol";
+import {IMarketHooks} from "../interfaces/factories/IMarketHooks.sol";
+import {IPoolFactory} from "../interfaces/factories/IPoolFactory.sol";
+import {IPriceOracleFactory} from "../interfaces/factories/IPriceOracleFactory.sol";
+import {IRateKeeperFactory} from "../interfaces/factories/IRateKeeperFactory.sol";
 
-import {IACL} from "../interfaces/extensions/IACL.sol";
-import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
-
-import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
-import {IRateKeeperFactory} from "../interfaces/IRateKeeperFactory.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
-import {ILossLiquidatorFactory} from "../interfaces/ILossLiquidatorFactory.sol";
-import {IInterestRateModelFactory} from "../interfaces/IInterestRateModelFactory.sol";
-import {IPriceOracleFactory} from "../interfaces/IPriceOracleFactory.sol";
-import {ICreditFactory} from "../interfaces/ICreditFactory.sol";
-import {IPoolFactory} from "../interfaces/IPoolFactory.sol";
-
-import {
-    AP_MARKET_CONFIGURATOR,
-    AP_MARKET_CONFIGURATOR_FACTORY,
-    NO_VERSION_CONTROL
-} from "../libraries/ContractLiterals.sol";
-
-import {ICreditSuiteHooks} from "../interfaces/ICreditSuiteHooks.sol";
-import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
 import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
-import {IConfiguratingFactory} from "../interfaces/IConfiguratingFactory.sol";
 
+import {AP_MARKET_CONFIGURATOR} from "../libraries/ContractLiterals.sol";
+
+import {ACL} from "./ACL.sol";
 import {ContractsRegister} from "./ContractsRegister.sol";
 
 // TODO:
 // - factories upgradability
-// - migration to new market configurator
-// - rescue
 // - management functions (i.e., shorter timelock but less checks)
+
+// TODO: reconsider roles (createMarket, createCreditSuite, addToken, manage... don't need long multisig,
+// others do; but longer multisig should be able to call all of them)
 
 /// @title Market configurator
 contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    address public immutable override addressProvider;
     address public immutable override marketConfiguratorFactory;
     address public immutable override acl;
     address public immutable override contractsRegister;
     address public immutable override treasury;
 
-    EnumerableSet.AddressSet internal _emergencyLiquidators;
-
-    // Access list is additional protection measure to restrict contracts
-    // which could be called via hooks.
-
-    /// @notice
     mapping(address contract_ => address factory) public accessList;
 
-    modifier onlySelf() {
-        if (msg.sender != address(this)) revert CallerIsNotSelfException();
+    bytes32 internal immutable _name;
+
+    modifier onlyMarketConfiguratorFactory() {
+        if (msg.sender != marketConfiguratorFactory) revert CallerIsNotMarketConfiguratorFactoryException();
         _;
     }
 
@@ -73,20 +63,18 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     // CONSTRUCTOR //
     // ----------- //
 
-    /// @notice Initializes the MarketConfigurator with the provided parameters.
-    /// @param riskCurator_ The address of the risk curator.
-    /// @param addressProvider_ The address of the address provider.
-    /// @param acl_ The address of the access control list.
-    /// @param treasury_ The address of the treasury.
-    constructor(address riskCurator_, address addressProvider_, address acl_, address treasury_) {
-        _transferOwnership(riskCurator_);
-        addressProvider = addressProvider_;
-        marketConfiguratorFactory = _getContract(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
-
-        acl = acl_;
-        treasury = treasury_;
+    constructor(string memory name_, address marketConfiguratorFactory_, address riskCurator_, address treasury_) {
+        marketConfiguratorFactory = marketConfiguratorFactory_;
+        transferOwnership(riskCurator_);
+        acl = address(new ACL());
         contractsRegister = address(new ContractsRegister(acl));
+        treasury = treasury_;
+        _name = LibString.toSmallString(name_);
     }
+
+    // -------- //
+    // METADATA //
+    // -------- //
 
     /// @notice Contract version
     /// @dev `MarketConfiguratorLegacy` might have different version, hence the `virtual` modifier
@@ -100,8 +88,9 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         return AP_MARKET_CONFIGURATOR;
     }
 
-    function callMarketConfiguratorFactory(bytes calldata data) external override onlySelf {
-        marketConfiguratorFactory.functionCall(data);
+    /// @notice Contract name
+    function contractName() external view override returns (string memory) {
+        return LibString.fromSmallString(_name);
     }
 
     // ----------------- //
@@ -123,7 +112,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         address rateKeeper = _deployRateKeeper(pool, rateKeeperParams);
         address lossLiquidator = _deployLossLiquidator(pool, lossLiquidatorParams);
 
-        IContractsRegister(contractsRegister).createMarket(pool, priceOracle);
+        ContractsRegister(contractsRegister).createMarket(pool, priceOracle, lossLiquidator);
         _executeMarketHooks(
             pool,
             abi.encodeCall(
@@ -137,7 +126,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _ensureRegisteredPool(pool);
 
         _executeMarketHooks(pool, abi.encodeCall(IMarketHooks.onShutdownMarket, (pool)));
-        IContractsRegister(contractsRegister).shutdownMarket(pool);
+        ContractsRegister(contractsRegister).shutdownMarket(pool);
     }
 
     function addToken(address pool, address token, address priceFeed) external override onlyOwner {
@@ -178,7 +167,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
         creditManager = _deployCreditSuite(pool, encodedParams);
 
-        IContractsRegister(contractsRegister).createCreditSuite(pool, creditManager);
+        ContractsRegister(contractsRegister).createCreditSuite(pool, creditManager);
         _executeMarketHooks(pool, abi.encodeCall(IMarketHooks.onCreateCreditSuite, (pool, creditManager)));
     }
 
@@ -188,7 +177,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         _executeMarketHooks(
             ICreditManagerV3(creditManager).pool(), abi.encodeCall(IMarketHooks.onShutdownCreditSuite, (creditManager))
         );
-        IContractsRegister(contractsRegister).shutdownCreditSuite(creditManager);
+        ContractsRegister(contractsRegister).shutdownCreditSuite(creditManager);
     }
 
     function configureCreditSuite(address creditManager, bytes calldata data) external override onlyOwner {
@@ -210,11 +199,11 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     function updatePriceOracle(address pool) external override onlyOwner returns (address priceOracle) {
         _ensureRegisteredPool(pool);
-        address oldPriceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
+        address oldPriceOracle = ContractsRegister(contractsRegister).getPriceOracle(pool);
 
         priceOracle = _deployPriceOracle(pool);
 
-        IContractsRegister(contractsRegister).setPriceOracle(pool, priceOracle);
+        ContractsRegister(contractsRegister).setPriceOracle(pool, priceOracle);
         _executeMarketHooks(pool, abi.encodeCall(IMarketHooks.onUpdatePriceOracle, (pool, priceOracle, oldPriceOracle)));
 
         address[] memory creditManagers = _creditManagers(pool);
@@ -223,7 +212,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
             address creditManager = creditManagers[i];
             _executeHook(
                 _getCreditFactory(creditManager),
-                abi.encodeCall(ICreditSuiteHooks.onUpdatePriceOracle, (creditManager, priceOracle, oldPriceOracle))
+                abi.encodeCall(ICreditFactory.onUpdatePriceOracle, (creditManager, priceOracle, oldPriceOracle))
             );
         }
     }
@@ -325,11 +314,11 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         returns (address lossLiquidator)
     {
         _ensureRegisteredPool(pool);
-        address oldLossLiquidator = IContractsRegister(contractsRegister).getLossLiquidator(pool);
+        address oldLossLiquidator = ContractsRegister(contractsRegister).getLossLiquidator(pool);
 
         lossLiquidator = _deployLossLiquidator(pool, params);
 
-        IContractsRegister(contractsRegister).setLossLiquidator(pool, lossLiquidator);
+        ContractsRegister(contractsRegister).setLossLiquidator(pool, lossLiquidator);
         _executeMarketHooks(
             pool, abi.encodeCall(IMarketHooks.onUpdateLossLiquidator, (pool, lossLiquidator, oldLossLiquidator))
         );
@@ -341,7 +330,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
             _executeHook(
                 _getCreditFactory(creditManager),
                 abi.encodeCall(
-                    ICreditSuiteHooks.onUpdateLossLiquidator, (creditManager, lossLiquidator, oldLossLiquidator)
+                    ICreditFactory.onUpdateLossLiquidator, (creditManager, lossLiquidator, oldLossLiquidator)
                 )
             );
         }
@@ -349,7 +338,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     function configureLossLiquidator(address pool, bytes calldata data) external override onlyOwner {
         _ensureRegisteredPool(pool);
-        address lossLiquidator = IContractsRegister(pool).getLossLiquidator(pool);
+        address lossLiquidator = ContractsRegister(pool).getLossLiquidator(pool);
         _configureContract(_getLossLiquidatorFactory(pool), lossLiquidator, data);
     }
 
@@ -368,50 +357,47 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     // ROLES MANAGEMENT //
     // ---------------- //
 
-    function addPausableAdmin(address admin) external override onlyOwner {
-        IACL(acl).addPausableAdmin(admin);
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function addPausableAdmin(address admin) public virtual override onlyOwner {
+        ACL(acl).addPausableAdmin(admin);
     }
 
-    function addUnpausableAdmin(address admin) external override onlyOwner {
-        IACL(acl).addUnpausableAdmin(admin);
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function addUnpausableAdmin(address admin) public virtual override onlyOwner {
+        ACL(acl).addUnpausableAdmin(admin);
     }
 
-    function removePausableAdmin(address admin) external override onlyOwner {
-        IACL(acl).removePausableAdmin(admin);
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function removePausableAdmin(address admin) public virtual override onlyOwner {
+        ACL(acl).removePausableAdmin(admin);
     }
 
-    function removeUnpausableAdmin(address admin) external override onlyOwner {
-        IACL(acl).removeUnpausableAdmin(admin);
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function removeUnpausableAdmin(address admin) public virtual override onlyOwner {
+        ACL(acl).removeUnpausableAdmin(admin);
     }
 
-    function emergencyLiquidators() external view override returns (address[] memory) {
-        return _emergencyLiquidators.values();
-    }
-
-    // QUESTION: rewrite using role model?
     function addEmergencyLiquidator(address liquidator) external override onlyOwner {
-        if (!_emergencyLiquidators.add(liquidator)) return;
-        address[] memory creditManagers = _creditManagers();
-        uint256 numManagers = creditManagers.length;
-        for (uint256 i; i < numManagers; ++i) {
-            address creditManager = creditManagers[i];
-            _executeHook(
-                _getCreditFactory(creditManager),
-                abi.encodeCall(ICreditSuiteHooks.onAddEmergencyLiquidator, (creditManager, liquidator))
-            );
-        }
+        ACL(acl).addEmergencyLiquidator(liquidator);
     }
 
     function removeEmergencyLiquidator(address liquidator) external override onlyOwner {
-        if (!_emergencyLiquidators.remove(liquidator)) return;
-        address[] memory creditManagers = _creditManagers();
-        uint256 numManagers = creditManagers.length;
-        for (uint256 i; i < numManagers; ++i) {
-            address creditManager = creditManagers[i];
-            _executeHook(
-                _getCreditFactory(creditManager),
-                abi.encodeCall(ICreditSuiteHooks.onRemoveEmergencyLiquidator, (creditManager, liquidator))
-            );
+        ACL(acl).removeEmergencyLiquidator(liquidator);
+    }
+
+    // ------------- //
+    // CONFIGURATION //
+    // ------------- //
+
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function migrate(address newMarketConfigurator) public virtual override onlyMarketConfiguratorFactory {
+        ACL(acl).transferOwnership(newMarketConfigurator);
+    }
+
+    function rescue(Call[] memory calls) external override onlyMarketConfiguratorFactory {
+        uint256 numCalls = calls.length;
+        for (uint256 i; i < numCalls; ++i) {
+            calls[i].target.functionCall(calls[i].callData);
         }
     }
 
@@ -419,18 +405,14 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     // INTERNALS //
     // --------- //
 
-    function _getContract(bytes32 key, uint256 version_) internal view returns (address) {
-        return IAddressProvider(addressProvider).getAddressOrRevert(key, version_);
-    }
-
     function _ensureRegisteredPool(address pool) internal view {
-        if (!IContractsRegister(contractsRegister).isPool(pool)) {
+        if (!ContractsRegister(contractsRegister).isPool(pool)) {
             revert RegisteredPoolOnlyException();
         }
     }
 
     function _ensureRegisteredCreditManager(address creditManager) internal view {
-        if (!IContractsRegister(contractsRegister).isCreditManager(creditManager)) {
+        if (!ContractsRegister(contractsRegister).isCreditManager(creditManager)) {
             revert RegisteredCreditManagerOnlyException();
         }
     }
@@ -465,7 +447,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         uint256 len = calls.length;
         for (uint256 i; i < len; ++i) {
             Call memory call = calls[i];
-            if (call.target != address(this) && accessList[call.target] != factory) {
+            if (call.target != marketConfiguratorFactory && accessList[call.target] != factory) {
                 revert ContractNotAssignedToFactoryException(call.target);
             }
             call.target.functionCall(call.callData);
@@ -481,11 +463,11 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     }
 
     function _creditManagers() internal view returns (address[] memory) {
-        return IContractsRegister(contractsRegister).getCreditManagers();
+        return ContractsRegister(contractsRegister).getCreditManagers();
     }
 
     function _creditManagers(address pool) internal view returns (address[] memory creditManagers) {
-        return IContractsRegister(contractsRegister).getCreditManagers(pool);
+        return ContractsRegister(contractsRegister).getCreditManagers(pool);
     }
 
     function _interestRateModel(address pool) internal view returns (address) {

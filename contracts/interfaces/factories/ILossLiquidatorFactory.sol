@@ -3,10 +3,11 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {DeployParams, DeployResult} from "../Types.sol";
 import {IConfiguratingFactory} from "./IConfiguratingFactory.sol";
 import {IMarketHooks} from "./IMarketHooks.sol";
-import {DeployParams, DeployResult} from "./Types.sol";
 
-interface ILossLiquidatorFactory is IMarketHooks, IConfiguratingFactory {
+interface ILossLiquidatorFactory is IVersion, IMarketHooks, IConfiguratingFactory {
     function deployLossLiquidator(address pool, DeployParams calldata params) external returns (DeployResult memory);
 }

@@ -4,12 +4,14 @@
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
-import {DeployParams} from "./Types.sol";
+import {Call, DeployParams} from "./Types.sol";
 
 interface IMarketConfigurator is IVersion {
     // ------ //
     // ERRORS //
     // ------ //
+
+    error CallerIsNotMarketConfiguratorFactoryException();
 
     // Thrown if hook attempting to call a contract which is node in accessList
     error ContractNotAssignedToFactoryException(address);
@@ -17,15 +19,11 @@ interface IMarketConfigurator is IVersion {
     // Thrown if factory attempting to overwrite exsting addess in accessList
     error ContractAlreadyInAccessListException(address);
 
-    error CallerIsNotSelfException();
-
-    function addressProvider() external view returns (address);
+    function contractName() external view returns (string memory);
     function marketConfiguratorFactory() external view returns (address);
     function acl() external view returns (address);
     function contractsRegister() external view returns (address);
     function treasury() external view returns (address);
-
-    function callMarketConfiguratorFactory(bytes calldata data) external;
 
     // ----------------- //
     // MARKET MANAGEMENT //
@@ -105,9 +103,15 @@ interface IMarketConfigurator is IVersion {
 
     function removeUnpausableAdmin(address admin) external;
 
-    function emergencyLiquidators() external view returns (address[] memory);
-
     function addEmergencyLiquidator(address liquidator) external;
 
     function removeEmergencyLiquidator(address liquidator) external;
+
+    // ------------- //
+    // CONFIGURATION //
+    // ------------- //
+
+    function migrate(address newMarketConfigurator) external;
+
+    function rescue(Call[] memory calls) external;
 }

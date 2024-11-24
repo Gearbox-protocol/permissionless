@@ -8,15 +8,22 @@ import {VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfac
 
 interface IMarketConfiguratorFactory is IVersion {
     event CreateMarketConfigurator(address indexed marketConfigurator, string name);
-    event RemoveMarketConfigurator(address indexed marketConfigurator);
+    event ShutdownMarketConfigurator(address indexed marketConfigurator);
 
+    error AddressIsNotMarketConfiguratorException();
+    error CallerIsNotMarketConfiguratorException();
     error CallerIsNotMarketConfiguratorOwnerException();
-    error CantRemoveMarketConfiguratorWithExistingPoolsException();
+    error CantShutdownMarketConfiguratorException();
+
+    function addressProvider() external view returns (address);
+    function bytecodeRepository() external view returns (address);
 
     function isMarketConfigurator(address address_) external view returns (bool);
-    function marketConfigurators() external view returns (address[] memory);
+    function getMarketConfigurators() external view returns (address[] memory);
+    function getShutdownMarketConfigurators() external view returns (address[] memory);
     function createMarketConfigurator(string calldata name) external returns (address marketConfigurator);
-    function removeMarketConfigurator(address marketConfigurator) external;
+    function shutdownMarketConfigurator(address marketConfigurator) external;
 
+    function configureGearStaking(bytes calldata data) external;
     function setVotingContractStatus(address votingContract, VotingContractStatus status) external;
 }

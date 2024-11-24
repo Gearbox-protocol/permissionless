@@ -59,7 +59,7 @@ contract GovernorTest is Test {
     // GENERAL //
     // ------- //
 
-    function test_GOV_01_setUp_is_correct() public {
+    function test_GOV_01_setUp_is_correct() public view {
         assertEq(ITimeLock(timeLock).admin(), address(governor), "Timelock admin");
         assertEq(governor.timeLock(), timeLock, "Timelock");
         assertEq(governor.vetoAdmin(), vetoAdmin, "Veto admin");

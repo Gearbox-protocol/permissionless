@@ -3,7 +3,6 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
@@ -12,13 +11,13 @@ import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/I
 import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
+import {IACL} from "../../interfaces/extensions/IACL.sol";
+import {IACLLegacy} from "../../interfaces/extensions/IACLLegacy.sol";
 import {IContractsRegister} from "../../interfaces/extensions/IContractsRegister.sol";
 import {IContractsRegisterLegacy} from "../../interfaces/extensions/IContractsRegisterLegacy.sol";
 import {Call} from "../../interfaces/Types.sol";
 
-import {
-    AP_GEAR_STAKING, AP_MARKET_CONFIGURATOR_LEGACY, NO_VERSION_CONTROL
-} from "../../libraries/ContractLiterals.sol";
+import {AP_MARKET_CONFIGURATOR_LEGACY} from "../../libraries/ContractLiterals.sol";
 
 import {MarketConfigurator} from "../MarketConfigurator.sol";
 
@@ -31,93 +30,133 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     /// @notice Contract type
     bytes32 public constant override contractType = AP_MARKET_CONFIGURATOR_LEGACY;
 
-    address public immutable gearStaking;
+    address public immutable aclLegacy;
     address public immutable contractsRegisterLegacy;
+    address public immutable gearStakingLegacy;
 
-    error CallerIsNotDAOException();
-    error CallerIsNotMarketConfiguratorFactoryException();
-    error CreditManagerMisconfiguredException(address creditManager);
+    error AddressIsNotPausableAdminException(address admin);
+    error AddressIsNotUnpausableAdminException(address admin);
+    error CallsToLegacyContractsAreForbiddenException();
+    error CreditManagerIsMisconfiguredException(address creditManager);
 
-    // TODO: reconsider naming and logic
-    modifier onlyDAO() {
-        if (msg.sender != Ownable(marketConfiguratorFactory).owner()) revert CallerIsNotDAOException();
-        _;
-    }
-
-    modifier onlyMarketConfiguratorFactory() {
-        if (msg.sender != marketConfiguratorFactory) revert CallerIsNotMarketConfiguratorFactoryException();
-        _;
-    }
-
+    /// @dev There's no way to validate that `pausableAdmins_` and `unpausableAdmins_` are exhaustive
+    ///      because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
     constructor(
+        string memory name_,
+        address marketConfiguratorFactory_,
         address riskCurator_,
-        address addressProvider_,
-        address acl_,
         address treasury_,
-        address contractsRegisterLegacy_
-    ) MarketConfigurator(riskCurator_, addressProvider_, acl_, treasury_) {
-        gearStaking = _getContract(AP_GEAR_STAKING, NO_VERSION_CONTROL);
+        address aclLegacy_,
+        address contractsRegisterLegacy_,
+        address gearStakingLegacy_,
+        address[] memory pausableAdmins_,
+        address[] memory unpausableAdmins_,
+        address[] memory emergencyLiquidators_
+    ) MarketConfigurator(name_, marketConfiguratorFactory_, riskCurator_, treasury_) {
+        aclLegacy = aclLegacy_;
         contractsRegisterLegacy = contractsRegisterLegacy_;
+        gearStakingLegacy = gearStakingLegacy_;
+
+        uint256 num = pausableAdmins_.length;
+        for (uint256 i; i < num; ++i) {
+            address admin = pausableAdmins_[i];
+            if (!IACLLegacy(aclLegacy).isPausableAdmin(admin)) revert AddressIsNotPausableAdminException(admin);
+            IACL(acl).addPausableAdmin(admin);
+        }
+        num = unpausableAdmins_.length;
+        for (uint256 i; i < num; ++i) {
+            address admin = unpausableAdmins_[i];
+            if (!IACLLegacy(aclLegacy).isUnpausableAdmin(admin)) revert AddressIsNotUnpausableAdminException(admin);
+            IACL(acl).addUnpausableAdmin(admin);
+        }
+        num = emergencyLiquidators_.length;
+        for (uint256 i; i < num; ++i) {
+            IACL(acl).addEmergencyLiquidator(emergencyLiquidators_[i]);
+        }
 
         address[] memory pools = IContractsRegisterLegacy(contractsRegisterLegacy).getPools();
         uint256 numPools = pools.length;
         for (uint256 i; i < numPools; ++i) {
             address pool = pools[i];
-            if (!_matchVersion(pool)) continue;
+            if (!_isV3Contract(pool)) continue;
 
             address[] memory creditManagers = IPoolV3(pool).creditManagers();
             uint256 numCreditManagers = creditManagers.length;
             if (numCreditManagers == 0) continue;
 
             address priceOracle = _priceOracle(creditManagers[0]);
-            IContractsRegister(contractsRegister).createMarket(pool, priceOracle);
-
             address lossLiquidator = _lossLiquidator(creditManagers[0]);
-            if (lossLiquidator != address(0)) {
-                IContractsRegister(contractsRegister).setLossLiquidator(pool, lossLiquidator);
-            }
+            IContractsRegister(contractsRegister).createMarket(pool, priceOracle, lossLiquidator);
 
             for (uint256 j; j < numCreditManagers; ++j) {
                 address creditManager = creditManagers[j];
+                // QUESTION: maybe revert with more detailed exceptions?
                 if (
-                    !_matchVersion(creditManager) || _priceOracle(creditManager) != priceOracle
+                    !_isV3Contract(creditManager) || _priceOracle(creditManager) != priceOracle
                         || _lossLiquidator(creditManager) != lossLiquidator
                 ) {
-                    revert CreditManagerMisconfiguredException(creditManager);
+                    revert CreditManagerIsMisconfiguredException(creditManager);
                 }
 
-                IContractsRegister(contractsRegister).createCreditSuite(pool, creditManagers[j]);
+                // QUESTION: check all tokens are quoted etc?
 
-                // question: check all tokens are quoted etc?
+                IContractsRegister(contractsRegister).createCreditSuite(pool, creditManagers[j]);
             }
 
             // TODO: set factories, access lists etc
         }
     }
 
+    function claimLegacyACLOwnership() external onlyOwner {
+        // on some chains, legacy ACL implements a 2-step ownership transfer
+        try IACLLegacy(aclLegacy).pendingOwner() {
+            IACLLegacy(aclLegacy).claimOwnership();
+        } catch {}
+    }
+
     function createCreditSuite(address pool, bytes calldata encodedParams)
         public
         override
-        onlyOwner
-        returns (address)
+        returns (address creditManager)
     {
-        address creditManager = super.createCreditSuite(pool, encodedParams);
+        creditManager = super.createCreditSuite(pool, encodedParams);
         IContractsRegisterLegacy(contractsRegisterLegacy).addCreditManager(creditManager);
-        return creditManager;
+    }
+
+    function addPausableAdmin(address admin) public override {
+        super.addPausableAdmin(admin);
+        IACLLegacy(aclLegacy).addPausableAdmin(admin);
+    }
+
+    function addUnpausableAdmin(address admin) public override {
+        super.addUnpausableAdmin(admin);
+        IACLLegacy(aclLegacy).addUnpausableAdmin(admin);
+    }
+
+    function removePausableAdmin(address admin) public override {
+        super.removePausableAdmin(admin);
+        IACLLegacy(aclLegacy).removePausableAdmin(admin);
+    }
+
+    function removeUnpausableAdmin(address admin) public override {
+        super.removeUnpausableAdmin(admin);
+        IACLLegacy(aclLegacy).removeUnpausableAdmin(admin);
+    }
+
+    function migrate(address newMarketConfigurator) public override {
+        super.migrate(newMarketConfigurator);
+        IACLLegacy(aclLegacy).transferOwnership(newMarketConfigurator);
     }
 
     function setVotingContractStatus(address votingContract, VotingContractStatus status)
         external
         onlyMarketConfiguratorFactory
     {
-        // QUESTION: can we check that `votingContract` belongs to caller (it might not even implement `ACLTrait` though)
-        IGearStakingV3(gearStaking).setVotingContractStatus(votingContract, status);
+        IGearStakingV3(gearStakingLegacy).setVotingContractStatus(votingContract, status);
     }
 
-    function configureGearStaking(bytes calldata data) external onlyDAO {
-        // QUESTION: okay, what if we want to use GEAR staking for other purposes?
-        if (bytes4(data) == IGearStakingV3.setVotingContractStatus.selector) revert();
-        gearStaking.functionCall(data);
+    function configureGearStaking(bytes calldata data) external onlyMarketConfiguratorFactory {
+        gearStakingLegacy.functionCall(data);
     }
 
     // --------- //
@@ -127,14 +166,15 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     function _executeHook(address factory, Call[] memory calls) internal override {
         uint256 numCalls = calls.length;
         for (uint256 i; i < numCalls; ++i) {
-            if (calls[i].target == gearStaking || calls[i].target == contractsRegisterLegacy) {
-                revert ContractNotAssignedToFactoryException(calls[i].target);
+            address target = calls[i].target;
+            if (target == aclLegacy || target == contractsRegisterLegacy || target == gearStakingLegacy) {
+                revert CallsToLegacyContractsAreForbiddenException();
             }
         }
         super._executeHook(factory, calls);
     }
 
-    function _matchVersion(address contract_) internal view returns (bool) {
+    function _isV3Contract(address contract_) internal view returns (bool) {
         try IVersion(contract_).version() returns (uint256 version_) {
             return version_ >= 300 && version_ < 400;
         } catch {

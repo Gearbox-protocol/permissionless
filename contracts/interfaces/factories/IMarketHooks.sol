@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {Call} from "./Types.sol";
+import {Call} from "../Types.sol";
 
 /// @notice Interface for market hooks
 /// @dev These hooks are called by the MarketConfigurator during various configuration events

@@ -5,7 +5,7 @@ pragma solidity ^0.8.23;
 
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
-import {ILossLiquidatorFactory} from "../interfaces/ILossLiquidatorFactory.sol";
+import {ILossLiquidatorFactory} from "../interfaces/factories/ILossLiquidatorFactory.sol";
 import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 
 import {CallBuilder} from "../libraries/CallBuilder.sol";
@@ -37,7 +37,7 @@ contract LossLiquidatorFactory is ILossLiquidatorFactory, AbstractFactory, Marke
         address lossLiquidator = _deployByDomain({
             domain: DOMAIN_LOSS_LIQUIDATOR,
             postfix: params.postfix,
-            version_: version,
+            version: version,
             constructorParams: params.constructorParams,
             salt: bytes32(bytes20(msg.sender))
         });
@@ -52,23 +52,12 @@ contract LossLiquidatorFactory is ILossLiquidatorFactory, AbstractFactory, Marke
     // CONFIGURATION //
     // ------------- //
 
-    function configure(address lossLiquidator, bytes calldata data)
-        external
-        view
-        override
-        onlyMarketConfigurators
-        returns (Call[] memory)
-    {
+    function configure(address lossLiquidator, bytes calldata data) external pure override returns (Call[] memory) {
         return CallBuilder.build(Call({target: lossLiquidator, callData: data}));
     }
 
-    function manage(address, bytes calldata callData)
-        external
-        override
-        onlyMarketConfigurators
-        returns (Call[] memory)
-    {
+    function manage(address, bytes calldata callData) external pure override returns (Call[] memory) {
         // TODO: implement
-        revert ForbiddenManagementCall(bytes4(callData));
+        revert ForbiddenManagementCallException(bytes4(callData));
     }
 }

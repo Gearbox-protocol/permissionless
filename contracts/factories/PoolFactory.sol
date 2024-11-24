@@ -4,36 +4,35 @@
 pragma solidity ^0.8.23;
 
 import {SafeERC20} from "@1inch/solidity-utils/contracts/libraries/SafeERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
-import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
-import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
+import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {
     IncorrectPriceException,
     InsufficientBalanceException
 } from "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
+import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
+import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
+import {IMarketHooks} from "../interfaces/factories/IMarketHooks.sol";
+import {IPoolFactory} from "../interfaces/factories/IPoolFactory.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
+import {Call, DeployResult} from "../interfaces/Types.sol";
+
+import {CallBuilder} from "../libraries/CallBuilder.sol";
+import {
+    AP_DEFAULT_IRM,
+    AP_POOL_FACTORY,
+    AP_POOL_QUOTA_KEEPER,
+    DOMAIN_POOL,
+    NO_VERSION_CONTROL
+} from "../libraries/ContractLiterals.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
 import {MarketHooks} from "./MarketHooks.sol";
-import {
-    AP_POOL_QUOTA_KEEPER,
-    AP_POOL_FACTORY,
-    AP_DEFAULT_IRM,
-    NO_VERSION_CONTROL,
-    DOMAIN_POOL
-} from "../libraries/ContractLiterals.sol";
-
-import {CallBuilder} from "../libraries/CallBuilder.sol";
-import {IPoolFactory} from "../interfaces/IPoolFactory.sol";
-import {Call, DeployResult} from "../interfaces/Types.sol";
-import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
 
 contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
     using SafeERC20 for IERC20;
@@ -149,7 +148,7 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
         external
         view
         override(IMarketHooks, MarketHooks)
-        returns (Call[] memory calls)
+        returns (Call[] memory)
     {
         address pool = ICreditManagerV3(creditManager).pool();
 
@@ -213,7 +212,7 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
     // CONFIGURATION //
     // ------------- //
 
-    function configure(address pool, bytes calldata callData) external view returns (Call[] memory) {
+    function configure(address pool, bytes calldata callData) external view override returns (Call[] memory) {
         bytes4 selector = bytes4(callData);
         if (
             selector == IPoolV3.setTotalDebtLimit.selector || selector == IPoolV3.setCreditManagerDebtLimit.selector
@@ -230,14 +229,9 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
         }
     }
 
-    function manage(address, bytes calldata callData)
-        external
-        override
-        onlyMarketConfigurators
-        returns (Call[] memory)
-    {
+    function manage(address, bytes calldata callData) external pure override returns (Call[] memory) {
         // TODO: implement
-        revert ForbiddenManagementCall(bytes4(callData));
+        revert ForbiddenManagementCallException(bytes4(callData));
     }
 
     // --------- //
@@ -261,7 +255,7 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
         return _deployByDomain({
             domain: DOMAIN_POOL,
             postfix: postfix,
-            version_: version,
+            version: version,
             constructorParams: constructorParams,
             salt: salt
         });
@@ -269,8 +263,8 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
 
     function _deployQuotaKeeper(address marketConfigurator, address pool) internal returns (address) {
         return _deploy({
-            type_: AP_POOL_QUOTA_KEEPER,
-            version_: version,
+            contractType: AP_POOL_QUOTA_KEEPER,
+            version: version,
             constructorParams: abi.encode(pool),
             salt: bytes32(bytes20(marketConfigurator))
         });

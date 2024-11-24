@@ -25,6 +25,9 @@ contract ACL is IACL, Ownable {
     /// @dev Set of unpausable admins
     EnumerableSet.AddressSet internal _unpausableAdminsSet;
 
+    /// @dev Set of emergency liquidators
+    EnumerableSet.AddressSet internal _emergencyLiquidatorsSet;
+
     /// @notice Returns configurator
     /// @dev New in version `3_10`
     function getConfigurator() external view override returns (address) {
@@ -58,6 +61,17 @@ contract ACL is IACL, Ownable {
         return _unpausableAdminsSet.contains(account);
     }
 
+    /// @notice Returns the list of emergency liquidators
+    /// @dev New in version `3_10`
+    function getEmergencyLiquidators() external view override returns (address[] memory) {
+        return _emergencyLiquidatorsSet.values();
+    }
+
+    /// @notice Whether `account` is one of emergency liquidators
+    function isEmergencyLiquidator(address account) external view override returns (bool) {
+        return _emergencyLiquidatorsSet.contains(account);
+    }
+
     /// @notice Adds `admin` to the set of pausable admins
     /// @dev Reverts if caller is not configurator
     function addPausableAdmin(address admin) external override onlyOwner {
@@ -80,5 +94,19 @@ contract ACL is IACL, Ownable {
     /// @dev Reverts if caller is not configurator
     function removeUnpausableAdmin(address admin) external override onlyOwner {
         if (_unpausableAdminsSet.remove(admin)) emit RemoveUnpausableAdmin(admin);
+    }
+
+    /// @notice Adds `liquidator` to the set of emergency liquidators
+    /// @dev Reverts if caller is not configurator
+    /// @dev New in version `3_10`
+    function addEmergencyLiquidator(address liquidator) external override onlyOwner {
+        if (_emergencyLiquidatorsSet.add(liquidator)) emit AddEmergencyLiquidator(liquidator);
+    }
+
+    /// @notice Removes `liquidator` from the set of emergency liquidators
+    /// @dev Reverts if caller is not configurator
+    /// @dev New in version `3_10`
+    function removeEmergencyLiquidator(address liquidator) external override onlyOwner {
+        if (_emergencyLiquidatorsSet.remove(liquidator)) emit RemoveEmergencyLiquidator(liquidator);
     }
 }

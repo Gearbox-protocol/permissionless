@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {Call} from "./Types.sol";
+import {Call} from "../Types.sol";
 
 interface IConfiguratingFactory {
     error ForbiddenConfigurationCallException(bytes4 selector);

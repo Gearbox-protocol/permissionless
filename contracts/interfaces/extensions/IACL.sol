@@ -11,6 +11,8 @@ interface IACL is IACLBase, IVersion {
     event RemovePausableAdmin(address indexed admin);
     event AddUnpausableAdmin(address indexed admin);
     event RemoveUnpausableAdmin(address indexed admin);
+    event AddEmergencyLiquidator(address indexed liquidator);
+    event RemoveEmergencyLiquidator(address indexed liquidator);
 
     function getConfigurator() external view returns (address);
 
@@ -21,4 +23,9 @@ interface IACL is IACLBase, IVersion {
     function getUnpausableAdmins() external view returns (address[] memory);
     function addUnpausableAdmin(address admin) external;
     function removeUnpausableAdmin(address admin) external;
+
+    function getEmergencyLiquidators() external view returns (address[] memory);
+    function isEmergencyLiquidator(address account) external view returns (bool);
+    function addEmergencyLiquidator(address liquidator) external;
+    function removeEmergencyLiquidator(address liquidator) external;
 }

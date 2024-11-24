@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {IMarketHooks} from "../interfaces/IMarketHooks.sol";
+import {IMarketHooks} from "../interfaces/factories/IMarketHooks.sol";
 import {Call} from "../interfaces/Types.sol";
 
 /// @dev Provides empty implementations of market hooks

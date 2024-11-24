@@ -70,27 +70,30 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
         return _priceOracles[pool];
     }
 
-    /// @notice Returns the loss liquidator of the market corresponding to `pool` or `address(0)` if it's not set
+    /// @notice Returns the loss liquidator of the market corresponding to `pool`
     /// @dev Reverts if `pool` is not registered
     function getLossLiquidator(address pool) external view override returns (address) {
         if (!isPool(pool)) revert MarketNotRegisteredException(pool);
         return _lossLiquidators[pool];
     }
 
-    /// @notice Creates the market corresponding to `pool` and sets `priceOracle` as its price oracle
+    /// @notice Creates the market corresponding to `pool`,
+    ///         sets `priceOracle` as its price oracle and `lossLiquidator` as its loss liquidator
     /// @dev Reverts if market was previously shutdown
     /// @dev Reverts if caller is not configurator
-    /// @dev Reverts if `priceOracle` is `address(0)`
-    function createMarket(address pool, address priceOracle)
+    /// @dev Reverts if any of `priceOracle` and `lossLiquidator` is `address(0)`
+    function createMarket(address pool, address priceOracle, address lossLiquidator)
         external
         override
         configuratorOnly
         nonZeroAddress(priceOracle)
+        nonZeroAddress(lossLiquidator)
     {
         if (!_registeredPoolsSet.add(pool)) return;
         if (_shutdownPoolsSet.contains(pool)) revert MarketShutDownException(pool);
         _priceOracles[pool] = priceOracle;
-        emit CreateMarket(pool, priceOracle);
+        _lossLiquidators[pool] = lossLiquidator;
+        emit CreateMarket(pool, priceOracle, lossLiquidator);
     }
 
     /// @notice Shuts down the market corresponding to `pool`

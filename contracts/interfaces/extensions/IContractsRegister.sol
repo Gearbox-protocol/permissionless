@@ -13,7 +13,7 @@ interface IContractsRegister is IContractsRegisterBase, IVersion, IACLTrait {
     // EVENTS //
     // ------ //
 
-    event CreateMarket(address indexed pool, address indexed priceOracle);
+    event CreateMarket(address indexed pool, address indexed priceOracle, address indexed lossLiquidator);
     event ShutdownMarket(address indexed pool);
     event CreateCreditSuite(address indexed pool, address indexed creditManager);
     event ShutdownCreditSuite(address indexed creditManager);
@@ -39,7 +39,7 @@ interface IContractsRegister is IContractsRegisterBase, IVersion, IACLTrait {
     function getPriceOracle(address pool) external view returns (address);
     function getLossLiquidator(address pool) external view returns (address);
 
-    function createMarket(address pool, address priceOracle) external;
+    function createMarket(address pool, address priceOracle, address lossLiquidator) external;
     function shutdownMarket(address pool) external;
     function setPriceOracle(address pool, address priceOracle) external;
     function setLossLiquidator(address pool, address lossLiquidator) external;
