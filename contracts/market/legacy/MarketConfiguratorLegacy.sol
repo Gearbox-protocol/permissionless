@@ -17,7 +17,12 @@ import {IContractsRegister} from "../../interfaces/extensions/IContractsRegister
 import {IContractsRegisterLegacy} from "../../interfaces/extensions/IContractsRegisterLegacy.sol";
 import {Call} from "../../interfaces/Types.sol";
 
-import {AP_MARKET_CONFIGURATOR_LEGACY} from "../../libraries/ContractLiterals.sol";
+import {
+    AP_MARKET_CONFIGURATOR_LEGACY,
+    ROLE_EMERGENCY_LIQUIDATOR,
+    ROLE_PAUSABLE_ADMIN,
+    ROLE_UNPAUSABLE_ADMIN
+} from "../../libraries/ContractLiterals.sol";
 
 import {MarketConfigurator} from "../MarketConfigurator.sol";
 
@@ -61,17 +66,17 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         for (uint256 i; i < num; ++i) {
             address admin = pausableAdmins_[i];
             if (!IACLLegacy(aclLegacy).isPausableAdmin(admin)) revert AddressIsNotPausableAdminException(admin);
-            IACL(acl).addPausableAdmin(admin);
+            IACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, admin);
         }
         num = unpausableAdmins_.length;
         for (uint256 i; i < num; ++i) {
             address admin = unpausableAdmins_[i];
             if (!IACLLegacy(aclLegacy).isUnpausableAdmin(admin)) revert AddressIsNotUnpausableAdminException(admin);
-            IACL(acl).addUnpausableAdmin(admin);
+            IACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, admin);
         }
         num = emergencyLiquidators_.length;
         for (uint256 i; i < num; ++i) {
-            IACL(acl).addEmergencyLiquidator(emergencyLiquidators_[i]);
+            IACL(acl).grantRole(ROLE_EMERGENCY_LIQUIDATOR, emergencyLiquidators_[i]);
         }
 
         address[] memory pools = IContractsRegisterLegacy(contractsRegisterLegacy).getPools();
@@ -123,24 +128,16 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         IContractsRegisterLegacy(contractsRegisterLegacy).addCreditManager(creditManager);
     }
 
-    function addPausableAdmin(address admin) public override {
-        super.addPausableAdmin(admin);
-        IACLLegacy(aclLegacy).addPausableAdmin(admin);
+    function grantRole(bytes32 role, address account) public override {
+        super.grantRole(role, account);
+        if (role == ROLE_PAUSABLE_ADMIN) IACLLegacy(aclLegacy).addPausableAdmin(account);
+        if (role == ROLE_UNPAUSABLE_ADMIN) IACLLegacy(aclLegacy).addUnpausableAdmin(account);
     }
 
-    function addUnpausableAdmin(address admin) public override {
-        super.addUnpausableAdmin(admin);
-        IACLLegacy(aclLegacy).addUnpausableAdmin(admin);
-    }
-
-    function removePausableAdmin(address admin) public override {
-        super.removePausableAdmin(admin);
-        IACLLegacy(aclLegacy).removePausableAdmin(admin);
-    }
-
-    function removeUnpausableAdmin(address admin) public override {
-        super.removeUnpausableAdmin(admin);
-        IACLLegacy(aclLegacy).removeUnpausableAdmin(admin);
+    function revokeRole(bytes32 role, address account) public override {
+        super.revokeRole(role, account);
+        if (role == ROLE_PAUSABLE_ADMIN) IACLLegacy(aclLegacy).removePausableAdmin(account);
+        if (role == ROLE_UNPAUSABLE_ADMIN) IACLLegacy(aclLegacy).removeUnpausableAdmin(account);
     }
 
     function migrate(address newMarketConfigurator) public override {

@@ -95,17 +95,9 @@ interface IMarketConfigurator is IVersion {
     // ROLES MANAGEMENT //
     // ---------------- //
 
-    function addPausableAdmin(address admin) external;
+    function grantRole(bytes32 role, address account) external;
 
-    function addUnpausableAdmin(address admin) external;
-
-    function removePausableAdmin(address admin) external;
-
-    function removeUnpausableAdmin(address admin) external;
-
-    function addEmergencyLiquidator(address liquidator) external;
-
-    function removeEmergencyLiquidator(address liquidator) external;
+    function revokeRole(bytes32 role, address account) external;
 
     // ------------- //
     // CONFIGURATION //

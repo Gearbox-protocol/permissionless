@@ -358,31 +358,13 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     // ---------------- //
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
-    function addPausableAdmin(address admin) public virtual override onlyOwner {
-        ACL(acl).addPausableAdmin(admin);
+    function grantRole(bytes32 role, address account) public virtual override onlyOwner {
+        ACL(acl).grantRole(role, account);
     }
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
-    function addUnpausableAdmin(address admin) public virtual override onlyOwner {
-        ACL(acl).addUnpausableAdmin(admin);
-    }
-
-    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
-    function removePausableAdmin(address admin) public virtual override onlyOwner {
-        ACL(acl).removePausableAdmin(admin);
-    }
-
-    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
-    function removeUnpausableAdmin(address admin) public virtual override onlyOwner {
-        ACL(acl).removeUnpausableAdmin(admin);
-    }
-
-    function addEmergencyLiquidator(address liquidator) external override onlyOwner {
-        ACL(acl).addEmergencyLiquidator(liquidator);
-    }
-
-    function removeEmergencyLiquidator(address liquidator) external override onlyOwner {
-        ACL(acl).removeEmergencyLiquidator(liquidator);
+    function revokeRole(bytes32 role, address account) public virtual override onlyOwner {
+        ACL(acl).revokeRole(role, account);
     }
 
     // ------------- //

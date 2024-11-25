@@ -59,3 +59,11 @@ bytes32 constant DOMAIN_PRICE_FEED = "PF";
 bytes32 constant DOMAIN_IRM = "IRM";
 bytes32 constant DOMAIN_ZAPPER = "ZAP";
 bytes32 constant DOMAIN_PHANTOM_TOKEN = "PT";
+
+// ----- //
+// ROLES //
+// ----- //
+
+bytes32 constant ROLE_EMERGENCY_LIQUIDATOR = "EMERGENCY_LIQUIDATOR";
+bytes32 constant ROLE_PAUSABLE_ADMIN = "PAUSABLE_ADMIN";
+bytes32 constant ROLE_UNPAUSABLE_ADMIN = "UNPAUSABLE_ADMIN";

@@ -3,14 +3,14 @@
 // (c) Gearbox Holdings, 2024
 pragma solidity ^0.8.23;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {IACL} from "../interfaces/extensions/IACL.sol";
-import {AP_ACL} from "../libraries/ContractLiterals.sol";
+import {AP_ACL, ROLE_PAUSABLE_ADMIN, ROLE_UNPAUSABLE_ADMIN} from "../libraries/ContractLiterals.sol";
 
 /// @title Access control list
-contract ACL is IACL, Ownable {
+contract ACL is IACL, Ownable2Step {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice Contract version
@@ -19,17 +19,10 @@ contract ACL is IACL, Ownable {
     /// @notice Contract type
     bytes32 public constant override contractType = AP_ACL;
 
-    /// @dev Set of pausable admins
-    EnumerableSet.AddressSet internal _pausableAdminsSet;
-
-    /// @dev Set of unpausable admins
-    EnumerableSet.AddressSet internal _unpausableAdminsSet;
-
-    /// @dev Set of emergency liquidators
-    EnumerableSet.AddressSet internal _emergencyLiquidatorsSet;
+    /// @dev Set of accounts that have been granted role `role`
+    mapping(bytes32 role => EnumerableSet.AddressSet) internal _roleHolders;
 
     /// @notice Returns configurator
-    /// @dev New in version `3_10`
     function getConfigurator() external view override returns (address) {
         return owner();
     }
@@ -39,74 +32,37 @@ contract ACL is IACL, Ownable {
         return account == owner();
     }
 
-    /// @notice Returns the list of pausable admins
-    /// @dev New in version `3_10`
-    function getPausableAdmins() external view override returns (address[] memory) {
-        return _pausableAdminsSet.values();
-    }
-
     /// @notice Whether `account` is one of pausable admins
+    /// @dev Exists for backward compatibility
     function isPausableAdmin(address account) external view override returns (bool) {
-        return _pausableAdminsSet.contains(account);
-    }
-
-    /// @notice Returns the list of unpausable admins
-    /// @dev New in version `3_10`
-    function getUnpausableAdmins() external view override returns (address[] memory) {
-        return _unpausableAdminsSet.values();
+        return hasRole(ROLE_PAUSABLE_ADMIN, account);
     }
 
     /// @notice Whether `account` is one of unpausable admins
+    /// @dev Exists for backward compatibility
     function isUnpausableAdmin(address account) external view override returns (bool) {
-        return _unpausableAdminsSet.contains(account);
+        return hasRole(ROLE_UNPAUSABLE_ADMIN, account);
     }
 
-    /// @notice Returns the list of emergency liquidators
-    /// @dev New in version `3_10`
-    function getEmergencyLiquidators() external view override returns (address[] memory) {
-        return _emergencyLiquidatorsSet.values();
+    /// @notice Returns the list of accounts that have been granted role `role`
+    function getRoleHolders(bytes32 role) external view override returns (address[] memory) {
+        return _roleHolders[role].values();
     }
 
-    /// @notice Whether `account` is one of emergency liquidators
-    function isEmergencyLiquidator(address account) external view override returns (bool) {
-        return _emergencyLiquidatorsSet.contains(account);
+    /// @notice Whether account `account` has been granted role `role`
+    function hasRole(bytes32 role, address account) public view override returns (bool) {
+        return _roleHolders[role].contains(account);
     }
 
-    /// @notice Adds `admin` to the set of pausable admins
+    /// @notice Grants role `role` to account `account`
     /// @dev Reverts if caller is not configurator
-    function addPausableAdmin(address admin) external override onlyOwner {
-        if (_pausableAdminsSet.add(admin)) emit AddPausableAdmin(admin);
+    function grantRole(bytes32 role, address account) external override onlyOwner {
+        if (_roleHolders[role].add(account)) emit GrantRole(role, account);
     }
 
-    /// @notice Removes `admin` from the set of pausable admins
+    /// @notice Revokes role `role` from account `account`
     /// @dev Reverts if caller is not configurator
-    function removePausableAdmin(address admin) external override onlyOwner {
-        if (_pausableAdminsSet.remove(admin)) emit RemovePausableAdmin(admin);
-    }
-
-    /// @notice Adds `admin` to the set of unpausable admins
-    /// @dev Reverts if caller is not configurator
-    function addUnpausableAdmin(address admin) external override onlyOwner {
-        if (_unpausableAdminsSet.add(admin)) emit AddUnpausableAdmin(admin);
-    }
-
-    /// @notice Removes `admin` from the set of unpausable admins
-    /// @dev Reverts if caller is not configurator
-    function removeUnpausableAdmin(address admin) external override onlyOwner {
-        if (_unpausableAdminsSet.remove(admin)) emit RemoveUnpausableAdmin(admin);
-    }
-
-    /// @notice Adds `liquidator` to the set of emergency liquidators
-    /// @dev Reverts if caller is not configurator
-    /// @dev New in version `3_10`
-    function addEmergencyLiquidator(address liquidator) external override onlyOwner {
-        if (_emergencyLiquidatorsSet.add(liquidator)) emit AddEmergencyLiquidator(liquidator);
-    }
-
-    /// @notice Removes `liquidator` from the set of emergency liquidators
-    /// @dev Reverts if caller is not configurator
-    /// @dev New in version `3_10`
-    function removeEmergencyLiquidator(address liquidator) external override onlyOwner {
-        if (_emergencyLiquidatorsSet.remove(liquidator)) emit RemoveEmergencyLiquidator(liquidator);
+    function revokeRole(bytes32 role, address account) external override onlyOwner {
+        if (_roleHolders[role].remove(account)) emit RevokeRole(role, account);
     }
 }

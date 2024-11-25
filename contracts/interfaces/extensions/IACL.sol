@@ -7,25 +7,12 @@ import {IACL as IACLBase} from "@gearbox-protocol/core-v3/contracts/interfaces/b
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 interface IACL is IACLBase, IVersion {
-    event AddPausableAdmin(address indexed admin);
-    event RemovePausableAdmin(address indexed admin);
-    event AddUnpausableAdmin(address indexed admin);
-    event RemoveUnpausableAdmin(address indexed admin);
-    event AddEmergencyLiquidator(address indexed liquidator);
-    event RemoveEmergencyLiquidator(address indexed liquidator);
+    event GrantRole(bytes32 indexed role, address indexed account);
+    event RevokeRole(bytes32 indexed role, address indexed account);
 
     function getConfigurator() external view returns (address);
-
-    function getPausableAdmins() external view returns (address[] memory);
-    function addPausableAdmin(address admin) external;
-    function removePausableAdmin(address admin) external;
-
-    function getUnpausableAdmins() external view returns (address[] memory);
-    function addUnpausableAdmin(address admin) external;
-    function removeUnpausableAdmin(address admin) external;
-
-    function getEmergencyLiquidators() external view returns (address[] memory);
-    function isEmergencyLiquidator(address account) external view returns (bool);
-    function addEmergencyLiquidator(address liquidator) external;
-    function removeEmergencyLiquidator(address liquidator) external;
+    function getRoleHolders(bytes32 role) external view returns (address[] memory);
+    function hasRole(bytes32 role, address account) external view returns (bool);
+    function grantRole(bytes32 role, address account) external;
+    function revokeRole(bytes32 role, address account) external;
 }
