@@ -3,8 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
-
+import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {ILossLiquidatorFactory} from "../interfaces/factories/ILossLiquidatorFactory.sol";
 import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 
@@ -12,13 +11,22 @@ import {CallBuilder} from "../libraries/CallBuilder.sol";
 import {AP_LOSS_LIQUIDATOR_FACTORY, DOMAIN_LOSS_LIQUIDATOR} from "../libraries/ContractLiterals.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {MarketHooks} from "./MarketHooks.sol";
+import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
-contract LossLiquidatorFactory is ILossLiquidatorFactory, AbstractFactory, MarketHooks {
+contract LossLiquidatorFactory is AbstractMarketFactory, ILossLiquidatorFactory {
+    /// @notice Contract version
     uint256 public constant override version = 3_10;
+
+    /// @notice Contract type
     bytes32 public constant override contractType = AP_LOSS_LIQUIDATOR_FACTORY;
 
+    /// @notice Constructor
+    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {}
+
+    // ---------- //
+    // DEPLOYMENT //
+    // ---------- //
 
     function deployLossLiquidator(address pool, DeployParams calldata params)
         external
@@ -26,10 +34,9 @@ contract LossLiquidatorFactory is ILossLiquidatorFactory, AbstractFactory, Marke
         onlyMarketConfigurators
         returns (DeployResult memory)
     {
-        // QUESTION: what's the default postfix?
-        if (params.postfix == "") {
+        if (params.postfix == "ALIASED") {
             address decodedACL = abi.decode(params.constructorParams, (address));
-            if (decodedACL != IPoolV3(pool).acl()) revert InvalidConstructorParamsException();
+            if (decodedACL != _acl(pool)) revert InvalidConstructorParamsException();
         } else {
             // TODO: add checks for other kinds of loss liquidators
         }
@@ -42,22 +49,22 @@ contract LossLiquidatorFactory is ILossLiquidatorFactory, AbstractFactory, Marke
             salt: bytes32(bytes20(msg.sender))
         });
 
-        address[] memory accessList = new address[](1);
-        accessList[0] = lossLiquidator;
-
-        return DeployResult({newContract: lossLiquidator, accessList: accessList, onInstallOps: new Call[](0)});
+        return DeployResult({
+            newContract: lossLiquidator,
+            onInstallOps: CallBuilder.build(_addToAccessList(msg.sender, lossLiquidator))
+        });
     }
 
     // ------------- //
     // CONFIGURATION //
     // ------------- //
 
-    function configure(address lossLiquidator, bytes calldata data) external pure override returns (Call[] memory) {
-        return CallBuilder.build(Call({target: lossLiquidator, callData: data}));
-    }
-
-    function manage(address, bytes calldata callData) external pure override returns (Call[] memory) {
-        // TODO: implement
-        revert ForbiddenManagementCallException(bytes4(callData));
+    function configure(address pool, bytes calldata callData)
+        external
+        view
+        override(AbstractFactory, IFactory)
+        returns (Call[] memory)
+    {
+        return CallBuilder.build(Call({target: _lossLiquidator(pool), callData: callData}));
     }
 }

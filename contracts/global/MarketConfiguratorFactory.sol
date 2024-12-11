@@ -10,13 +10,12 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {IVotingContract} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVotingContract.sol";
 import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 
+import {AbstractDeployer} from "../helpers/AbstractDeployer.sol";
+
 import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
-import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
-import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
 
 import {
-    AP_BYTECODE_REPOSITORY,
     AP_GEAR_STAKING,
     AP_MARKET_CONFIGURATOR,
     AP_MARKET_CONFIGURATOR_FACTORY,
@@ -28,7 +27,7 @@ import {MarketConfiguratorLegacy} from "../market/legacy/MarketConfiguratorLegac
 import {MarketConfigurator} from "../market/MarketConfigurator.sol";
 import {TreasurySplitter} from "../market/TreasurySplitter.sol";
 
-contract MarketConfiguratorFactory is Ownable2Step, IMarketConfiguratorFactory {
+contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketConfiguratorFactory {
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -38,45 +37,48 @@ contract MarketConfiguratorFactory is Ownable2Step, IMarketConfiguratorFactory {
     /// @notice Contract type
     bytes32 public constant override contractType = AP_MARKET_CONFIGURATOR_FACTORY;
 
-    /// @notice Address of the address provider
-    address public immutable override addressProvider;
-
-    /// @notice Address of the bytecode repository
-    address public immutable override bytecodeRepository;
-
-    /// @dev Set of market configurators
-    EnumerableSet.AddressSet internal _marketConfiguratorsSet;
+    /// @dev Set of registered market configurators
+    EnumerableSet.AddressSet internal _registeredMarketConfiguratorsSet;
 
     /// @dev Set of shutdown market configurators
     EnumerableSet.AddressSet internal _shutdownMarketConfiguratorsSet;
 
+    /// @dev Reverts if caller is not one of market configurators
     modifier onlyMarketConfigurators() {
-        if (!_marketConfiguratorsSet.contains(msg.sender)) revert CallerIsNotMarketConfiguratorException();
+        if (!_registeredMarketConfiguratorsSet.contains(msg.sender)) revert CallerIsNotMarketConfiguratorException();
         _;
     }
 
     modifier onlyMarketConfiguratorOwner(address marketConfigurator) {
         // QUESTION: should shutdown configurators be able to perform some actions?
-        if (!_marketConfiguratorsSet.contains(marketConfigurator)) revert AddressIsNotMarketConfiguratorException();
+        if (!_registeredMarketConfiguratorsSet.contains(marketConfigurator)) {
+            revert AddressIsNotMarketConfiguratorException();
+        }
         if (MarketConfigurator(marketConfigurator).owner() != msg.sender) {
             revert CallerIsNotMarketConfiguratorOwnerException();
         }
         _;
     }
 
-    constructor(address addressProvider_, address owner_) {
-        addressProvider = addressProvider_;
-        bytecodeRepository = _getContract(AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL);
-        // QUESTION: read owner_ from AP? use AP's owner?
+    constructor(address addressProvider_, address owner_) AbstractDeployer(addressProvider_) {
+        // QUESTION: read owner_ from AP? use AP's owner? who's the owner?
         _transferOwnership(owner_);
     }
 
-    function isMarketConfigurator(address address_) external view override returns (bool) {
-        return _marketConfiguratorsSet.contains(address_);
+    function isMarketConfigurator(address account) external view override returns (bool) {
+        return _registeredMarketConfiguratorsSet.contains(account);
     }
 
     function getMarketConfigurators() external view override returns (address[] memory) {
-        return _marketConfiguratorsSet.values();
+        return _registeredMarketConfiguratorsSet.values();
+    }
+
+    function getMarketConfigurator(uint256 index) external view returns (address) {
+        return _registeredMarketConfiguratorsSet.at(index);
+    }
+
+    function getNumMarketConfigurators() external view returns (uint256) {
+        return _registeredMarketConfiguratorsSet.length();
     }
 
     function getShutdownMarketConfigurators() external view override returns (address[] memory) {
@@ -87,14 +89,15 @@ contract MarketConfiguratorFactory is Ownable2Step, IMarketConfiguratorFactory {
         // TODO: transfer ownership to the 2/2 multisig of `msg.sender` and DAO (to be introduced)
         TreasurySplitter treasury = new TreasurySplitter();
 
+        // TODO: deploy timelocks
         marketConfigurator = _deploy({
-            contractType_: AP_MARKET_CONFIGURATOR,
-            version_: version,
-            constructorParams: abi.encode(name, address(this), msg.sender, treasury),
+            contractType: AP_MARKET_CONFIGURATOR,
+            version: version,
+            constructorParams: abi.encode(name, address(this), msg.sender, msg.sender, treasury),
             salt: bytes32(bytes20(msg.sender))
         });
 
-        _marketConfiguratorsSet.add(marketConfigurator);
+        _registeredMarketConfiguratorsSet.add(marketConfigurator);
         emit CreateMarketConfigurator(marketConfigurator, name);
     }
 
@@ -107,7 +110,7 @@ contract MarketConfiguratorFactory is Ownable2Step, IMarketConfiguratorFactory {
         if (IContractsRegister(contractsRegister).getPools().length != 0) {
             revert CantShutdownMarketConfiguratorException();
         }
-        _marketConfiguratorsSet.remove(marketConfigurator);
+        _registeredMarketConfiguratorsSet.remove(marketConfigurator);
         _shutdownMarketConfiguratorsSet.add(marketConfigurator);
         emit ShutdownMarketConfigurator(marketConfigurator);
     }
@@ -117,41 +120,25 @@ contract MarketConfiguratorFactory is Ownable2Step, IMarketConfiguratorFactory {
         override
         onlyMarketConfigurators
     {
-        address gearStaking = _getContract(AP_GEAR_STAKING, NO_VERSION_CONTROL);
-
-        // TODO: cleanup
-        if (IVotingContract(votingContract).voter() != gearStaking) revert();
-        if (IGearStakingV3(gearStaking).version() < 3_10) {
-            address marketConfiguratorLegacy = _getContract(AP_MARKET_CONFIGURATOR_LEGACY, NO_VERSION_CONTROL);
-            MarketConfiguratorLegacy(marketConfiguratorLegacy).setVotingContractStatus(votingContract, status);
-        } else {
-            IGearStakingV3(gearStaking).setVotingContractStatus(votingContract, status);
-        }
+        // QUESTION: do we need to check that votingContract's voter is indeed the GEAR staking contract?
+        _configureGearStaking(abi.encodeCall(IGearStakingV3.setVotingContractStatus, (votingContract, status)));
     }
 
     function configureGearStaking(bytes calldata data) external override onlyOwner {
-        address gearStaking = _getContract(AP_GEAR_STAKING, NO_VERSION_CONTROL);
-
-        if (IGearStakingV3(gearStaking).version() < 3_10) {
-            address marketConfiguratorLegacy = _getContract(AP_MARKET_CONFIGURATOR_LEGACY, NO_VERSION_CONTROL);
-            MarketConfiguratorLegacy(marketConfiguratorLegacy).configureGearStaking(data);
-        } else {
-            gearStaking.functionCall(data);
-        }
+        _configureGearStaking(data);
     }
 
     // --------- //
     // INTERNALS //
     // --------- //
 
-    function _getContract(bytes32 key, uint256 version_) internal view returns (address) {
-        return IAddressProvider(addressProvider).getAddressOrRevert(key, version_);
-    }
-
-    function _deploy(bytes32 contractType_, uint256 version_, bytes memory constructorParams, bytes32 salt)
-        internal
-        returns (address)
-    {
-        return IBytecodeRepository(bytecodeRepository).deploy(contractType_, version_, constructorParams, salt);
+    function _configureGearStaking(bytes memory data) internal {
+        address gearStaking = _getContract(AP_GEAR_STAKING, NO_VERSION_CONTROL);
+        if (IGearStakingV3(gearStaking).version() < 3_10) {
+            address marketConfiguratorLegacy = _getContract(AP_MARKET_CONFIGURATOR_LEGACY, NO_VERSION_CONTROL);
+            MarketConfiguratorLegacy(marketConfiguratorLegacy).configureGearStaking(data);
+        } else {
+            gearStaking.functionCall(data);
+        }
     }
 }

@@ -5,20 +5,19 @@ pragma solidity ^0.8.23;
 
 import {AccountFactoryV3} from "@gearbox-protocol/core-v3/contracts/core/AccountFactoryV3.sol";
 import {BotListV3} from "@gearbox-protocol/core-v3/contracts/core/BotListV3.sol";
-
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {ICreditFactory} from "../interfaces/factories/ICreditFactory.sol";
-
-import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
+import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
+import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
-import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
-import {CreditManagerV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditManagerV3.sol";
-import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
+import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
+import {ICreditFactory} from "../interfaces/factories/ICreditFactory.sol";
+import {IFactory} from "../interfaces/factories/IFactory.sol";
+import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
+import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 
-import {AbstractFactory} from "./AbstractFactory.sol";
+import {CallBuilder} from "../libraries/CallBuilder.sol";
 import {
     DOMAIN_CREDIT_MANAGER,
     DOMAIN_ADAPTER,
@@ -30,10 +29,8 @@ import {
     AP_BYTECODE_REPOSITORY,
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
-import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
-import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
-import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
-import {CallBuilder} from "../libraries/CallBuilder.sol";
+
+import {AbstractFactory} from "./AbstractFactory.sol";
 
 interface ICreditConfig {
     function deployAdapter(bytes32 postfix, bytes calldata constructorParams) external;
@@ -56,6 +53,8 @@ struct CreditSuiteDeployParams {
     uint16 liquidationPremiumExpired;
 }
 
+// QUESTION: oh fuck, we need to update access list when we redeploy credit configurator
+
 // CreditFactoryV3 is responsible for deploying the entire credit suite and managing specific management functions.
 contract CreditFactory is AbstractFactory, ICreditFactory {
     using CallBuilder for Call;
@@ -75,6 +74,8 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     // Address of the WETH token
     address public immutable weth;
 
+    /// @notice Constructor
+    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         // shouldn't factory be the owner?
         // FIXME: all credit factories of version 3_1x should be able to access these two contracts
@@ -90,9 +91,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         }
     }
 
-    // ----------- //
-    // DEPLOYMENTS //
-    // ----------- //
+    // ---------- //
+    // DEPLOYMENT //
+    // ---------- //
 
     /// @notice Deploys a new credit suite for the specified pool with provided parameters.
     /// @param pool The address of the pool for which to create the credit suite.
@@ -109,6 +110,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
 
         address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
         address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
+        address lossLiquidator = IContractsRegister(contractsRegister).getLossLiquidator(pool);
 
         address creditManager = _deployCreditManager({
             marketConfigurator: msg.sender,
@@ -122,8 +124,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         address creditConfigurator =
             _deployCreditConfigurator({marketConfigurator: msg.sender, creditManager: creditManager});
 
-        // QUESTION: can we set degenNFT to address(0) and  update it later?
+        // QUESTION: can we set degenNFT to address(0) and update it later?
         // QUESTION: can we remove expirable parameter and update it later?
+        // both are kinda immutable, so not sure
         address creditFacade = _deployCreditFacade({
             marketConfigurator: msg.sender,
             creditManager: creditManager,
@@ -137,24 +140,19 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         AccountFactoryV3(accountFactory).addCreditManager(creditManager);
         BotListV3(botList).approveCreditManager(creditManager);
 
-        // TODO: add to onInstallOpps setLossLiquidator and addEmergencyLiquidator
-        // address[] memory emergencyLiquidators = IMarketConfigurator(msg.sender).emergencyLiquidators();
-
-        address[] memory accessList = new address[](1);
-        accessList[0] = creditConfigurator;
-
         return DeployResult({
             newContract: creditManager,
-            accessList: accessList,
-            onInstallOps: CallBuilder.build(_setCreditFacade(creditConfigurator, creditFacade, false))
+            onInstallOps: CallBuilder.build(
+                _addToAccessList(msg.sender, creditConfigurator),
+                _setCreditFacade(creditConfigurator, creditFacade, false),
+                _setLossLiquidator(creditConfigurator, lossLiquidator)
+            )
         });
     }
 
-    // ------------------ //
-    // CREDIT SUITE HOOKS //
-    // ------------------ //
-
-    // FIXME: okay, these really are market hooks
+    // ------------ //
+    // MARKET HOOKS //
+    // ------------ //
 
     function onUpdatePriceOracle(address creditManager, address newPriceOracle, address)
         external
@@ -185,7 +183,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     /// @return calls An array of Call structs representing the configuration operations to be executed
     function configure(address creditManager, bytes calldata callData)
         external
-        override
+        override(AbstractFactory, IFactory)
         onlyMarketConfigurators
         returns (Call[] memory calls)
     {
@@ -210,15 +208,15 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         // QUESTION: mapping for other functions of if..else statements?
     }
 
-    function manage(address, bytes calldata callData)
+    function emergencyConfigure(address, bytes calldata callData)
         external
         view
-        override
+        override(AbstractFactory, IFactory)
         onlyMarketConfigurators
         returns (Call[] memory)
     {
         // TODO: implement
-        revert ForbiddenManagementCallException(bytes4(callData));
+        revert ForbiddenEmergencyConfigurationCallException(bytes4(callData));
     }
 
     // --------- //

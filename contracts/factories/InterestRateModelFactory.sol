@@ -3,18 +3,18 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
+import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IInterestRateModelFactory} from "../interfaces/factories/IInterestRateModelFactory.sol";
-import {IMarketHooks} from "../interfaces/factories/IMarketHooks.sol";
-import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
+import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
 import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 
 import {CallBuilder} from "../libraries/CallBuilder.sol";
 import {AP_INTEREST_RATE_MODEL_FACTORY, DOMAIN_IRM} from "../libraries/ContractLiterals.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {MarketHooks} from "./MarketHooks.sol";
+import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
-contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRateModelFactory {
+contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFactory {
     using CallBuilder for Call[];
 
     /// @notice Contract version
@@ -23,7 +23,13 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
     /// @notice Contract type
     bytes32 public constant override contractType = AP_INTEREST_RATE_MODEL_FACTORY;
 
+    /// @notice Constructor
+    /// @param addressProvider_ Address provider contract address
     constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
+
+    // ---------- //
+    // DEPLOYMENT //
+    // ---------- //
 
     function deployInterestRateModel(address pool, DeployParams calldata params)
         external
@@ -31,7 +37,7 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
         onlyMarketConfigurators
         returns (DeployResult memory)
     {
-        if (params.postfix != "IRM_LINEAR") {
+        if (params.postfix != "LINEAR") {
             (address decodedAddressProvider, address decodedPool) =
                 abi.decode(params.constructorParams[:64], (address, address));
             if (decodedAddressProvider != addressProvider || decodedPool != pool) {
@@ -39,7 +45,7 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
             }
         }
 
-        address irm = _deployByDomain({
+        address interestRateModel = _deployByDomain({
             domain: DOMAIN_IRM,
             postfix: params.postfix,
             version: version,
@@ -47,21 +53,20 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
             salt: bytes32(bytes20(msg.sender))
         });
 
-        address[] memory accessList = new address[](1);
-        accessList[0] = irm;
-
-        return DeployResult({newContract: irm, accessList: accessList, onInstallOps: new Call[](0)});
+        return DeployResult({
+            newContract: interestRateModel,
+            onInstallOps: CallBuilder.build(_addToAccessList(msg.sender, interestRateModel))
+        });
     }
 
     // ------------ //
     // MARKET HOOKS //
     // ------------ //
 
-    // QUESTION: shall it (and similar functions in other factories) be `onlyMarketConfigurators`?
     function onUpdateInterestRateModel(address, address newInterestRateModel, address oldInterestRateModel)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory calls)
     {
         if (_isVotingContract(oldInterestRateModel)) {
@@ -76,15 +81,12 @@ contract InterestRateModelFactory is AbstractFactory, MarketHooks, IInterestRate
     // CONFIGURATION //
     // ------------- //
 
-    function configure(address irm, bytes calldata callData) external pure override returns (Call[] memory calls) {
-        // TODO: consider explicity forbidding `setController` just in case, though it can be restricted in spec
-        return CallBuilder.build(Call({target: irm, callData: callData}));
-    }
-
-    function manage(address, bytes calldata callData) external pure override returns (Call[] memory) {
-        // TODO: maybe introduce `IConfigurableContract` that provides `isConfigurationMethod(bytes4 selector)`
-        // and `isManagementMethod(bytes4 selector)`.
-        // Can further generalize it to also have `onInstall()` and `onUninstall()`
-        revert ForbiddenManagementCallException(bytes4(callData));
+    function configure(address pool, bytes calldata callData)
+        external
+        view
+        override(AbstractFactory, IFactory)
+        returns (Call[] memory calls)
+    {
+        return CallBuilder.build(Call({target: _interestRateModel(pool), callData: callData}));
     }
 }

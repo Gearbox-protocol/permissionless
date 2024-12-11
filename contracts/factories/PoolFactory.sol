@@ -8,14 +8,12 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IPriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
-import {
-    IncorrectPriceException,
-    InsufficientBalanceException
-} from "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
+import {InsufficientBalanceException} from "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
-import {IMarketHooks} from "../interfaces/factories/IMarketHooks.sol";
+import {IFactory} from "../interfaces/factories/IFactory.sol";
+import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
 import {IPoolFactory} from "../interfaces/factories/IPoolFactory.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
@@ -32,9 +30,9 @@ import {
 } from "../libraries/ContractLiterals.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {MarketHooks} from "./MarketHooks.sol";
+import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
-contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
+contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     using SafeERC20 for IERC20;
     using CallBuilder for Call;
 
@@ -44,21 +42,24 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
     /// @notice Contract type
     bytes32 public constant override contractType = AP_POOL_FACTORY;
 
+    /// @notice Address of the default IRM
     address public immutable defaultInterestRateModel;
 
-    //
-    // ERRORS
-    //
-
-    // Thrown if attempting to remove a market that still has active positions
-    error CantShutdownNonEmptyMarketException(address pool);
-
-    // Thrown if a credit manager with non-zero borrowed amount is attempted to be removed
+    /// @notice Thrown when trying to shutdown a credit suite with non-zero outstanding debt
     error CantShutdownNonEmptyCreditSuiteException(address creditManager);
 
+    /// @notice Thrown when attempting to shutdown a market with non-zero outstanding debt
+    error CantShutdownNonEmptyMarketException(address pool);
+
+    /// @notice Constructor
+    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         defaultInterestRateModel = _getContract(AP_DEFAULT_IRM, NO_VERSION_CONTROL);
     }
+
+    // ---------- //
+    // DEPLOYMENT //
+    // ---------- //
 
     function deployPool(address underlying, string calldata name, string calldata symbol)
         external
@@ -84,18 +85,18 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
         address quotaKeeper = _deployQuotaKeeper({marketConfigurator: msg.sender, pool: pool});
 
         // Inflation attack protection
+        // FIXME: unless executed as part of the batch, this can be stolen by someone else to create their market
         if (IERC20(underlying).balanceOf(address(this)) < 1e5) revert InsufficientBalanceException();
         IERC20(underlying).forceApprove(pool, 1e5);
         IPoolV3(pool).deposit(1e5, address(0xdead));
 
-        address[] memory accessList = new address[](2);
-        accessList[0] = pool;
-        accessList[1] = quotaKeeper;
-
         return DeployResult({
             newContract: pool,
-            accessList: accessList,
-            onInstallOps: CallBuilder.build(_setQuotaKeeper(pool, quotaKeeper))
+            onInstallOps: CallBuilder.build(
+                _addToAccessList(msg.sender, pool),
+                _addToAccessList(msg.sender, quotaKeeper),
+                _setQuotaKeeper(pool, quotaKeeper)
+            )
         });
     }
 
@@ -106,7 +107,7 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
     function onCreateMarket(address pool, address, address interestRateModel, address rateKeeper, address, address)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory calls)
     {
         calls = CallBuilder.build(
@@ -117,7 +118,7 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
     function onShutdownMarket(address pool)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory calls)
     {
         if (IPoolV3(pool).totalBorrowed() != 0) {
@@ -130,7 +131,7 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
     function onCreateCreditSuite(address pool, address creditManager)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory)
     {
         return CallBuilder.build(
@@ -138,16 +139,10 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
         );
     }
 
-    /**
-     * @notice Hook that executes when a creditManager is removed from the market.
-     * It checks
-     * @param creditManager The address of the creditManager being removed.
-     * @return calls An array of Call structs to be executed, setting the credit manager's debt limit to zero.
-     */
     function onShutdownCreditSuite(address creditManager)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory)
     {
         address pool = ICreditManagerV3(creditManager).pool();
@@ -159,60 +154,34 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
         return CallBuilder.build(_setCreditManagerDebtLimit(pool, creditManager, 0));
     }
 
-    // @dev Hook which is called when interest model is updated
-    // @param pool - pool address
-    // @param newModel - new interest model address
-    // @return calls - array of calls to be executed
     function onUpdateInterestRateModel(address pool, address newInterestRateModel, address)
         external
         pure
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory)
     {
         return CallBuilder.build(_setInterestRateModel(pool, newInterestRateModel));
     }
 
-    /**
-     * @notice Hook that executes when the rate keeper is updated for a pool
-     * @dev This hook is used to update the rate keeper in the pool quota keeper
-     * @param pool The address of the pool
-     * @param newRateKeeper The address of the new rate keeper
-     * @return calls An array of Call structs to be executed
-     */
     function onUpdateRateKeeper(address pool, address newRateKeeper, address)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory)
     {
         return CallBuilder.build(_setRateKeeper(_quotaKeeper(pool), newRateKeeper));
-    }
-
-    // @dev Hook which is called when price feed is updated
-    // Used as verification for price oracle, to prove that price is not zero
-    // for underlying or any other collateral token with non-zero quota
-    // @param pool - pool address
-    // @param token - token address
-    // @param priceFeed - price feed address
-    // @return calls - array of calls to be executed
-    function onSetPriceFeed(address pool, address token, address priceFeed)
-        external
-        view
-        override(IMarketHooks, MarketHooks)
-        returns (Call[] memory)
-    {
-        (, int256 answer,,,) = IPriceFeed(priceFeed).latestRoundData();
-        if (answer == 0 && (token == IPoolV3(pool).asset() || _quota(pool, token) != 0)) {
-            revert IncorrectPriceException();
-        }
-        return CallBuilder.build();
     }
 
     // ------------- //
     // CONFIGURATION //
     // ------------- //
 
-    function configure(address pool, bytes calldata callData) external view override returns (Call[] memory) {
+    function configure(address pool, bytes calldata callData)
+        external
+        view
+        override(AbstractFactory, IFactory)
+        returns (Call[] memory)
+    {
         bytes4 selector = bytes4(callData);
         if (
             selector == IPoolV3.setTotalDebtLimit.selector || selector == IPoolV3.setCreditManagerDebtLimit.selector
@@ -223,15 +192,11 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
             selector == IPoolQuotaKeeperV3.setTokenLimit.selector
                 || selector == IPoolQuotaKeeperV3.setTokenQuotaIncreaseFee.selector
         ) {
+            // QUESTION: is it safe to set non-zero limit to tokens with zero price? can it break things?
             return CallBuilder.build(Call({target: _quotaKeeper(pool), callData: callData}));
         } else {
             revert ForbiddenConfigurationCallException(selector);
         }
-    }
-
-    function manage(address, bytes calldata callData) external pure override returns (Call[] memory) {
-        // TODO: implement
-        revert ForbiddenManagementCallException(bytes4(callData));
     }
 
     // --------- //
@@ -268,14 +233,6 @@ contract PoolFactory is AbstractFactory, MarketHooks, IPoolFactory {
             constructorParams: abi.encode(pool),
             salt: bytes32(bytes20(marketConfigurator))
         });
-    }
-
-    function _quotaKeeper(address pool) internal view returns (address) {
-        return IPoolV3(pool).poolQuotaKeeper();
-    }
-
-    function _quota(address pool, address token) internal view returns (uint96 quota) {
-        (,,, quota,,) = IPoolQuotaKeeperV3(_quotaKeeper(pool)).getTokenQuotaParams(token);
     }
 
     function _setQuotaKeeper(address pool, address quotaKeeper) internal pure returns (Call memory) {

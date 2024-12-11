@@ -32,18 +32,6 @@ contract ACL is IACL, Ownable2Step {
         return account == owner();
     }
 
-    /// @notice Whether `account` is one of pausable admins
-    /// @dev Exists for backward compatibility
-    function isPausableAdmin(address account) external view override returns (bool) {
-        return hasRole(ROLE_PAUSABLE_ADMIN, account);
-    }
-
-    /// @notice Whether `account` is one of unpausable admins
-    /// @dev Exists for backward compatibility
-    function isUnpausableAdmin(address account) external view override returns (bool) {
-        return hasRole(ROLE_UNPAUSABLE_ADMIN, account);
-    }
-
     /// @notice Returns the list of accounts that have been granted role `role`
     function getRoleHolders(bytes32 role) external view override returns (address[] memory) {
         return _roleHolders[role].values();

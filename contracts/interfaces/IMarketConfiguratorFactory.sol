@@ -15,10 +15,7 @@ interface IMarketConfiguratorFactory is IVersion {
     error CallerIsNotMarketConfiguratorOwnerException();
     error CantShutdownMarketConfiguratorException();
 
-    function addressProvider() external view returns (address);
-    function bytecodeRepository() external view returns (address);
-
-    function isMarketConfigurator(address address_) external view returns (bool);
+    function isMarketConfigurator(address account) external view returns (bool);
     function getMarketConfigurators() external view returns (address[] memory);
     function getShutdownMarketConfigurators() external view returns (address[] memory);
     function createMarketConfigurator(string calldata name) external returns (address marketConfigurator);

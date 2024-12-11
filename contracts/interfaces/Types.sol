@@ -15,7 +15,6 @@ struct DeployParams {
 
 struct DeployResult {
     address newContract;
-    address[] accessList;
     Call[] onInstallOps;
 }
 

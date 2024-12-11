@@ -11,19 +11,29 @@ interface IMarketConfigurator is IVersion {
     // ERRORS //
     // ------ //
 
+    error CallerIsNotSelfException();
+
+    error CallerIsNotEmergencyAdminException();
+
     error CallerIsNotMarketConfiguratorFactoryException();
 
-    // Thrown if hook attempting to call a contract which is node in accessList
     error ContractNotAssignedToFactoryException(address);
 
-    // Thrown if factory attempting to overwrite exsting addess in accessList
     error ContractAlreadyInAccessListException(address);
+
+    error MarketNotRegisteredException(address pool);
+
+    error CreditSuiteNotRegisteredException(address creditManager);
 
     function contractName() external view returns (string memory);
     function marketConfiguratorFactory() external view returns (address);
     function acl() external view returns (address);
     function contractsRegister() external view returns (address);
     function treasury() external view returns (address);
+
+    function emergencyAdmin() external view returns (address);
+
+    function accessList(address target) external view returns (address factory);
 
     // ----------------- //
     // MARKET MANAGEMENT //
@@ -45,6 +55,8 @@ interface IMarketConfigurator is IVersion {
 
     function configurePool(address pool, bytes calldata data) external;
 
+    function emergencyConfigurePool(address pool, bytes calldata data) external;
+
     // ----------------------- //
     // CREDIT SUITE MANAGEMENT //
     // ----------------------- //
@@ -55,15 +67,17 @@ interface IMarketConfigurator is IVersion {
 
     function configureCreditSuite(address creditManager, bytes calldata data) external;
 
+    function emergencyConfigureCreditSuite(address creditManager, bytes calldata data) external;
+
     // ----------------------- //
     // PRICE ORACLE MANAGEMENT //
     // ----------------------- //
 
     function updatePriceOracle(address pool) external returns (address priceOracle);
 
-    function setPriceFeed(address pool, address token, address priceFeed) external;
+    function configurePriceOracle(address pool, bytes calldata data) external;
 
-    function setReservePriceFeed(address pool, address token, address priceFeed) external;
+    function emergencyConfigurePriceOracle(address pool, bytes calldata data) external;
 
     // -------------- //
     // IRM MANAGEMENT //
@@ -73,6 +87,8 @@ interface IMarketConfigurator is IVersion {
 
     function configureInterestRateModel(address pool, bytes calldata data) external;
 
+    function emergencyConfigureInterestRateModel(address pool, bytes calldata data) external;
+
     // ---------------------- //
     // RATE KEEPER MANAGEMENT //
     // ---------------------- //
@@ -80,6 +96,8 @@ interface IMarketConfigurator is IVersion {
     function updateRateKeeper(address pool, DeployParams calldata params) external returns (address rateKeeper);
 
     function configureRateKeeper(address pool, bytes calldata data) external;
+
+    function emergencyConfigureRateKeeper(address pool, bytes calldata data) external;
 
     // -–------------------------ //
     // LOSS LIQUIDATOR MANAGEMENT //
@@ -90,6 +108,8 @@ interface IMarketConfigurator is IVersion {
         returns (address lossLiqudiator);
 
     function configureLossLiquidator(address pool, bytes calldata data) external;
+
+    function emergencyConfigureLossLiquidator(address pool, bytes calldata data) external;
 
     // ---------------- //
     // ROLES MANAGEMENT //
@@ -102,6 +122,8 @@ interface IMarketConfigurator is IVersion {
     // ------------- //
     // CONFIGURATION //
     // ------------- //
+
+    function addToAccessList(address target, address factory) external;
 
     function migrate(address newMarketConfigurator) external;
 

@@ -3,12 +3,15 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {Call, DeployResult} from "../Types.sol";
-import {IConfiguratingFactory} from "./IConfiguratingFactory.sol";
+import {IFactory} from "./IFactory.sol";
 
-interface ICreditFactory is IVersion, IConfiguratingFactory {
+interface ICreditFactory is IFactory {
     function deployCreditSuite(address pool, bytes calldata encodedParams) external returns (DeployResult memory);
+
+    // ------------ //
+    // CREDIT HOOKS //
+    // ------------ //
 
     function onUpdatePriceOracle(address creditManager, address newPriceOracle, address oldPriceOracle)
         external

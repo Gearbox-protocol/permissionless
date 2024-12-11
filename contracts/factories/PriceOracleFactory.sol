@@ -4,13 +4,11 @@
 pragma solidity ^0.8.23;
 
 import {IPriceFeed, IUpdatablePriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
-import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 
-import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
-import {IMarketHooks} from "../interfaces/factories/IMarketHooks.sol";
+import {IFactory} from "../interfaces/factories/IFactory.sol";
+import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
 import {IPriceOracleFactory} from "../interfaces/factories/IPriceOracleFactory.sol";
-import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import {Call, DeployResult} from "../interfaces/Types.sol";
 
@@ -24,9 +22,18 @@ import {
 import {NestedPriceFeeds} from "../libraries/NestedPriceFeeds.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
-import {MarketHooks} from "./MarketHooks.sol";
+import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
-contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks {
+interface IConfigureActions {
+    function setPriceFeed(address token, address priceFeed) external;
+    function setReservePriceFeed(address token, address priceFeed) external;
+}
+
+interface IEmergencyConfigureActions {
+    function setPriceFeed(address token, address priceFeed) external;
+}
+
+contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
     using CallBuilder for Call[];
     using NestedPriceFeeds for IPriceFeed;
 
@@ -39,8 +46,14 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks
     /// @notice Address of the price feed store contract
     address public immutable priceFeedStore;
 
-    /// @notice Thrown if an unauthorized price feed is used for a token
+    /// @notice Thrown when trying to set price feed for a token that is not allowed in the price feed store
     error PriceFeedNotAllowedException(address token, address priceFeed);
+
+    /// @notice Thrown when trying to set price feed for a token that has not been added to the market
+    error TokenIsNotAddedException(address token);
+
+    /// @notice Thrown when trying to set zero price feed for pool's underlying or a token with non-zero quota
+    error ZeroPriceException(address token, address priceFeed);
 
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
@@ -48,20 +61,22 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks
         priceFeedStore = _getContract(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
     }
 
-    function deployPriceOracle(address pool) external override onlyMarketConfigurators returns (DeployResult memory) {
-        address acl = IPoolV3(pool).acl();
+    // ---------- //
+    // DEPLOYMENT //
+    // ---------- //
 
+    function deployPriceOracle(address pool) external override onlyMarketConfigurators returns (DeployResult memory) {
         address priceOracle = _deploy({
             contractType: AP_PRICE_ORACLE,
             version: version,
-            constructorParams: abi.encode(acl),
+            constructorParams: abi.encode(_acl(pool)),
             salt: bytes32(bytes20(msg.sender))
         });
 
-        address[] memory accessList = new address[](1);
-        accessList[0] = priceOracle;
-
-        return DeployResult({newContract: priceOracle, accessList: accessList, onInstallOps: new Call[](0)});
+        return DeployResult({
+            newContract: priceOracle,
+            onInstallOps: CallBuilder.build(_addToAccessList(msg.sender, priceOracle))
+        });
     }
 
     // ------------ //
@@ -71,71 +86,104 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks
     function onCreateMarket(address pool, address priceOracle, address, address, address, address underlyingPriceFeed)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory)
     {
-        return _setPriceFeed(priceOracle, IPoolV3(pool).underlyingToken(), underlyingPriceFeed, false);
+        address underlying = _underlying(pool);
+        _revertOnZeroPrice(underlying, underlyingPriceFeed);
+        return _setPriceFeed(priceOracle, underlying, underlyingPriceFeed, false);
     }
 
     function onUpdatePriceOracle(address, address newPriceOracle, address oldPriceOracle)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory calls)
     {
         address[] memory tokens = IPriceOracleV3(oldPriceOracle).getTokens();
         uint256 numTokens = tokens.length;
         for (uint256 i; i < numTokens; ++i) {
             // FIXME: reallocating the whole array is not the most optimal solution
-            // this one might actually be quite bad because the number of operations is not negligible
-            calls = calls.extend(
-                _setPriceFeed(newPriceOracle, tokens[i], _getPriceFeed(oldPriceOracle, tokens[i], false), false)
-            );
+            address main = _getPriceFeed(oldPriceOracle, tokens[i], false);
+            calls = calls.extend(_setPriceFeed(newPriceOracle, tokens[i], main, false));
 
             address reserve = _getPriceFeed(oldPriceOracle, tokens[i], true);
-            if (reserve != address(0)) {
-                calls = calls.extend(_setPriceFeed(newPriceOracle, tokens[i], reserve, true));
-            }
+            if (reserve != address(0)) calls = calls.extend(_setPriceFeed(newPriceOracle, tokens[i], reserve, true));
         }
     }
 
     function onAddToken(address pool, address token, address priceFeed)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory)
     {
-        // TODO: reconsider, maybe should add other checks
-        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
-        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
-        return _setPriceFeed(priceOracle, token, priceFeed, false);
+        return _setPriceFeed(_priceOracle(pool), token, priceFeed, false);
     }
 
-    function onSetPriceFeed(address pool, address token, address priceFeed)
+    // ------------- //
+    // CONFIGURATION //
+    // ------------- //
+
+    function configure(address pool, bytes calldata callData)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractFactory, IFactory)
         returns (Call[] memory)
     {
-        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
-        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
-        return _setPriceFeed(priceOracle, token, priceFeed, false);
+        address priceOracle = _priceOracle(pool);
+
+        bytes4 selector = bytes4(callData);
+        if (selector == IConfigureActions.setPriceFeed.selector) {
+            (address token, address priceFeed) = abi.decode(callData[4:], (address, address));
+            _validatePriceFeed(pool, token, priceFeed, true);
+            return _setPriceFeed(priceOracle, token, priceFeed, false);
+        } else if (selector == IConfigureActions.setReservePriceFeed.selector) {
+            (address token, address priceFeed) = abi.decode(callData[4:], (address, address));
+            _validatePriceFeed(pool, token, priceFeed, false);
+            return _setPriceFeed(priceOracle, token, priceFeed, true);
+        } else {
+            revert ForbiddenConfigurationCallException(selector);
+        }
     }
 
-    function onSetReservePriceFeed(address pool, address token, address priceFeed)
+    function emergencyConfigure(address pool, bytes calldata callData)
         external
         view
-        override(IMarketHooks, MarketHooks)
+        override(AbstractFactory, IFactory)
         returns (Call[] memory)
     {
-        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
-        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
-        return _setPriceFeed(priceOracle, token, priceFeed, true);
+        address priceOracle = _priceOracle(pool);
+
+        bytes4 selector = bytes4(callData);
+        if (selector == IConfigureActions.setPriceFeed.selector) {
+            (address token, address priceFeed) = abi.decode(callData[4:], (address, address));
+            _validatePriceFeed(pool, token, priceFeed, true);
+            return _setPriceFeed(priceOracle, token, priceFeed, false);
+        } else {
+            revert ForbiddenEmergencyConfigurationCallException(selector);
+        }
     }
 
     // --------- //
     // INTERNALS //
     // --------- //
+
+    function _validatePriceFeed(address pool, address token, address priceFeed, bool revertOnZeroPrice) internal view {
+        address underlying = _underlying(pool);
+        address quotaKeeper = _quotaKeeper(pool);
+        if (token != underlying && !_isQuotedToken(quotaKeeper, token)) {
+            revert TokenIsNotAddedException(token);
+        }
+        if (revertOnZeroPrice && (token == underlying || _quota(quotaKeeper, token) != 0)) {
+            _revertOnZeroPrice(token, priceFeed);
+        }
+    }
+
+    function _revertOnZeroPrice(address token, address priceFeed) internal view {
+        (, int256 answer,,,) = IPriceFeed(priceFeed).latestRoundData();
+        if (answer == 0) revert ZeroPriceException(token, priceFeed);
+    }
 
     function _getPriceFeed(address priceOracle, address token, bool reserve) internal view returns (address) {
         return reserve
@@ -168,7 +216,6 @@ contract PriceOracleFactory is IPriceOracleFactory, AbstractFactory, MarketHooks
     {
         try IUpdatablePriceFeed(priceFeed).updatable() returns (bool updatable) {
             // FIXME: reallocating the whole array is not the most optimal solution
-            // although not as bad unless we use extraordinarily nested updatable price feeds
             if (updatable) calls = calls.append(_addUpdatablePriceFeed(priceOracle, priceFeed));
         } catch {}
         address[] memory underlyingFeeds = IPriceFeed(priceFeed).getUnderlyingFeeds();

@@ -8,13 +8,10 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
-import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
 import {IACL} from "../../interfaces/extensions/IACL.sol";
-import {IACLLegacy} from "../../interfaces/extensions/IACLLegacy.sol";
 import {IContractsRegister} from "../../interfaces/extensions/IContractsRegister.sol";
-import {IContractsRegisterLegacy} from "../../interfaces/extensions/IContractsRegisterLegacy.sol";
 import {Call} from "../../interfaces/Types.sol";
 
 import {
@@ -25,6 +22,26 @@ import {
 } from "../../libraries/ContractLiterals.sol";
 
 import {MarketConfigurator} from "../MarketConfigurator.sol";
+
+interface IACLLegacy {
+    function pendingOwner() external view returns (address);
+    function transferOwnership(address newOwner) external;
+    function claimOwnership() external;
+
+    function isPausableAdmin(address account) external view returns (bool);
+    function addPausableAdmin(address account) external;
+    function removePausableAdmin(address account) external;
+
+    function isUnpausableAdmin(address account) external view returns (bool);
+    function addUnpausableAdmin(address account) external;
+    function removeUnpausableAdmin(address account) external;
+}
+
+interface IContractsRegisterLegacy {
+    function getPools() external view returns (address[] memory);
+    function addPool(address pool) external;
+    function addCreditManager(address creditManager) external;
+}
 
 contract MarketConfiguratorLegacy is MarketConfigurator {
     using Address for address;
@@ -49,7 +66,8 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     constructor(
         string memory name_,
         address marketConfiguratorFactory_,
-        address riskCurator_,
+        address admin_,
+        address emergencyAdmin_,
         address treasury_,
         address aclLegacy_,
         address contractsRegisterLegacy_,
@@ -57,7 +75,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         address[] memory pausableAdmins_,
         address[] memory unpausableAdmins_,
         address[] memory emergencyLiquidators_
-    ) MarketConfigurator(name_, marketConfiguratorFactory_, riskCurator_, treasury_) {
+    ) MarketConfigurator(name_, marketConfiguratorFactory_, admin_, emergencyAdmin_, treasury_) {
         aclLegacy = aclLegacy_;
         contractsRegisterLegacy = contractsRegisterLegacy_;
         gearStakingLegacy = gearStakingLegacy_;
@@ -112,44 +130,15 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         }
     }
 
+    // ------------- //
+    // CONFIGURATION //
+    // ------------- //
+
     function claimLegacyACLOwnership() external onlyOwner {
         // on some chains, legacy ACL implements a 2-step ownership transfer
         try IACLLegacy(aclLegacy).pendingOwner() {
             IACLLegacy(aclLegacy).claimOwnership();
         } catch {}
-    }
-
-    function createCreditSuite(address pool, bytes calldata encodedParams)
-        public
-        override
-        returns (address creditManager)
-    {
-        creditManager = super.createCreditSuite(pool, encodedParams);
-        IContractsRegisterLegacy(contractsRegisterLegacy).addCreditManager(creditManager);
-    }
-
-    function grantRole(bytes32 role, address account) public override {
-        super.grantRole(role, account);
-        if (role == ROLE_PAUSABLE_ADMIN) IACLLegacy(aclLegacy).addPausableAdmin(account);
-        if (role == ROLE_UNPAUSABLE_ADMIN) IACLLegacy(aclLegacy).addUnpausableAdmin(account);
-    }
-
-    function revokeRole(bytes32 role, address account) public override {
-        super.revokeRole(role, account);
-        if (role == ROLE_PAUSABLE_ADMIN) IACLLegacy(aclLegacy).removePausableAdmin(account);
-        if (role == ROLE_UNPAUSABLE_ADMIN) IACLLegacy(aclLegacy).removeUnpausableAdmin(account);
-    }
-
-    function migrate(address newMarketConfigurator) public override {
-        super.migrate(newMarketConfigurator);
-        IACLLegacy(aclLegacy).transferOwnership(newMarketConfigurator);
-    }
-
-    function setVotingContractStatus(address votingContract, VotingContractStatus status)
-        external
-        onlyMarketConfiguratorFactory
-    {
-        IGearStakingV3(gearStakingLegacy).setVotingContractStatus(votingContract, status);
     }
 
     function configureGearStaking(bytes calldata data) external onlyMarketConfiguratorFactory {
@@ -160,15 +149,38 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     // INTERNALS //
     // --------- //
 
-    function _executeHook(address factory, Call[] memory calls) internal override {
-        uint256 numCalls = calls.length;
-        for (uint256 i; i < numCalls; ++i) {
-            address target = calls[i].target;
-            if (target == aclLegacy || target == contractsRegisterLegacy || target == gearStakingLegacy) {
-                revert CallsToLegacyContractsAreForbiddenException();
-            }
+    function _registerMarket(address pool, address priceOracle, address lossLiquidator) internal override {
+        super._registerMarket(pool, priceOracle, lossLiquidator);
+        IContractsRegisterLegacy(contractsRegisterLegacy).addPool(pool);
+    }
+
+    function _registerCreditSuite(address pool, address creditManager) internal override {
+        super._registerCreditSuite(pool, creditManager);
+        IContractsRegisterLegacy(contractsRegisterLegacy).addCreditManager(creditManager);
+    }
+
+    function _grantRole(bytes32 role, address account) internal override {
+        super._grantRole(role, account);
+        if (role == ROLE_PAUSABLE_ADMIN) IACLLegacy(aclLegacy).addPausableAdmin(account);
+        else if (role == ROLE_UNPAUSABLE_ADMIN) IACLLegacy(aclLegacy).addUnpausableAdmin(account);
+    }
+
+    function _revokeRole(bytes32 role, address account) internal override {
+        super._revokeRole(role, account);
+        if (role == ROLE_PAUSABLE_ADMIN) IACLLegacy(aclLegacy).removePausableAdmin(account);
+        else if (role == ROLE_UNPAUSABLE_ADMIN) IACLLegacy(aclLegacy).removeUnpausableAdmin(account);
+    }
+
+    function _migrate(address newMarketConfigurator) internal override {
+        super._migrate(newMarketConfigurator);
+        IACLLegacy(aclLegacy).transferOwnership(newMarketConfigurator);
+    }
+
+    function _validateCallTarget(address target, address factory) internal override {
+        super._validateCallTarget(target, factory);
+        if (target == aclLegacy || target == contractsRegisterLegacy || target == gearStakingLegacy) {
+            revert CallsToLegacyContractsAreForbiddenException();
         }
-        super._executeHook(factory, calls);
     }
 
     function _isV3Contract(address contract_) internal view returns (bool) {
