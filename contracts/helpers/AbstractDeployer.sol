@@ -40,4 +40,8 @@ abstract contract AbstractDeployer {
     ) internal returns (address) {
         return IBytecodeRepository(bytecodeRepository).deployByDomain(domain, postfix, version, constructorParams, salt);
     }
+
+    function _getTokenSpecificPostfix(address token) internal view returns (bytes32) {
+        return IBytecodeRepository(bytecodeRepository).getTokenSpecificPostfix(token);
+    }
 }

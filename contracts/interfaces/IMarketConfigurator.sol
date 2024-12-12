@@ -125,6 +125,10 @@ interface IMarketConfigurator is IVersion {
 
     function addToAccessList(address target, address factory) external;
 
+    function removeFromAccessList(address target, address factory) external;
+
+    function migrateAccessList(address newFactory, address oldFactory) external;
+
     function migrate(address newMarketConfigurator) external;
 
     function rescue(Call[] memory calls) external;

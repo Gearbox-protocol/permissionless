@@ -25,7 +25,7 @@ contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFa
 
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
-    constructor(address _addressProvider) AbstractFactory(_addressProvider) {}
+    constructor(address addressProvider_) AbstractFactory(addressProvider_) {}
 
     // ---------- //
     // DEPLOYMENT //

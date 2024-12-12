@@ -68,14 +68,13 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         address marketConfiguratorFactory_,
         address admin_,
         address emergencyAdmin_,
-        address treasury_,
         address aclLegacy_,
         address contractsRegisterLegacy_,
         address gearStakingLegacy_,
         address[] memory pausableAdmins_,
         address[] memory unpausableAdmins_,
         address[] memory emergencyLiquidators_
-    ) MarketConfigurator(name_, marketConfiguratorFactory_, admin_, emergencyAdmin_, treasury_) {
+    ) MarketConfigurator(name_, marketConfiguratorFactory_, admin_, emergencyAdmin_) {
         aclLegacy = aclLegacy_;
         contractsRegisterLegacy = contractsRegisterLegacy_;
         gearStakingLegacy = gearStakingLegacy_;

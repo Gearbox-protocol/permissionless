@@ -25,7 +25,6 @@ import {
 
 import {MarketConfiguratorLegacy} from "../market/legacy/MarketConfiguratorLegacy.sol";
 import {MarketConfigurator} from "../market/MarketConfigurator.sol";
-import {TreasurySplitter} from "../market/TreasurySplitter.sol";
 
 contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketConfiguratorFactory {
     using Address for address;
@@ -86,14 +85,11 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
     }
 
     function createMarketConfigurator(string calldata name) external override returns (address marketConfigurator) {
-        // TODO: transfer ownership to the 2/2 multisig of `msg.sender` and DAO (to be introduced)
-        TreasurySplitter treasury = new TreasurySplitter();
-
         // TODO: deploy timelocks
         marketConfigurator = _deploy({
             contractType: AP_MARKET_CONFIGURATOR,
             version: version,
-            constructorParams: abi.encode(name, address(this), msg.sender, msg.sender, treasury),
+            constructorParams: abi.encode(name, address(this), msg.sender, msg.sender),
             salt: bytes32(bytes20(msg.sender))
         });
 

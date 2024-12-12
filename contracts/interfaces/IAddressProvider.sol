@@ -19,6 +19,8 @@ interface IAddressProvider is IVersion {
 
     function addresses(string memory key, uint256 _version) external view returns (address);
 
+    function getAddress(bytes32 key, uint256 _version) external view returns (address);
+
     function getAddressOrRevert(string memory key, uint256 _version) external view returns (address);
 
     function getAddressOrRevert(bytes32 key, uint256 _version) external view returns (address);

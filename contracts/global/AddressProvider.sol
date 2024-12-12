@@ -46,6 +46,10 @@ contract AddressProvider is Ownable2Step, IAddressProvider {
         return Ownable.owner();
     }
 
+    function getAddress(bytes32 key, uint256 _version) external view virtual override returns (address) {
+        return addresses[key.fromSmallString()][_version];
+    }
+
     /// @notice Returns the address of a contract with a given key and version
     function getAddressOrRevert(string memory key, uint256 _version)
         public

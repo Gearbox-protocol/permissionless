@@ -16,7 +16,6 @@ import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
 import {IPoolFactory} from "../interfaces/factories/IPoolFactory.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
-import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {Call, DeployResult} from "../interfaces/Types.sol";
 
@@ -213,7 +212,7 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         string calldata name,
         string calldata symbol
     ) internal returns (address) {
-        bytes32 postfix = IBytecodeRepository(bytecodeRepository).getTokenSpecificPostfix(underlying);
+        bytes32 postfix = _getTokenSpecificPostfix(underlying);
         bytes memory constructorParams =
             abi.encode(acl, contractsRegister, underlying, treasury, interestRateModel, uint256(0), name, symbol);
         bytes32 salt = bytes32(bytes20(marketConfigurator));

@@ -85,4 +85,11 @@ abstract contract AbstractFactory is AbstractDeployer, IFactory {
             callData: abi.encodeCall(IMarketConfigurator.addToAccessList, (target, address(this)))
         });
     }
+
+    function _removeFromAccessList(address marketConfigurator, address target) internal view returns (Call memory) {
+        return Call({
+            target: marketConfigurator,
+            callData: abi.encodeCall(IMarketConfigurator.removeFromAccessList, (target, address(this)))
+        });
+    }
 }
