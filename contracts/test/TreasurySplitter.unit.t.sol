@@ -16,8 +16,6 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
     address receiver2;
     address receiver3;
 
-    uint256 constant PERCENTAGE_FACTOR = 10000;
-
     function assertEq(uint16[] memory a, uint16[] memory b) internal pure {
         assertEq(a.length, b.length, "Uint16 array length mismatch");
         for (uint256 i = 0; i < a.length; i++) {

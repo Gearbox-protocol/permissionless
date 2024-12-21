@@ -8,6 +8,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
+import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
 import {IACL} from "../../interfaces/extensions/IACL.sol";
@@ -60,6 +61,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     error AddressIsNotUnpausableAdminException(address admin);
     error CallsToLegacyContractsAreForbiddenException();
     error CreditManagerIsMisconfiguredException(address creditManager);
+    error CollateralTokenIsNotQuotedException(address creditManager, address token);
 
     /// @dev There's no way to validate that `pausableAdmins_` and `unpausableAdmins_` are exhaustive
     ///      because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
@@ -108,8 +110,9 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
 
             address priceOracle = _priceOracle(creditManagers[0]);
             address lossLiquidator = _lossLiquidator(creditManagers[0]);
-            IContractsRegister(contractsRegister).createMarket(pool, priceOracle, lossLiquidator);
+            IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossLiquidator);
 
+            address quotaKeeper = _quotaKeeper(pool);
             for (uint256 j; j < numCreditManagers; ++j) {
                 address creditManager = creditManagers[j];
                 // QUESTION: maybe revert with more detailed exceptions?
@@ -120,12 +123,18 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
                     revert CreditManagerIsMisconfiguredException(creditManager);
                 }
 
-                // QUESTION: check all tokens are quoted etc?
+                uint256 numTokens = ICreditManagerV3(creditManager).collateralTokensCount();
+                for (uint256 k = 1; k < numTokens; ++k) {
+                    address token = ICreditManagerV3(creditManager).getTokenByMask(1 << k);
+                    if (!IPoolQuotaKeeperV3(quotaKeeper).isQuotedToken(token)) {
+                        revert CollateralTokenIsNotQuotedException(creditManager, token);
+                    }
+                }
 
-                IContractsRegister(contractsRegister).createCreditSuite(pool, creditManagers[j]);
+                IContractsRegister(contractsRegister).registerCreditSuite(creditManagers[j]);
             }
 
-            // TODO: set factories, access lists etc
+            // TODO: set factories, fill access lists, etc
         }
     }
 
@@ -153,8 +162,8 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         IContractsRegisterLegacy(contractsRegisterLegacy).addPool(pool);
     }
 
-    function _registerCreditSuite(address pool, address creditManager) internal override {
-        super._registerCreditSuite(pool, creditManager);
+    function _registerCreditSuite(address creditManager) internal override {
+        super._registerCreditSuite(creditManager);
         IContractsRegisterLegacy(contractsRegisterLegacy).addCreditManager(creditManager);
     }
 

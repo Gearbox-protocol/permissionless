@@ -77,12 +77,12 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
         return _lossLiquidators[pool];
     }
 
-    /// @notice Creates the market corresponding to `pool`,
-    ///         sets `priceOracle` as its price oracle and `lossLiquidator` as its loss liquidator
+    /// @notice Registers the market corresponding to `pool`, sets `priceOracle` as its price oracle
+    ///         and `lossLiquidator` as its loss liquidator
     /// @dev Reverts if market was previously shutdown
     /// @dev Reverts if caller is not configurator
     /// @dev Reverts if any of `priceOracle` and `lossLiquidator` is `address(0)`
-    function createMarket(address pool, address priceOracle, address lossLiquidator)
+    function registerMarket(address pool, address priceOracle, address lossLiquidator)
         external
         override
         configuratorOnly
@@ -93,7 +93,7 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
         if (_shutdownPoolsSet.contains(pool)) revert MarketShutDownException(pool);
         _priceOracles[pool] = priceOracle;
         _lossLiquidators[pool] = lossLiquidator;
-        emit CreateMarket(pool, priceOracle, lossLiquidator);
+        emit RegisterMarket(pool, priceOracle, lossLiquidator);
     }
 
     /// @notice Shuts down the market corresponding to `pool`
@@ -170,19 +170,18 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
         return _getConnectedCreditManagers(pool, _shutdownCreditManagersSet);
     }
 
-    /// @notice Creates the credit suite corresponding to `creditManager` in the market corresponding to `pool`
+    /// @notice Registers the credit suite corresponding to `creditManager`
     /// @dev Reverts if credit suite was previously shutdown
-    /// @dev Reverts if market is not registered
-    /// @dev Reverts if `creditManager`'s pool or price oracle don't match those of the market
+    /// @dev Reverts if `creditManager`'s market is not registered
     /// @dev Reverts if caller is not configurator
-    function createCreditSuite(address pool, address creditManager) external override configuratorOnly {
+    function registerCreditSuite(address creditManager) external override configuratorOnly {
         if (!_registeredCreditManagersSet.add(creditManager)) return;
-        if (_shutdownCreditManagersSet.contains(creditManager)) revert CreditSuiteShutDownException(creditManager);
-        if (!isPool(pool)) revert MarketNotRegisteredException(pool);
-        if (_pool(creditManager) != pool || ICreditManagerV3(creditManager).priceOracle() != _priceOracles[pool]) {
-            revert CreditSuiteMisconfiguredException(creditManager);
+        if (_shutdownCreditManagersSet.contains(creditManager)) {
+            revert CreditSuiteShutDownException(creditManager);
         }
-        emit CreateCreditSuite(pool, creditManager);
+        address pool = _pool(creditManager);
+        if (!isPool(pool)) revert MarketNotRegisteredException(pool);
+        emit RegisterCreditSuite(pool, creditManager);
     }
 
     /// @notice Shuts down the credit suite corresponding to `creditManager`
@@ -193,7 +192,7 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
         if (!_registeredCreditManagersSet.remove(creditManager)) {
             revert CreditSuiteNotRegisteredException(creditManager);
         }
-        emit ShutdownCreditSuite(creditManager);
+        emit ShutdownCreditSuite(_pool(creditManager), creditManager);
     }
 
     // --------- //

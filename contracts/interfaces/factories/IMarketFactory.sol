@@ -22,7 +22,7 @@ interface IMarketFactory is IFactory {
 
     function onShutdownMarket(address pool) external returns (Call[] memory calls);
 
-    function onCreateCreditSuite(address pool, address creditManager) external returns (Call[] memory calls);
+    function onCreateCreditSuite(address creditManager) external returns (Call[] memory calls);
 
     function onShutdownCreditSuite(address creditManager) external returns (Call[] memory calls);
 

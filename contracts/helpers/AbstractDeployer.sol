@@ -24,6 +24,10 @@ abstract contract AbstractDeployer {
         return IAddressProvider(addressProvider).getAddressOrRevert(key, version);
     }
 
+    function _tryGetContract(bytes32 key, uint256 version) internal view returns (address) {
+        return IAddressProvider(addressProvider).getAddress(key, version);
+    }
+
     function _deploy(bytes32 contractType, uint256 version, bytes memory constructorParams, bytes32 salt)
         internal
         returns (address)

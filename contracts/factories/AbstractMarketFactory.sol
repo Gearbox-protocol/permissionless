@@ -26,7 +26,7 @@ abstract contract AbstractMarketFactory is AbstractFactory, IMarketFactory {
 
     function onShutdownMarket(address) external virtual override returns (Call[] memory) {}
 
-    function onCreateCreditSuite(address, address) external virtual override returns (Call[] memory) {}
+    function onCreateCreditSuite(address) external virtual override returns (Call[] memory) {}
 
     function onShutdownCreditSuite(address) external virtual override returns (Call[] memory) {}
 
@@ -43,6 +43,13 @@ abstract contract AbstractMarketFactory is AbstractFactory, IMarketFactory {
     // --------- //
     // INTERNALS //
     // --------- //
+
+    function _validateDefaultConstructorParams(address pool, bytes calldata constructorParams) internal view {
+        (address decodedPool, address decodedAddressProvider) = abi.decode(constructorParams[:64], (address, address));
+        if (decodedPool != pool || decodedAddressProvider != addressProvider) {
+            revert InvalidConstructorParamsException();
+        }
+    }
 
     function _acl(address pool) internal view returns (address) {
         return IPoolV3(pool).acl();

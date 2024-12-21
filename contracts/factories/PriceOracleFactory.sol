@@ -53,7 +53,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
     error TokenIsNotAddedException(address token);
 
     /// @notice Thrown when trying to set zero price feed for pool's underlying or a token with non-zero quota
-    error ZeroPriceException(address token, address priceFeed);
+    error ZeroPriceFeedException(address token);
 
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
@@ -90,7 +90,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         returns (Call[] memory)
     {
         address underlying = _underlying(pool);
-        _revertOnZeroPrice(underlying, underlyingPriceFeed);
+        _revertOnZeroPriceFeed(underlying, underlyingPriceFeed);
         return _setPriceFeed(priceOracle, underlying, underlyingPriceFeed, false);
     }
 
@@ -100,6 +100,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory calls)
     {
+        // QUESTION: maybe migrate pool's tokens instead?
         address[] memory tokens = IPriceOracleV3(oldPriceOracle).getTokens();
         uint256 numTokens = tokens.length;
         for (uint256 i; i < numTokens; ++i) {
@@ -176,13 +177,13 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
             revert TokenIsNotAddedException(token);
         }
         if (revertOnZeroPrice && (token == underlying || _quota(quotaKeeper, token) != 0)) {
-            _revertOnZeroPrice(token, priceFeed);
+            _revertOnZeroPriceFeed(token, priceFeed);
         }
     }
 
-    function _revertOnZeroPrice(address token, address priceFeed) internal view {
+    function _revertOnZeroPriceFeed(address token, address priceFeed) internal view {
         (, int256 answer,,,) = IPriceFeed(priceFeed).latestRoundData();
-        if (answer == 0) revert ZeroPriceException(token, priceFeed);
+        if (answer == 0) revert ZeroPriceFeedException(token);
     }
 
     function _getPriceFeed(address priceOracle, address token, bool reserve) internal view returns (address) {
@@ -231,10 +232,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         pure
         returns (Call memory)
     {
-        return Call({
-            target: priceOracle,
-            callData: abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, stalenessPeriod))
-        });
+        return Call(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, stalenessPeriod)));
     }
 
     function _setReservePriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod)
@@ -242,13 +240,11 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         pure
         returns (Call memory)
     {
-        return Call({
-            target: priceOracle,
-            callData: abi.encodeCall(IPriceOracleV3.setReservePriceFeed, (token, priceFeed, stalenessPeriod))
-        });
+        return
+            Call(priceOracle, abi.encodeCall(IPriceOracleV3.setReservePriceFeed, (token, priceFeed, stalenessPeriod)));
     }
 
     function _addUpdatablePriceFeed(address priceOracle, address priceFeed) internal pure returns (Call memory) {
-        return Call({target: priceOracle, callData: abi.encodeCall(IPriceOracleV3.addUpdatablePriceFeed, (priceFeed))});
+        return Call(priceOracle, abi.encodeCall(IPriceOracleV3.addUpdatablePriceFeed, (priceFeed)));
     }
 }

@@ -24,7 +24,7 @@ import {IRateKeeperFactory} from "../interfaces/factories/IRateKeeperFactory.sol
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 
-import {AP_MARKET_CONFIGURATOR} from "../libraries/ContractLiterals.sol";
+import {AP_MARKET_CONFIGURATOR, ROLE_PAUSABLE_ADMIN, ROLE_UNPAUSABLE_ADMIN} from "../libraries/ContractLiterals.sol";
 
 import {ACL} from "./ACL.sol";
 import {ContractsRegister} from "./ContractsRegister.sol";
@@ -89,11 +89,15 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         marketConfiguratorFactory = marketConfiguratorFactory_;
         transferOwnership(admin_);
         emergencyAdmin = emergencyAdmin_;
+        // FIXME: okay, these should, in fact, be deployed via factory in case we migrate
         acl = address(new ACL());
         contractsRegister = address(new ContractsRegister(acl));
         // TODO: transfer ownership to the 2/2 multisig of `msg.sender` and DAO (to be introduced)
         treasury = address(new TreasurySplitter());
         _name = LibString.toSmallString(name_);
+
+        _grantRole(ROLE_PAUSABLE_ADMIN, address(this));
+        _grantRole(ROLE_UNPAUSABLE_ADMIN, address(this));
     }
 
     // -------- //
@@ -197,8 +201,8 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
     {
         creditManager = _deployCreditSuite(pool, encodedParams);
 
-        _registerCreditSuite(pool, creditManager);
-        _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onCreateCreditSuite, (pool, creditManager)));
+        _registerCreditSuite(creditManager);
+        _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onCreateCreditSuite, (creditManager)));
     }
 
     function shutdownCreditSuite(address creditManager)
@@ -356,7 +360,7 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
         onlyRegisteredMarket(pool)
         returns (address rateKeeper)
     {
-        address oldRateKeeper = IPoolQuotaKeeperV3(IPoolV3(pool).poolQuotaKeeper()).gauge();
+        address oldRateKeeper = IPoolQuotaKeeperV3(_quotaKeeper(pool)).gauge();
         rateKeeper = _deployRateKeeper(pool, params);
 
         _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onUpdateRateKeeper, (pool, rateKeeper, oldRateKeeper)));
@@ -519,12 +523,12 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
     function _registerMarket(address pool, address priceOracle, address lossLiquidator) internal virtual {
-        ContractsRegister(contractsRegister).createMarket(pool, priceOracle, lossLiquidator);
+        ContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossLiquidator);
     }
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
-    function _registerCreditSuite(address pool, address creditManager) internal virtual {
-        ContractsRegister(contractsRegister).createCreditSuite(pool, creditManager);
+    function _registerCreditSuite(address creditManager) internal virtual {
+        ContractsRegister(contractsRegister).registerCreditSuite(creditManager);
     }
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
@@ -589,6 +593,10 @@ contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
 
     function _creditManagers(address pool) internal view returns (address[] memory creditManagers) {
         return ContractsRegister(contractsRegister).getCreditManagers(pool);
+    }
+
+    function _quotaKeeper(address pool) internal view returns (address) {
+        return IPoolV3(pool).poolQuotaKeeper();
     }
 
     // ---- //

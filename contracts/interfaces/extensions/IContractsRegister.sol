@@ -13,10 +13,10 @@ interface IContractsRegister is IContractsRegisterBase, IVersion, IACLTrait {
     // EVENTS //
     // ------ //
 
-    event CreateMarket(address indexed pool, address indexed priceOracle, address indexed lossLiquidator);
+    event RegisterMarket(address indexed pool, address indexed priceOracle, address indexed lossLiquidator);
     event ShutdownMarket(address indexed pool);
-    event CreateCreditSuite(address indexed pool, address indexed creditManager);
-    event ShutdownCreditSuite(address indexed creditManager);
+    event RegisterCreditSuite(address indexed pool, address indexed creditManager);
+    event ShutdownCreditSuite(address indexed pool, address indexed creditManager);
     event SetPriceOracle(address indexed pool, address indexed priceOracle);
     event SetLossLiquidator(address indexed pool, address indexed lossLiquidator);
 
@@ -29,7 +29,6 @@ interface IContractsRegister is IContractsRegisterBase, IVersion, IACLTrait {
     error MarketNotEmptyException(address pool);
     error CreditSuiteNotRegisteredException(address creditManager);
     error CreditSuiteShutDownException(address creditManager);
-    error CreditSuiteMisconfiguredException(address creditManager);
 
     // ------- //
     // MARKETS //
@@ -39,7 +38,7 @@ interface IContractsRegister is IContractsRegisterBase, IVersion, IACLTrait {
     function getPriceOracle(address pool) external view returns (address);
     function getLossLiquidator(address pool) external view returns (address);
 
-    function createMarket(address pool, address priceOracle, address lossLiquidator) external;
+    function registerMarket(address pool, address priceOracle, address lossLiquidator) external;
     function shutdownMarket(address pool) external;
     function setPriceOracle(address pool, address priceOracle) external;
     function setLossLiquidator(address pool, address lossLiquidator) external;
@@ -52,6 +51,6 @@ interface IContractsRegister is IContractsRegisterBase, IVersion, IACLTrait {
     function getShutdownCreditManagers() external view returns (address[] memory);
     function getShutdownCreditManagers(address pool) external view returns (address[] memory);
 
-    function createCreditSuite(address pool, address creditManager) external;
+    function registerCreditSuite(address creditManager) external;
     function shutdownCreditSuite(address creditManager) external;
 }

@@ -38,7 +38,7 @@ contract LossLiquidatorFactory is AbstractMarketFactory, ILossLiquidatorFactory 
             address decodedACL = abi.decode(params.constructorParams, (address));
             if (decodedACL != _acl(pool)) revert InvalidConstructorParamsException();
         } else {
-            // TODO: add checks for other kinds of loss liquidators
+            _validateDefaultConstructorParams(pool, params.constructorParams);
         }
 
         address lossLiquidator = _deployByDomain({
@@ -65,6 +65,16 @@ contract LossLiquidatorFactory is AbstractMarketFactory, ILossLiquidatorFactory 
         override(AbstractFactory, IFactory)
         returns (Call[] memory)
     {
-        return CallBuilder.build(Call({target: _lossLiquidator(pool), callData: callData}));
+        return CallBuilder.build(Call(_lossLiquidator(pool), callData));
+    }
+
+    function emergencyConfigure(address pool, bytes calldata callData)
+        external
+        view
+        override(AbstractFactory, IFactory)
+        returns (Call[] memory)
+    {
+        // TODO: only allow to disable and pause
+        return CallBuilder.build(Call(_lossLiquidator(pool), callData));
     }
 }

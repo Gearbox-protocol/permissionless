@@ -6,11 +6,10 @@ pragma solidity ^0.8.23;
 import {SafeERC20} from "@1inch/solidity-utils/contracts/libraries/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {IPriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
-import {InsufficientBalanceException} from "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
+import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 
 import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
@@ -31,9 +30,24 @@ import {
 import {AbstractFactory} from "./AbstractFactory.sol";
 import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
+interface IConfigureActions {
+    function setWithdrawFee(uint256 fee) external;
+    function setTotalDebtLimit(uint256 limit) external;
+    function setCreditManagerDebtLimit(address creditManager, uint256 limit) external;
+    function setTokenLimit(address token, uint96 limit) external;
+    function setTokenQuotaIncreaseFee(address token, uint16 fee) external;
+    function pause() external;
+    function unpause() external;
+}
+
+interface IEmergencyConfigureActions {
+    function setCreditManagerDebtLimitToZero(address creditManager) external;
+    function setTokenLimitToZero(address token) external;
+    function pause() external;
+}
+
 contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     using SafeERC20 for IERC20;
-    using CallBuilder for Call;
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
@@ -45,10 +59,16 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     address public immutable defaultInterestRateModel;
 
     /// @notice Thrown when trying to shutdown a credit suite with non-zero outstanding debt
-    error CantShutdownNonEmptyCreditSuiteException(address creditManager);
+    error CantShutdownCreditSuiteWithNonZeroDebtException(address creditManager);
 
-    /// @notice Thrown when attempting to shutdown a market with non-zero outstanding debt
-    error CantShutdownNonEmptyMarketException(address pool);
+    /// @notice Thrown when trying to shutdown a market with non-zero outstanding debt
+    error CantShutdownMarketWithNonZeroDebtException(address pool);
+
+    /// @notice Thrown when trying to deploy a pool without funding factory to mint dead shares
+    error InsufficientFundsForDeploymentException();
+
+    /// @notice Thrown when to set non-zero quota limit for a token with zero price feed
+    error ZeroPriceFeedException(address token);
 
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
@@ -66,26 +86,11 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         onlyMarketConfigurators
         returns (DeployResult memory)
     {
-        address acl = IMarketConfigurator(msg.sender).acl();
-        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
-        address treasury = IMarketConfigurator(msg.sender).treasury();
+        address pool = _deployPool(msg.sender, underlying, name, symbol);
+        address quotaKeeper = _deployQuotaKeeper(msg.sender, pool);
 
-        address pool = _deployPool({
-            marketConfigurator: msg.sender,
-            underlying: underlying,
-            contractsRegister: contractsRegister,
-            acl: acl,
-            treasury: treasury,
-            interestRateModel: defaultInterestRateModel,
-            name: name,
-            symbol: symbol
-        });
-
-        address quotaKeeper = _deployQuotaKeeper({marketConfigurator: msg.sender, pool: pool});
-
-        // Inflation attack protection
-        // FIXME: unless executed as part of the batch, this can be stolen by someone else to create their market
-        if (IERC20(underlying).balanceOf(address(this)) < 1e5) revert InsufficientBalanceException();
+        // NOTE: should use batching to avoid getting frontrun
+        if (IERC20(underlying).balanceOf(address(this)) < 1e5) revert InsufficientFundsForDeploymentException();
         IERC20(underlying).forceApprove(pool, 1e5);
         IPoolV3(pool).deposit(1e5, address(0xdead));
 
@@ -121,18 +126,20 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         returns (Call[] memory calls)
     {
         if (IPoolV3(pool).totalBorrowed() != 0) {
-            revert CantShutdownNonEmptyMarketException(pool);
+            revert CantShutdownMarketWithNonZeroDebtException(pool);
         }
 
         calls = CallBuilder.build(_setTotalDebtLimit(pool, 0), _setWithdrawFee(pool, 0));
     }
 
-    function onCreateCreditSuite(address pool, address creditManager)
+    function onCreateCreditSuite(address creditManager)
         external
         view
         override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory)
     {
+        address pool = ICreditManagerV3(creditManager).pool();
+
         return CallBuilder.build(
             _setCreditManagerDebtLimit(pool, creditManager, 0), _addCreditManager(_quotaKeeper(pool), creditManager)
         );
@@ -147,7 +154,7 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         address pool = ICreditManagerV3(creditManager).pool();
 
         if (IPoolV3(pool).creditManagerBorrowed(creditManager) != 0) {
-            revert CantShutdownNonEmptyCreditSuiteException(creditManager);
+            revert CantShutdownCreditSuiteWithNonZeroDebtException(creditManager);
         }
 
         return CallBuilder.build(_setCreditManagerDebtLimit(pool, creditManager, 0));
@@ -183,18 +190,42 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     {
         bytes4 selector = bytes4(callData);
         if (
-            selector == IPoolV3.setTotalDebtLimit.selector || selector == IPoolV3.setCreditManagerDebtLimit.selector
-                || selector == IPoolV3.setWithdrawFee.selector
+            selector == IConfigureActions.setWithdrawFee.selector
+                || selector == IConfigureActions.setTotalDebtLimit.selector
+                || selector == IConfigureActions.setCreditManagerDebtLimit.selector
+                || selector == IConfigureActions.pause.selector || selector == IConfigureActions.unpause.selector
         ) {
-            return CallBuilder.build(Call({target: pool, callData: callData}));
-        } else if (
-            selector == IPoolQuotaKeeperV3.setTokenLimit.selector
-                || selector == IPoolQuotaKeeperV3.setTokenQuotaIncreaseFee.selector
-        ) {
-            // QUESTION: is it safe to set non-zero limit to tokens with zero price? can it break things?
-            return CallBuilder.build(Call({target: _quotaKeeper(pool), callData: callData}));
+            return CallBuilder.build(Call(pool, callData));
+        } else if (selector == IConfigureActions.setTokenLimit.selector) {
+            (address token, uint96 limit) = abi.decode(callData[4:], (address, uint96));
+            if (limit != 0 && IPriceOracleV3(_priceOracle(pool)).getPrice(token) == 0) {
+                revert ZeroPriceFeedException(token);
+            }
+            return CallBuilder.build(_setTokenLimit(_quotaKeeper(pool), token, limit));
+        } else if (selector == IConfigureActions.setTokenQuotaIncreaseFee.selector) {
+            return CallBuilder.build(Call(_quotaKeeper(pool), callData));
         } else {
             revert ForbiddenConfigurationCallException(selector);
+        }
+    }
+
+    function emergencyConfigure(address pool, bytes calldata callData)
+        external
+        view
+        override(AbstractFactory, IFactory)
+        returns (Call[] memory)
+    {
+        bytes4 selector = bytes4(callData);
+        if (selector == IEmergencyConfigureActions.setCreditManagerDebtLimitToZero.selector) {
+            address creditManager = abi.decode(callData[4:], (address));
+            return CallBuilder.build(_setCreditManagerDebtLimit(pool, creditManager, 0));
+        } else if (selector == IEmergencyConfigureActions.setTokenLimitToZero.selector) {
+            address token = abi.decode(callData[4:], (address));
+            return CallBuilder.build(_setTokenLimit(_quotaKeeper(pool), token, 0));
+        } else if (selector == IEmergencyConfigureActions.pause.selector) {
+            return CallBuilder.build(Call(pool, callData));
+        } else {
+            revert ForbiddenEmergencyConfigurationCallException(selector);
         }
     }
 
@@ -202,19 +233,18 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     // INTERNALS //
     // --------- //
 
-    function _deployPool(
-        address marketConfigurator,
-        address underlying,
-        address contractsRegister,
-        address acl,
-        address treasury,
-        address interestRateModel,
-        string calldata name,
-        string calldata symbol
-    ) internal returns (address) {
+    function _deployPool(address marketConfigurator, address underlying, string calldata name, string calldata symbol)
+        internal
+        returns (address)
+    {
+        address acl = IMarketConfigurator(marketConfigurator).acl();
+        address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
+        address treasury = IMarketConfigurator(marketConfigurator).treasury();
+
         bytes32 postfix = _getTokenSpecificPostfix(underlying);
-        bytes memory constructorParams =
-            abi.encode(acl, contractsRegister, underlying, treasury, interestRateModel, uint256(0), name, symbol);
+        bytes memory constructorParams = abi.encode(
+            acl, contractsRegister, underlying, treasury, defaultInterestRateModel, type(uint256).max, name, symbol
+        );
         bytes32 salt = bytes32(bytes20(marketConfigurator));
         return _deployByDomain({
             domain: DOMAIN_POOL,
@@ -235,19 +265,15 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     }
 
     function _setQuotaKeeper(address pool, address quotaKeeper) internal pure returns (Call memory) {
-        return Call({target: pool, callData: abi.encodeCall(IPoolV3.setPoolQuotaKeeper, quotaKeeper)});
-    }
-
-    function _setRateKeeper(address quotaKeeper, address rateKeeper) internal pure returns (Call memory) {
-        return Call({target: quotaKeeper, callData: abi.encodeCall(IPoolQuotaKeeperV3.setGauge, (rateKeeper))});
+        return Call(pool, abi.encodeCall(IPoolV3.setPoolQuotaKeeper, quotaKeeper));
     }
 
     function _setInterestRateModel(address pool, address interestRateModel) internal pure returns (Call memory) {
-        return Call({target: pool, callData: abi.encodeCall(IPoolV3.setInterestRateModel, (interestRateModel))});
+        return Call(pool, abi.encodeCall(IPoolV3.setInterestRateModel, (interestRateModel)));
     }
 
     function _setTotalDebtLimit(address pool, uint256 limit) internal pure returns (Call memory) {
-        return Call({target: pool, callData: abi.encodeCall(IPoolV3.setTotalDebtLimit, (limit))});
+        return Call(pool, abi.encodeCall(IPoolV3.setTotalDebtLimit, (limit)));
     }
 
     function _setCreditManagerDebtLimit(address pool, address creditManager, uint256 limit)
@@ -255,15 +281,22 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         pure
         returns (Call memory)
     {
-        return Call({target: pool, callData: abi.encodeCall(IPoolV3.setCreditManagerDebtLimit, (creditManager, limit))});
+        return Call(pool, abi.encodeCall(IPoolV3.setCreditManagerDebtLimit, (creditManager, limit)));
     }
 
     function _setWithdrawFee(address pool, uint256 fee) internal pure returns (Call memory) {
-        return Call({target: pool, callData: abi.encodeCall(IPoolV3.setWithdrawFee, (fee))});
+        return Call(pool, abi.encodeCall(IPoolV3.setWithdrawFee, (fee)));
+    }
+
+    function _setRateKeeper(address quotaKeeper, address rateKeeper) internal pure returns (Call memory) {
+        return Call(quotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.setGauge, (rateKeeper)));
     }
 
     function _addCreditManager(address quotaKeeper, address creditManager) internal pure returns (Call memory) {
-        return
-            Call({target: quotaKeeper, callData: abi.encodeCall(IPoolQuotaKeeperV3.addCreditManager, (creditManager))});
+        return Call(quotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.addCreditManager, (creditManager)));
+    }
+
+    function _setTokenLimit(address quotaKeeper, address token, uint96 limit) internal pure returns (Call memory) {
+        return Call(quotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.setTokenLimit, (token, limit)));
     }
 }

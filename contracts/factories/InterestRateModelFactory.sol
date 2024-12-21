@@ -38,11 +38,7 @@ contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFa
         returns (DeployResult memory)
     {
         if (params.postfix != "LINEAR") {
-            (address decodedAddressProvider, address decodedPool) =
-                abi.decode(params.constructorParams[:64], (address, address));
-            if (decodedAddressProvider != addressProvider || decodedPool != pool) {
-                revert InvalidConstructorParamsException();
-            }
+            _validateDefaultConstructorParams(pool, params.constructorParams);
         }
 
         address interestRateModel = _deployByDomain({
@@ -87,6 +83,6 @@ contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFa
         override(AbstractFactory, IFactory)
         returns (Call[] memory calls)
     {
-        return CallBuilder.build(Call({target: _interestRateModel(pool), callData: callData}));
+        return CallBuilder.build(Call(_interestRateModel(pool), callData));
     }
 }
