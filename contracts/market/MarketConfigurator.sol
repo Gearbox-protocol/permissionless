@@ -1,410 +1,644 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Gearbox Protocol. Generalized leverage for DeFi protocols
 // (c) Gearbox Foundation, 2024.
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.23;
 
-import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {LibString} from "@solady/utils/LibString.sol";
 
-import {PriceOracleFactoryV3} from "../factories/PriceOracleFactoryV3.sol";
-import {InterestModelFactory} from "../factories/InterestModelFactory.sol";
-import {PoolFactoryV3} from "../factories/PoolFactoryV3.sol";
-import {CreditFactoryV3} from "../factories/CreditFactoryV3.sol";
-import {AdapterFactoryV3} from "../factories/AdapterFactoryV3.sol";
-
-import {PoolV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolV3.sol";
-
-import {IMarketConfiguratorV3} from "../interfaces/IMarketConfiguratorV3.sol";
-
-import {
-    IPriceOracleV3,
-    PriceFeedParams,
-    PriceUpdate
-} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
-import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
-import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
-import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
+import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
-import {IAddressProviderV3_1} from "../interfaces/IAddressProviderV3_1.sol";
-import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
-import {IACL} from "../interfaces/IACL.sol";
+import {ICreditFactory} from "../interfaces/factories/ICreditFactory.sol";
+import {IFactory} from "../interfaces/factories/IFactory.sol";
+import {IInterestRateModelFactory} from "../interfaces/factories/IInterestRateModelFactory.sol";
+import {ILossLiquidatorFactory} from "../interfaces/factories/ILossLiquidatorFactory.sol";
+import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
+import {IPoolFactory} from "../interfaces/factories/IPoolFactory.sol";
+import {IPriceOracleFactory} from "../interfaces/factories/IPriceOracleFactory.sol";
+import {IRateKeeperFactory} from "../interfaces/factories/IRateKeeperFactory.sol";
+
+import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
+import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
+
+import {AP_MARKET_CONFIGURATOR, ROLE_PAUSABLE_ADMIN, ROLE_UNPAUSABLE_ADMIN} from "../libraries/ContractLiterals.sol";
 
 import {ACL} from "./ACL.sol";
+import {ContractsRegister} from "./ContractsRegister.sol";
+import {TreasurySplitter} from "../market/TreasurySplitter.sol";
 
-import {
-    AP_ACCOUNT_FACTORY,
-    AP_POOL,
-    AP_POOL_QUOTA_KEEPER,
-    AP_POOL_RATE_KEEPER,
-    AP_PRICE_ORACLE,
-    AP_CREDIT_MANAGER,
-    AP_CREDIT_FACADE,
-    AP_CREDIT_CONFIGURATOR,
-    AP_ADAPTER_FACTORY,
-    AP_INTEREST_MODEL_FACTORY,
-    AP_POOL_FACTORY,
-    AP_CREDIT_FACTORY,
-    AP_PRICE_ORACLE_FACTORY,
-    AP_MARKET_CONFIGURATOR
-} from "../libraries/ContractLiterals.sol";
-import {ControllerTimelockV3} from "./ControllerTimelockV3.sol";
-
-contract MarketConfigurator is ACLTrait, IMarketConfiguratorV3 {
+/// @title Market configurator
+contract MarketConfigurator is Ownable2Step, IMarketConfigurator {
+    using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    /// @notice Contract version
-    uint256 public constant override version = 3_10;
+    // --------------- //
+    // STATE VARIABLES //
+    // --------------- //
 
-    bytes32 public constant contractType = AP_MARKET_CONFIGURATOR;
-
-    error InterestModelNotAllowedException(address);
-
-    error PriceFeedIsNotAllowedException(address, address);
-
-    error CantRemoveNonEmptyMarket();
-
-    error DegenNFTNotExistsException(address);
-
-    error DeployAddressCollisionException(address);
-
-    event SetPriceFeedFromStore(address indexed token, address indexed priceFeed, bool trusted);
-
-    event SetReservePriceFeedFromStore(address indexed token, address indexed priceFeedd);
-
-    event SetName(string name);
-
-    event CreateMarket(address indexed pool, address indexed underlying, string _name, string _symbol);
-
-    event RemoveMarket(address indexed pool);
-
-    event DeployDegenNFT(address);
-
-    string public name;
-
-    EnumerableSet.AddressSet internal _adapters;
-    EnumerableSet.AddressSet internal _degenNFTs;
-
-    // TODO: should it be pool related?
-    EnumerableSet.AddressSet internal _emergencyLiquidators;
-
-    // Mapping: market -> priceOracle
-    mapping(address => address) public priceOracles;
-
-    address public immutable override addressProvider;
-
-    address public override treasury;
-
+    address public immutable override marketConfiguratorFactory;
+    address public immutable override acl;
     address public immutable override contractsRegister;
+    address public immutable override treasury;
 
-    address public override interestModelFactory;
-    address public override poolFactory;
-    address public override creditFactory;
-    address public override priceOracleFactory;
-    address public override adapterFactory;
-    address public override controller;
+    address public override emergencyAdmin;
 
-    mapping(bytes32 => uint256) public latestVersions;
+    mapping(address target => address factory) public override accessList;
+    // FIXME: this actually might contain targets for multiple markets/credit suites
+    mapping(address factory => EnumerableSet.AddressSet) internal _authorizedTargets;
 
-    constructor(
-        address _addressProvider,
-        address _acl,
-        address _contractsRegister,
-        address _treasury,
-        string memory _name,
-        address _vetoAdmin
-    ) ACLTrait(_acl) {
-        addressProvider = _addressProvider;
+    bytes32 internal immutable _name;
 
-        contractsRegister = _contractsRegister;
-        name = _name;
-        treasury = _treasury;
+    // --------- //
+    // MODIFIERS //
+    // --------- //
 
-        interestModelFactory =
-            IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_INTEREST_MODEL_FACTORY);
-        poolFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_POOL_FACTORY);
-        creditFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_CREDIT_FACTORY);
-        priceOracleFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_PRICE_ORACLE_FACTORY);
-        adapterFactory = IAddressProviderV3_1(_addressProvider).getLatestAddressOrRevert(AP_ADAPTER_FACTORY);
-
-        controller = address(new ControllerTimelockV3(_acl, _vetoAdmin));
+    modifier onlyMarketConfiguratorFactory() {
+        if (msg.sender != marketConfiguratorFactory) revert CallerIsNotMarketConfiguratorFactoryException();
+        _;
     }
 
-    //
-    // POOLS
-    //
+    modifier onlyEmergencyAdmin() {
+        if (msg.sender != emergencyAdmin) revert CallerIsNotEmergencyAdminException();
+        _;
+    }
+
+    modifier onlySelf() {
+        if (msg.sender != address(this)) revert CallerIsNotSelfException();
+        _;
+    }
+
+    modifier onlyRegisteredMarket(address pool) {
+        _ensureRegisteredMarket(pool);
+        _;
+    }
+
+    modifier onlyRegisteredCreditSuite(address creditManager) {
+        _ensureRegisteredCreditSuite(creditManager);
+        _;
+    }
+
+    // ----------- //
+    // CONSTRUCTOR //
+    // ----------- //
+
+    constructor(string memory name_, address marketConfiguratorFactory_, address admin_, address emergencyAdmin_) {
+        marketConfiguratorFactory = marketConfiguratorFactory_;
+        transferOwnership(admin_);
+        emergencyAdmin = emergencyAdmin_;
+        // FIXME: okay, these should, in fact, be deployed via factory in case we migrate
+        acl = address(new ACL());
+        contractsRegister = address(new ContractsRegister(acl));
+        // TODO: transfer ownership to the 2/2 multisig of `msg.sender` and DAO (to be introduced)
+        treasury = address(new TreasurySplitter());
+        _name = LibString.toSmallString(name_);
+
+        _grantRole(ROLE_PAUSABLE_ADMIN, address(this));
+        _grantRole(ROLE_UNPAUSABLE_ADMIN, address(this));
+    }
+
+    // -------- //
+    // METADATA //
+    // -------- //
+
+    /// @notice Contract version
+    /// @dev `MarketConfiguratorLegacy` might have different version, hence the `virtual` modifier
+    function version() external view virtual override returns (uint256) {
+        return 3_10;
+    }
+
+    /// @notice Contract type
+    /// @dev `MarketConfiguratorLegacy` has different type, hence the `virtual` modifier
+    function contractType() external view virtual override returns (bytes32) {
+        return AP_MARKET_CONFIGURATOR;
+    }
+
+    /// @notice Contract name
+    function contractName() external view override returns (string memory) {
+        return LibString.fromSmallString(_name);
+    }
+
+    // ----------------- //
+    // MARKET MANAGEMENT //
+    // ----------------- //
+
     function createMarket(
         address underlying,
-        uint256 totalLimit,
-        address interestModel,
-        string memory rateKeeperType,
-        string calldata _name,
-        string calldata _symbol
-    ) external configuratorOnly {
-        bytes32 salt = bytes32(uint256(uint160(address(this))));
+        string calldata name,
+        string calldata symbol,
+        DeployParams calldata interestRateModelParams,
+        DeployParams calldata rateKeeperParams,
+        DeployParams calldata lossLiquidatorParams,
+        address underlyingPriceFeed
+    ) external override onlyOwner returns (address pool) {
+        pool = _deployPool(underlying, name, symbol);
+        address priceOracle = _deployPriceOracle(pool);
+        address interestRateModel = _deployInterestRateModel(pool, interestRateModelParams);
+        address rateKeeper = _deployRateKeeper(pool, rateKeeperParams);
+        address lossLiquidator = _deployLossLiquidator(pool, lossLiquidatorParams);
 
-        if (InterestModelFactory(interestModelFactory).isRegisteredInterestModel(interestModel)) {
-            revert InterestModelNotAllowedException(interestModel);
-        }
-        address pool = PoolFactoryV3(poolFactory).deploy(
-            underlying, interestModel, totalLimit, _name, _symbol, latestVersions[AP_POOL], salt
-        );
-
-        address pqk = PoolFactoryV3(poolFactory).deployPoolQuotaKeeper(pool, latestVersions[AP_POOL_QUOTA_KEEPER], salt);
-
-        address rateKeeper =
-            PoolFactoryV3(poolFactory).deployRateKeeper(pool, rateKeeperType, latestVersions[AP_POOL_RATE_KEEPER], salt);
-
-        IPoolV3(pool).setPoolQuotaKeeper(pqk);
-        IPoolQuotaKeeperV3(pqk).setGauge(rateKeeper);
-
-        IContractsRegister(contractsRegister).addPool(pool);
-
-        PoolV3(pool).setController(controller);
-
-        priceOracles[pool] =
-            PriceOracleFactoryV3(priceOracleFactory).deployPriceOracle(acl, latestVersions[AP_PRICE_ORACLE], salt);
-
-        emit CreateMarket(pool, underlying, _name, _symbol);
-    }
-
-    function removeMarket(address pool) external configuratorOnly {
-        if (IPoolV3(pool).totalBorrowed() != 0) revert CantRemoveNonEmptyMarket();
-        address[] memory cms = IPoolV3(pool).creditManagers();
-        uint256 len = cms.length;
-        unchecked {
-            for (uint256 i; i < len; ++i) {
-                IPoolV3(pool).setCreditManagerDebtLimit(cms[i], 0);
-            }
-        }
-
-        IPoolV3(pool).setTotalDebtLimit(0);
-        IPoolV3(pool).setWithdrawFee(0);
-        IContractsRegister(contractsRegister).removePool(pool);
-        emit RemoveMarket(pool);
-    }
-
-    function updateInterestRateModel(address pool, address interestModel) external configuratorOnly {
-        // Check that pool is realted to here
-        if (InterestModelFactory(interestModelFactory).isRegisteredInterestModel(interestModel)) {
-            revert InterestModelNotAllowedException(interestModel);
-        }
-        IPoolV3(pool).setInterestRateModel(interestModel);
-    }
-
-    //
-    // CREDIT MANAGER
-    //
-    function deployCreditManager(address pool, address _degenNFT, uint40 expirationDate, string memory _name)
-        external
-        configuratorOnly
-    {
-        if (_degenNFTs.contains(_degenNFT)) {
-            revert DegenNFTNotExistsException(_degenNFT);
-        }
-
-        bytes32 salt = bytes32(uint256(uint160(address(this))));
-
-        address creditManager = CreditFactoryV3(creditFactory).deployCreditManager(
+        _registerMarket(pool, priceOracle, lossLiquidator);
+        _executeMarketHooks(
             pool,
-            IAddressProviderV3_1(addressProvider).getLatestAddressOrRevert(AP_ACCOUNT_FACTORY),
-            priceOracles[pool],
-            _name,
-            latestVersions[AP_CREDIT_MANAGER], // TODO: Fee token case(?)
-            salt
+            abi.encodeCall(
+                IMarketFactory.onCreateMarket,
+                (pool, priceOracle, interestRateModel, rateKeeper, lossLiquidator, underlyingPriceFeed)
+            )
         );
-
-        IAddressProviderV3_1(addressProvider).registerCreditManager(creditManager);
-
-        bool expirable = expirationDate != 0;
-
-        address creditFacade = CreditFactoryV3(creditFactory).deployCreditFacade(
-            creditManager, _degenNFT, expirable, latestVersions[AP_CREDIT_FACADE], salt
-        );
-
-        address creditConfigurator = CreditFactoryV3(creditFactory).deployCreditConfigurator(
-            creditManager, creditFacade, latestVersions[AP_CREDIT_CONFIGURATOR], salt
-        );
-
-        address[] memory emergencyLiquidators = _emergencyLiquidators.values();
-
-        // adding emergency liquidators
-        uint256 len = emergencyLiquidators.length;
-        unchecked {
-            for (uint256 i; i < len; ++i) {
-                _creditConfigurator(creditManager).addEmergencyLiquidator(emergencyLiquidators[i]);
-            }
-        }
-
-        address pqk = IPoolV3(pool).poolQuotaKeeper();
-        IPoolQuotaKeeperV3(pqk).addCreditManager(creditManager);
-        IAddressProviderV3_1(addressProvider).registerCreditManager(creditManager);
     }
 
-    function updateCreditFacade(address creditManager, address _degenNFT, bool _expirable, uint256 _version)
+    function shutdownMarket(address pool) external override onlyOwner onlyRegisteredMarket(pool) {
+        _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onShutdownMarket, (pool)));
+        ContractsRegister(contractsRegister).shutdownMarket(pool);
+    }
+
+    function addToken(address pool, address token, address priceFeed)
         external
-        configuratorOnly
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
     {
-        bytes32 salt = bytes32(uint256(uint160(address(this))));
-        // Check that credit manager is reristered
-        ICreditConfiguratorV3 creditConfigurator = _creditConfigurator(creditManager);
-        address newCreditFacade =
-            CreditFactoryV3(creditFactory).deployCreditFacade(creditManager, _degenNFT, _expirable, _version, salt);
-        creditConfigurator.setCreditFacade(newCreditFacade, true);
+        _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onAddToken, (pool, token, priceFeed)));
     }
 
-    function updateCreditConfigurator(address creditManager, uint256 _version, bytes32 _salt)
+    function configurePool(address pool, bytes calldata data) external override onlyOwner onlyRegisteredMarket(pool) {
+        _configure(_getPoolFactory(pool), pool, data);
+    }
+
+    function emergencyConfigurePool(address pool, bytes calldata data)
         external
-        configuratorOnly
+        override
+        onlyEmergencyAdmin
+        onlyRegisteredMarket(pool)
     {
-        // Check that credit manager is reristered
-        ICreditConfiguratorV3 creditConfigurator = _creditConfigurator(creditManager);
-        address newCreditConfigurator = CreditFactoryV3(creditFactory).deployCreditConfigurator(
-            creditManager, ICreditManagerV3(creditManager).creditFacade(), _version, _salt
+        _emergencyConfigure(_getPoolFactory(pool), pool, data);
+    }
+
+    function _deployPool(address underlying, string calldata name, string calldata symbol)
+        internal
+        returns (address pool)
+    {
+        address factory = _getLatestPoolFactory();
+        DeployResult memory deployResult = IPoolFactory(factory).deployPool(underlying, name, symbol);
+        _executeHook(factory, deployResult.onInstallOps);
+        pool = deployResult.newContract;
+        _setPoolFactory(pool, factory);
+    }
+
+    // ----------------------- //
+    // CREDIT SUITE MANAGEMENT //
+    // ----------------------- //
+
+    function createCreditSuite(address pool, bytes calldata encodedParams)
+        external
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
+        returns (address creditManager)
+    {
+        creditManager = _deployCreditSuite(pool, encodedParams);
+
+        _registerCreditSuite(creditManager);
+        _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onCreateCreditSuite, (creditManager)));
+    }
+
+    function shutdownCreditSuite(address creditManager)
+        external
+        override
+        onlyOwner
+        onlyRegisteredCreditSuite(creditManager)
+    {
+        _executeMarketHooks(
+            ICreditManagerV3(creditManager).pool(),
+            abi.encodeCall(IMarketFactory.onShutdownCreditSuite, (creditManager))
+        );
+        ContractsRegister(contractsRegister).shutdownCreditSuite(creditManager);
+    }
+
+    function configureCreditSuite(address creditManager, bytes calldata data)
+        external
+        override
+        onlyOwner
+        onlyRegisteredCreditSuite(creditManager)
+    {
+        _configure(_getCreditFactory(creditManager), creditManager, data);
+    }
+
+    function emergencyConfigureCreditSuite(address creditManager, bytes calldata data)
+        external
+        override
+        onlyEmergencyAdmin
+        onlyRegisteredCreditSuite(creditManager)
+    {
+        _emergencyConfigure(_getCreditFactory(creditManager), creditManager, data);
+    }
+
+    function _deployCreditSuite(address pool, bytes calldata encodedParams) internal returns (address creditManager) {
+        address factory = _getLatestCreditFactory();
+        DeployResult memory deployResult = ICreditFactory(factory).deployCreditSuite(pool, encodedParams);
+        _executeHook(factory, deployResult.onInstallOps);
+        creditManager = deployResult.newContract;
+        _setCreditFactory(creditManager, factory);
+    }
+
+    // ----------------------- //
+    // PRICE ORACLE MANAGEMENT //
+    // ----------------------- //
+
+    function updatePriceOracle(address pool)
+        external
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
+        returns (address priceOracle)
+    {
+        address oldPriceOracle = ContractsRegister(contractsRegister).getPriceOracle(pool);
+        priceOracle = _deployPriceOracle(pool);
+
+        ContractsRegister(contractsRegister).setPriceOracle(pool, priceOracle);
+        _executeMarketHooks(
+            pool, abi.encodeCall(IMarketFactory.onUpdatePriceOracle, (pool, priceOracle, oldPriceOracle))
         );
 
-        creditConfigurator.upgradeCreditConfigurator(newCreditConfigurator);
+        address[] memory creditManagers = _creditManagers(pool);
+        uint256 numManagers = creditManagers.length;
+        for (uint256 i; i < numManagers; ++i) {
+            address creditManager = creditManagers[i];
+            _executeHook(
+                _getCreditFactory(creditManager),
+                abi.encodeCall(ICreditFactory.onUpdatePriceOracle, (creditManager, priceOracle, oldPriceOracle))
+            );
+        }
     }
 
-    //
-    // CREDIT MANAGER
-    //
-    function addCollateralToken(address creditManager, address token, uint16 liquidationThreshold)
+    function configurePriceOracle(address pool, bytes calldata data)
         external
-        configuratorOnly
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
     {
-        _creditConfigurator(creditManager).addCollateralToken(token, liquidationThreshold);
+        _configure(_getPriceOracleFactory(pool), pool, data);
     }
 
-    // function setBotList(uint256 newVersion)
-    function addEmergencyLiquidator(address pool, address liquidator) external configuratorOnly {
-        address[] memory cms = IPoolV3(pool).creditManagers();
-        uint256 len = cms.length;
-        unchecked {
-            for (uint256 i; i < len; ++i) {
-                _creditConfigurator(cms[i]).addEmergencyLiquidator(liquidator);
-            }
-        }
-    }
-
-    function removeEmergencyLiquidator(address pool, address liquidator) external configuratorOnly {
-        address[] memory cms = IPoolV3(pool).creditManagers();
-        uint256 len = cms.length;
-        unchecked {
-            for (uint256 i; i < len; ++i) {
-                _creditConfigurator(cms[i]).removeEmergencyLiquidator(liquidator);
-            }
-        }
-    }
-
-    function deployDegenNFT() external configuratorOnly {
-        // address degenNFT = CreditFactoryV3(creditFactory).deployDegenNFT(acl(), contractsRegister);
-        // if (_degenNFTs.contains(degenNFT)) {
-        //     revert DeployAddressCollisionException(degenNFT);
-        // }
-        // _degenNFTs.add(degenNFT);
-
-        // emit DeployDegenNFT(degenNFT);
-    }
-
-    //
-    // PRICE ORACLE
-    //
-    function setPriceFeedFromStore(address pool, address token, address priceFeed, bool trusted)
+    function emergencyConfigurePriceOracle(address pool, bytes calldata data)
         external
-        configuratorOnly
+        override
+        onlyEmergencyAdmin
+        onlyRegisteredMarket(pool)
     {
-        // Check that pool exists
-        if (!PriceOracleFactoryV3(priceOracleFactory).isRegisteredOracle(token, priceFeed)) {
-            revert PriceFeedIsNotAllowedException(token, priceFeed);
-        }
+        _emergencyConfigure(_getPriceOracleFactory(pool), pool, data);
+    }
 
-        IPriceOracleV3(priceOracles[pool]).setPriceFeed(
-            token, priceFeed, PriceOracleFactoryV3(priceOracleFactory).stalenessPeriod(priceFeed)
+    function _deployPriceOracle(address pool) internal returns (address priceOracle) {
+        address factory = _getLatestPriceOracleFactory();
+        DeployResult memory deployResult = IPriceOracleFactory(factory).deployPriceOracle(pool);
+        _executeHook(factory, deployResult.onInstallOps);
+        priceOracle = deployResult.newContract;
+        _setPriceOracleFactory(pool, factory);
+    }
+
+    // -------------- //
+    // IRM MANAGEMENT //
+    // -------------- //
+
+    function updateInterestRateModel(address pool, DeployParams calldata params)
+        external
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
+        returns (address interestRateModel)
+    {
+        address oldInterestRateModel = IPoolV3(pool).interestRateModel();
+        interestRateModel = _deployInterestRateModel(pool, params);
+
+        _executeMarketHooks(
+            pool,
+            abi.encodeCall(IMarketFactory.onUpdateInterestRateModel, (pool, interestRateModel, oldInterestRateModel))
+        );
+    }
+
+    function configureInterestRateModel(address pool, bytes calldata data)
+        external
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
+    {
+        _configure(_getInterestRateModelFactory(pool), pool, data);
+    }
+
+    function emergencyConfigureInterestRateModel(address pool, bytes calldata data)
+        external
+        override
+        onlyEmergencyAdmin
+        onlyRegisteredMarket(pool)
+    {
+        _emergencyConfigure(_getInterestRateModelFactory(pool), pool, data);
+    }
+
+    function _deployInterestRateModel(address pool, DeployParams calldata params)
+        internal
+        returns (address interestRateModel)
+    {
+        address factory = _getLatestInterestRateModelFactory();
+        DeployResult memory deployResult = IInterestRateModelFactory(factory).deployInterestRateModel(pool, params);
+        _executeHook(factory, deployResult.onInstallOps);
+        interestRateModel = deployResult.newContract;
+        _setInterestRateModelFactory(pool, factory);
+    }
+
+    // ---------------------- //
+    // RATE KEEPER MANAGEMENT //
+    // ---------------------- //
+
+    function updateRateKeeper(address pool, DeployParams calldata params)
+        external
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
+        returns (address rateKeeper)
+    {
+        address oldRateKeeper = IPoolQuotaKeeperV3(_quotaKeeper(pool)).gauge();
+        rateKeeper = _deployRateKeeper(pool, params);
+
+        _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onUpdateRateKeeper, (pool, rateKeeper, oldRateKeeper)));
+    }
+
+    function configureRateKeeper(address pool, bytes calldata data)
+        external
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
+    {
+        _configure(_getRateKeeperFactory(pool), pool, data);
+    }
+
+    function emergencyConfigureRateKeeper(address pool, bytes calldata data)
+        external
+        override
+        onlyEmergencyAdmin
+        onlyRegisteredMarket(pool)
+    {
+        _emergencyConfigure(_getRateKeeperFactory(pool), pool, data);
+    }
+
+    function _deployRateKeeper(address pool, DeployParams calldata params) internal returns (address rateKeeper) {
+        address factory = _getLatestRateKeeperFactory();
+        DeployResult memory deployResult = IRateKeeperFactory(factory).deployRateKeeper(pool, params);
+        _executeHook(factory, deployResult.onInstallOps);
+        rateKeeper = deployResult.newContract;
+        _setRateKeeperFactory(pool, factory);
+    }
+
+    // -------------------------- //
+    // LOSS LIQUIDATOR MANAGEMENT //
+    // -------------------------- //
+
+    function updateLossLiquidator(address pool, DeployParams calldata params)
+        external
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
+        returns (address lossLiquidator)
+    {
+        address oldLossLiquidator = ContractsRegister(contractsRegister).getLossLiquidator(pool);
+        lossLiquidator = _deployLossLiquidator(pool, params);
+
+        ContractsRegister(contractsRegister).setLossLiquidator(pool, lossLiquidator);
+        _executeMarketHooks(
+            pool, abi.encodeCall(IMarketFactory.onUpdateLossLiquidator, (pool, lossLiquidator, oldLossLiquidator))
         );
 
-        emit SetPriceFeedFromStore(token, priceFeed, trusted);
-    }
-
-    function setReservePriceFeedFromStore(address pool, address token, address priceFeed) external configuratorOnly {
-        // Check that pool exists
-        if (!PriceOracleFactoryV3(priceOracleFactory).isRegisteredOracle(token, priceFeed)) {
-            revert PriceFeedIsNotAllowedException(token, priceFeed);
-        }
-
-        IPriceOracleV3(priceOracles[pool]).setReservePriceFeed(
-            token, priceFeed, PriceOracleFactoryV3(priceOracleFactory).stalenessPeriod(priceFeed)
-        );
-
-        emit SetReservePriceFeedFromStore(token, priceFeed);
-    }
-
-    function changePriceOracle(address pool) external configuratorOnly {
-        bytes32 salt = bytes32(uint256(uint160(address(this))));
-
-        // Check that prices for all tokens exists
-        address oldOracle = priceOracles[pool];
-        address newPriceOracle =
-            PriceOracleFactoryV3(priceOracleFactory).deployPriceOracle(acl, latestVersions[AP_PRICE_ORACLE], salt);
-        address[] memory collateralTokens = IPoolQuotaKeeperV3(IPoolV3(pool).poolQuotaKeeper()).quotedTokens();
-        uint256 len = collateralTokens.length;
-
-        unchecked {
-            for (uint256 i; i < len; ++i) {
-                address token = collateralTokens[i];
-                try IPriceOracleV3(oldOracle).priceFeedParams(token) returns (PriceFeedParams memory pfp) {
-                    IPriceOracleV3(newPriceOracle).setPriceFeed(token, pfp.priceFeed, pfp.stalenessPeriod);
-                } catch {}
-
-                try IPriceOracleV3(oldOracle).reservePriceFeedParams(token) returns (PriceFeedParams memory pfp) {
-                    IPriceOracleV3(newPriceOracle).setReservePriceFeed(token, pfp.priceFeed, pfp.stalenessPeriod);
-                } catch {}
-            }
-        }
-
-        address[] memory cms = IPoolV3(pool).creditManagers();
-        len = cms.length;
-        unchecked {
-            for (uint256 i; i < len; ++i) {
-                _creditConfigurator(cms[i]).setPriceOracle(newPriceOracle);
-            }
+        address[] memory creditManagers = _creditManagers(pool);
+        uint256 numManagers = creditManagers.length;
+        for (uint256 i; i < numManagers; ++i) {
+            address creditManager = creditManagers[i];
+            _executeHook(
+                _getCreditFactory(creditManager),
+                abi.encodeCall(
+                    ICreditFactory.onUpdateLossLiquidator, (creditManager, lossLiquidator, oldLossLiquidator)
+                )
+            );
         }
     }
 
-    /// @dev Adds new adapter from factory to credit manager
-    function addAdapter(address creditManager, address target, uint256 _version, bytes calldata specificParams)
+    function configureLossLiquidator(address pool, bytes calldata data)
         external
-        configuratorOnly
+        override
+        onlyOwner
+        onlyRegisteredMarket(pool)
     {
-        address newAdapter =
-            AdapterFactoryV3(adapterFactory).deployAdapter(creditManager, target, _version, specificParams);
-        _adapters.add(newAdapter);
-
-        _creditConfigurator(creditManager).allowAdapter(newAdapter);
+        _configure(_getLossLiquidatorFactory(pool), pool, data);
     }
 
-    //
-    // CONTRACT REGISTER
-    //
-
-    // Internal functions
-    function _creditConfigurator(address creditManager) internal view returns (ICreditConfiguratorV3) {
-        return ICreditConfiguratorV3(ICreditManagerV3(creditManager).creditConfigurator());
+    function emergencyConfigureLossLiquidator(address pool, bytes calldata data)
+        external
+        override
+        onlyEmergencyAdmin
+        onlyRegisteredMarket(pool)
+    {
+        _emergencyConfigure(_getLossLiquidatorFactory(pool), pool, data);
     }
 
-    function setName(string calldata _newName) external configuratorOnly {
-        name = _newName;
-        emit SetName(_newName);
+    function _deployLossLiquidator(address pool, DeployParams calldata params)
+        internal
+        returns (address lossLiquidator)
+    {
+        address factory = _getLatestLossLiquidatorFactory();
+        DeployResult memory deployResult = ILossLiquidatorFactory(factory).deployLossLiquidator(pool, params);
+        _executeHook(factory, deployResult.onInstallOps);
+        lossLiquidator = deployResult.newContract;
+        _setLossLiquidatorFactory(pool, factory);
     }
 
-    // returns all pools
-    function pools() external view virtual override returns (address[] memory) {
-        return IContractsRegister(acl).getPools();
+    // ---------------- //
+    // ROLES MANAGEMENT //
+    // ---------------- //
+
+    function grantRole(bytes32 role, address account) external override onlyOwner {
+        _grantRole(role, account);
     }
 
-    // returns owner
-    function owner() external view override returns (address) {
-        return IACL(acl).owner();
+    function revokeRole(bytes32 role, address account) external override onlyOwner {
+        _revokeRole(role, account);
     }
+
+    // ------------- //
+    // CONFIGURATION //
+    // ------------- //
+
+    function addToAccessList(address target, address factory) external override onlySelf {
+        if (accessList[target] != address(0)) revert ContractAlreadyInAccessListException(target);
+        accessList[target] = factory;
+        _authorizedTargets[factory].add(target);
+    }
+
+    function removeFromAccessList(address target, address factory) external override onlySelf {
+        _authorizedTargets[factory].remove(target);
+        accessList[target] = address(0);
+    }
+
+    function migrateAccessList(address newFactory, address oldFactory)
+        external
+        override
+        onlyMarketConfiguratorFactory
+    {
+        uint256 numTargets = _authorizedTargets[oldFactory].length();
+        for (uint256 i; i < numTargets; ++i) {
+            address target = _authorizedTargets[oldFactory].at(i);
+            _authorizedTargets[oldFactory].remove(target);
+            _authorizedTargets[newFactory].add(target);
+            accessList[target] = newFactory;
+        }
+    }
+
+    function migrate(address newMarketConfigurator) external override onlyMarketConfiguratorFactory {
+        _migrate(newMarketConfigurator);
+    }
+
+    function rescue(Call[] memory calls) external override onlyMarketConfiguratorFactory {
+        uint256 numCalls = calls.length;
+        for (uint256 i; i < numCalls; ++i) {
+            calls[i].target.functionCall(calls[i].callData);
+        }
+    }
+
+    // --------- //
+    // INTERNALS //
+    // --------- //
+
+    function _ensureRegisteredMarket(address pool) internal view {
+        if (!ContractsRegister(contractsRegister).isPool(pool)) {
+            revert MarketNotRegisteredException(pool);
+        }
+    }
+
+    function _ensureRegisteredCreditSuite(address creditManager) internal view {
+        if (!ContractsRegister(contractsRegister).isCreditManager(creditManager)) {
+            revert CreditSuiteNotRegisteredException(creditManager);
+        }
+    }
+
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function _registerMarket(address pool, address priceOracle, address lossLiquidator) internal virtual {
+        ContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossLiquidator);
+    }
+
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function _registerCreditSuite(address creditManager) internal virtual {
+        ContractsRegister(contractsRegister).registerCreditSuite(creditManager);
+    }
+
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function _grantRole(bytes32 role, address account) internal virtual {
+        ACL(acl).grantRole(role, account);
+    }
+
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function _revokeRole(bytes32 role, address account) internal virtual {
+        ACL(acl).revokeRole(role, account);
+    }
+
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function _migrate(address newMarketConfigurator) internal virtual {
+        ACL(acl).transferOwnership(newMarketConfigurator);
+    }
+
+    /// @dev `MarketConfiguratorLegacy` performs additional checks, hence the `virtual` modifier
+    function _validateCallTarget(address target, address factory) internal virtual {
+        if (target != address(this) && target != marketConfiguratorFactory && accessList[target] != factory) {
+            revert ContractNotAssignedToFactoryException(target);
+        }
+    }
+
+    function _executeMarketHooks(address pool, bytes memory data) internal {
+        address[5] memory factories = [
+            _getPoolFactory(pool),
+            _getPriceOracleFactory(pool),
+            _getInterestRateModelFactory(pool),
+            _getRateKeeperFactory(pool),
+            _getLossLiquidatorFactory(pool)
+        ];
+        for (uint256 i; i < 5; ++i) {
+            _executeHook(factories[i], data);
+        }
+    }
+
+    function _executeHook(address factory, bytes memory data) internal {
+        _executeHook(factory, abi.decode(factory.functionCall(data), (Call[])));
+    }
+
+    function _configure(address factory, address target, bytes calldata callData) internal {
+        _executeHook(factory, IFactory(factory).configure(target, callData));
+    }
+
+    function _emergencyConfigure(address factory, address target, bytes calldata callData) internal {
+        _executeHook(factory, IFactory(factory).emergencyConfigure(target, callData));
+    }
+
+    function _executeHook(address factory, Call[] memory calls) internal {
+        uint256 len = calls.length;
+        for (uint256 i; i < len; ++i) {
+            address target = calls[i].target;
+            _validateCallTarget(target, factory);
+            target.functionCall(calls[i].callData);
+        }
+    }
+
+    function _creditManagers() internal view returns (address[] memory) {
+        return ContractsRegister(contractsRegister).getCreditManagers();
+    }
+
+    function _creditManagers(address pool) internal view returns (address[] memory creditManagers) {
+        return ContractsRegister(contractsRegister).getCreditManagers(pool);
+    }
+
+    function _quotaKeeper(address pool) internal view returns (address) {
+        return IPoolV3(pool).poolQuotaKeeper();
+    }
+
+    // ---- //
+    // LMAO //
+    // ---- //
+
+    // TODO: all these functions should forward to MarketConfiguratorFactory
+    // the only issue is updating the access list when factory is upgraded
+
+    function _getLatestPoolFactory() internal view returns (address factory) {}
+
+    function _setPoolFactory(address pool, address factory) internal {}
+
+    function _getPoolFactory(address pool) internal view returns (address factory) {}
+
+    function _getLatestPriceOracleFactory() internal view returns (address factory) {}
+
+    function _setPriceOracleFactory(address pool, address factory) internal {}
+
+    function _getPriceOracleFactory(address pool) internal view returns (address factory) {}
+
+    function _getLatestInterestRateModelFactory() internal view returns (address factory) {}
+
+    function _setInterestRateModelFactory(address pool, address factory) internal {}
+
+    function _getInterestRateModelFactory(address pool) internal view returns (address factory) {}
+
+    function _getLatestRateKeeperFactory() internal view returns (address factory) {}
+
+    function _setRateKeeperFactory(address pool, address factory) internal {}
+
+    function _getRateKeeperFactory(address pool) internal view returns (address factory) {}
+
+    function _getLatestLossLiquidatorFactory() internal view returns (address factory) {}
+
+    function _setLossLiquidatorFactory(address pool, address factory) internal {}
+
+    function _getLossLiquidatorFactory(address pool) internal view returns (address factory) {}
+
+    function _getLatestCreditFactory() internal view returns (address factory) {}
+
+    function _setCreditFactory(address creditManager, address factory) internal {}
+
+    function _getCreditFactory(address creditManager) internal view returns (address factory) {}
 }

@@ -1,26 +1,95 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Gearbox Protocol. Generalized leverage for DeFi protocols
 // (c) Gearbox Foundation, 2024.
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.23;
 
-import {APOwnerTrait} from "../traits/APOwnerTrait.sol";
-import {IAddressProviderV3_1} from "../interfaces/IAddressProviderV3_1.sol";
-import {AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
+import {IVotingContract} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVotingContract.sol";
+import {VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 
-abstract contract AbstractFactory is APOwnerTrait {
-    address immutable bytecodeRepository;
+import {AbstractDeployer} from "../helpers/AbstractDeployer.sol";
 
-    error CallerIsNotMarketConfiguratorException();
+import {IFactory} from "../interfaces/factories/IFactory.sol";
+import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
+import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
+import {Call} from "../interfaces/Types.sol";
 
-    modifier marketConfiguratorOnly() {
-        if (IAddressProviderV3_1(addressProvider).isMarketConfigurator(msg.sender)) {
-            revert CallerIsNotMarketConfiguratorException();
-        }
+import {AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
+
+abstract contract AbstractFactory is AbstractDeployer, IFactory {
+    // --------------- //
+    // STATE VARIABLES //
+    // --------------- //
+
+    address public immutable override marketConfiguratorFactory;
+
+    // --------- //
+    // MODIFIERS //
+    // --------- //
+
+    modifier onlyMarketConfigurators() {
+        _ensureCallerIsMarketConfigurator();
         _;
     }
 
-    constructor(address _addressProvider) APOwnerTrait(_addressProvider) {
-        bytecodeRepository =
-            IAddressProviderV3_1(_addressProvider).getAddressOrRevert(AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL);
+    // ----------- //
+    // CONSTRUCTOR //
+    // ----------- //
+
+    constructor(address addressProvider_) AbstractDeployer(addressProvider_) {
+        marketConfiguratorFactory = _getContract(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
+    }
+
+    // ------------- //
+    // CONFIGURATION //
+    // ------------- //
+
+    function configure(address, bytes calldata callData) external virtual override returns (Call[] memory) {
+        revert ForbiddenConfigurationCallException(bytes4(callData));
+    }
+
+    function emergencyConfigure(address, bytes calldata callData) external virtual override returns (Call[] memory) {
+        revert ForbiddenEmergencyConfigurationCallException(bytes4(callData));
+    }
+
+    // --------- //
+    // INTERNALS //
+    // --------- //
+
+    function _ensureCallerIsMarketConfigurator() internal view {
+        if (IMarketConfiguratorFactory(marketConfiguratorFactory).isMarketConfigurator(msg.sender)) {
+            revert CallerIsNotMarketConfiguratorException(msg.sender);
+        }
+    }
+
+    function _isVotingContract(address votingContract) internal view returns (bool) {
+        try IVotingContract(votingContract).voter() returns (address) {
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function _setVotingContractStatus(address votingContract, bool allowed) internal view returns (Call memory) {
+        return Call({
+            target: marketConfiguratorFactory,
+            callData: abi.encodeCall(
+                IMarketConfiguratorFactory.setVotingContractStatus,
+                (votingContract, allowed ? VotingContractStatus.ALLOWED : VotingContractStatus.UNVOTE_ONLY)
+            )
+        });
+    }
+
+    function _addToAccessList(address marketConfigurator, address target) internal view returns (Call memory) {
+        return Call({
+            target: marketConfigurator,
+            callData: abi.encodeCall(IMarketConfigurator.addToAccessList, (target, address(this)))
+        });
+    }
+
+    function _removeFromAccessList(address marketConfigurator, address target) internal view returns (Call memory) {
+        return Call({
+            target: marketConfigurator,
+            callData: abi.encodeCall(IMarketConfigurator.removeFromAccessList, (target, address(this)))
+        });
     }
 }

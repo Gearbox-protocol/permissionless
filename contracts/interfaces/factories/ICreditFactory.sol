@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: MIT
+// Gearbox Protocol. Generalized leverage for DeFi protocols
+// (c) Gearbox Foundation, 2024.
+pragma solidity ^0.8.23;
+
+import {Call, DeployResult} from "../Types.sol";
+import {IFactory} from "./IFactory.sol";
+
+interface ICreditFactory is IFactory {
+    function deployCreditSuite(address pool, bytes calldata encodedParams) external returns (DeployResult memory);
+
+    // ------------ //
+    // CREDIT HOOKS //
+    // ------------ //
+
+    function onUpdatePriceOracle(address creditManager, address newPriceOracle, address oldPriceOracle)
+        external
+        returns (Call[] memory calls);
+
+    function onUpdateLossLiquidator(address creditManager, address newLossLiquidator, address oldLossLiquidator)
+        external
+        returns (Call[] memory calls);
+}
