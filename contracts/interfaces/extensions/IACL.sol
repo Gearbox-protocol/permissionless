@@ -7,10 +7,12 @@ import {IACL as IACLBase} from "@gearbox-protocol/core-v3/contracts/interfaces/b
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 interface IACL is IACLBase, IVersion {
+    event CreateRole(bytes32 indexed role);
     event GrantRole(bytes32 indexed role, address indexed account);
     event RevokeRole(bytes32 indexed role, address indexed account);
 
     function getConfigurator() external view returns (address);
+    function getRoles() external view returns (bytes32[] memory);
     function getRoleHolders(bytes32 role) external view returns (address[] memory);
     function hasRole(bytes32 role, address account) external view returns (bool);
     function grantRole(bytes32 role, address account) external;

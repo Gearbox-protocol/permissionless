@@ -18,6 +18,14 @@ struct DeployResult {
     Call[] onInstallOps;
 }
 
+struct MarketFactories {
+    address poolFactory;
+    address priceOracleFactory;
+    address interestRateModelFactory;
+    address rateKeeperFactory;
+    address lossLiquidatorFactory;
+}
+
 // The `BytecodeInfo` struct holds metadata about a bytecode in BytecodeRepository
 //
 // - `author`: A person who first upload smart-contract to BCR

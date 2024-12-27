@@ -10,26 +10,16 @@ interface IBytecodeRepository is IVersion {
         external
         returns (address);
 
-    function deployByDomain(
-        bytes32 domain,
-        bytes32 postfix,
-        uint256 version_,
-        bytes memory constructorParams,
-        bytes32 salt
-    ) external returns (address);
-
     function computeAddress(bytes32 type_, uint256 version_, bytes memory constructorParams, bytes32 salt)
         external
         view
         returns (address);
 
-    function computeAddressByDomain(
-        bytes32 domain,
-        bytes32 postfix,
-        uint256 version_,
-        bytes memory constructorParams,
-        bytes32 salt
-    ) external view returns (address);
-
     function getTokenSpecificPostfix(address token) external view returns (bytes32);
+
+    function getLatestVersion(bytes32 type_) external view returns (uint256);
+
+    function getLatestMinorVersion(bytes32 type_, uint256 majorVersion) external view returns (uint256);
+
+    function getLatestPatchVersion(bytes32 type_, uint256 minorVersion) external view returns (uint256);
 }

@@ -92,7 +92,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         // TODO: introduce some kind of `StuffRegister` for account factories, bot lists and degen NFTs
-        weth = _tryGetContract(AP_WETH_TOKEN, NO_VERSION_CONTROL);
+        weth = _tryGetAddress(AP_WETH_TOKEN, NO_VERSION_CONTROL);
     }
 
     // ---------- //
@@ -121,8 +121,8 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         return DeployResult({
             newContract: creditManager,
             onInstallOps: CallBuilder.build(
-                _addToAccessList(msg.sender, creditConfigurator),
-                _addToAccessList(msg.sender, creditFacade),
+                _authorizeFactory(msg.sender, creditManager, creditConfigurator),
+                _authorizeFactory(msg.sender, creditManager, creditFacade),
                 _setCreditFacade(creditConfigurator, creditFacade, false),
                 _setLossLiquidator(creditConfigurator, lossLiquidator),
                 _setDebtLimits(creditConfigurator, params.minDebt, params.maxDebt)
@@ -168,8 +168,8 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
             address newCreditConfigurator = _deployCreditConfigurator(msg.sender, creditManager);
             return CallBuilder.build(
                 _upgradeCreditConfigurator(creditConfigurator, newCreditConfigurator),
-                _removeFromAccessList(msg.sender, creditConfigurator),
-                _addToAccessList(msg.sender, newCreditConfigurator)
+                _unauthorizeFactory(msg.sender, creditManager, creditConfigurator),
+                _authorizeFactory(msg.sender, creditManager, newCreditConfigurator)
             );
         } else if (selector == IConfigureActions.upgradeCreditFacade.selector) {
             CreditFacadeParams memory params = abi.decode(callData[4:], (CreditFacadeParams));
@@ -177,19 +177,21 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
             address newCreditFacade = _deployCreditFacade(msg.sender, creditManager, params);
             return CallBuilder.build(
                 _setCreditFacade(_creditConfigurator(creditManager), newCreditFacade, true),
-                _removeFromAccessList(msg.sender, creditFacade),
-                _addToAccessList(msg.sender, newCreditFacade)
+                _unauthorizeFactory(msg.sender, creditManager, creditFacade),
+                _authorizeFactory(msg.sender, creditManager, newCreditFacade)
             );
         } else if (selector == IConfigureActions.allowAdapter.selector) {
             DeployParams memory params = abi.decode(callData[4:], (DeployParams));
             address adapter = _deployAdapter(msg.sender, creditManager, params);
             return CallBuilder.build(
-                _addToAccessList(msg.sender, adapter), _allowAdapter(_creditConfigurator(creditManager), adapter)
+                _authorizeFactory(msg.sender, creditManager, adapter),
+                _allowAdapter(_creditConfigurator(creditManager), adapter)
             );
         } else if (selector == IConfigureActions.forbidAdapter.selector) {
             address adapter = abi.decode(callData[4:], (address));
             return CallBuilder.build(
-                _removeFromAccessList(msg.sender, adapter), _forbidAdapter(_creditConfigurator(creditManager), adapter)
+                _authorizeFactory(msg.sender, creditManager, adapter),
+                _forbidAdapter(_creditConfigurator(creditManager), adapter)
             );
         } else if (
             selector == IConfigureActions.setFees.selector
@@ -217,7 +219,8 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         if (selector == IEmergencyConfigureActions.forbidAdapter.selector) {
             address adapter = abi.decode(callData[4:], (address));
             return CallBuilder.build(
-                _removeFromAccessList(msg.sender, adapter), _forbidAdapter(_creditConfigurator(creditManager), adapter)
+                _unauthorizeFactory(msg.sender, creditManager, adapter),
+                _forbidAdapter(_creditConfigurator(creditManager), adapter)
             );
         } else if (
             selector == IEmergencyConfigureActions.forbidBorrowing.selector
@@ -257,10 +260,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
             params.name
         );
 
-        return _deployByDomain({
-            domain: DOMAIN_CREDIT_MANAGER,
-            postfix: postfix,
-            version: version,
+        return _deployLatestPatch({
+            contractType: _getContractType(DOMAIN_CREDIT_MANAGER, postfix),
+            minorVersion: version,
             constructorParams: constructorParams,
             salt: bytes32(bytes20(marketConfigurator))
         });
@@ -269,9 +271,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     function _deployCreditConfigurator(address marketConfigurator, address creditManager) internal returns (address) {
         bytes memory constructorParams = abi.encode(creditManager);
 
-        return _deploy({
+        return _deployLatestPatch({
             contractType: AP_CREDIT_CONFIGURATOR,
-            version: version,
+            minorVersion: version,
             constructorParams: constructorParams,
             salt: bytes32(bytes20(marketConfigurator))
         });
@@ -287,9 +289,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         bytes memory constructorParams =
             abi.encode(acl, creditManager, params.botList, weth, params.degenNFT, params.expirable);
 
-        return _deploy({
+        return _deployLatestPatch({
             contractType: AP_CREDIT_FACADE,
-            version: version,
+            minorVersion: version,
             constructorParams: constructorParams,
             salt: bytes32(bytes20(marketConfigurator))
         });
@@ -304,10 +306,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
 
         // NOTE: unlike other contracts, this might be deployed multiple times, so using the same salt
         // can be an issue. Same thing can happen to rate keepers, IRMs, etc.
-        return _deployByDomain({
-            domain: DOMAIN_ADAPTER,
-            postfix: params.postfix,
-            version: version,
+        return _deployLatestPatch({
+            contractType: _getContractType(DOMAIN_ADAPTER, params.postfix),
+            minorVersion: version,
             constructorParams: params.constructorParams,
             salt: bytes32(bytes20(marketConfigurator))
         });
@@ -359,22 +360,6 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
 
     function _forbidAdapter(address creditConfigurator, address adapter) internal pure returns (Call memory) {
         return Call(creditConfigurator, abi.encodeCall(ICreditConfiguratorV3.forbidAdapter, adapter));
-    }
-
-    function _setFees(
-        address creditConfigurator,
-        uint16 feeLiquidation,
-        uint16 liquidationPremium,
-        uint16 feeLiquidationExpired,
-        uint16 liquidationPremiumExpired
-    ) internal pure returns (Call memory) {
-        return Call(
-            creditConfigurator,
-            abi.encodeCall(
-                ICreditConfiguratorV3.setFees,
-                (feeLiquidation, liquidationPremium, feeLiquidationExpired, liquidationPremiumExpired)
-            )
-        );
     }
 
     function _setDebtLimits(address creditConfigurator, uint128 minDebt, uint128 maxDebt)

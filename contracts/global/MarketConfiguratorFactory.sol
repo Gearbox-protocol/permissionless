@@ -44,17 +44,19 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
 
     /// @dev Reverts if caller is not one of market configurators
     modifier onlyMarketConfigurators() {
-        if (!_registeredMarketConfiguratorsSet.contains(msg.sender)) revert CallerIsNotMarketConfiguratorException();
+        if (!_registeredMarketConfiguratorsSet.contains(msg.sender)) {
+            revert CallerIsNotMarketConfiguratorException(msg.sender);
+        }
         _;
     }
 
-    modifier onlyMarketConfiguratorOwner(address marketConfigurator) {
+    modifier onlyMarketConfiguratorAdmin(address marketConfigurator) {
         // QUESTION: should shutdown configurators be able to perform some actions?
         if (!_registeredMarketConfiguratorsSet.contains(marketConfigurator)) {
             revert AddressIsNotMarketConfiguratorException();
         }
-        if (MarketConfigurator(marketConfigurator).owner() != msg.sender) {
-            revert CallerIsNotMarketConfiguratorOwnerException();
+        if (msg.sender != MarketConfigurator(marketConfigurator).admin()) {
+            revert CallerIsNotMarketConfiguratorAdminException(msg.sender);
         }
         _;
     }
@@ -89,7 +91,7 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
         marketConfigurator = _deploy({
             contractType: AP_MARKET_CONFIGURATOR,
             version: version,
-            constructorParams: abi.encode(name, address(this), msg.sender, msg.sender),
+            constructorParams: abi.encode(name, msg.sender, msg.sender, addressProvider),
             salt: bytes32(bytes20(msg.sender))
         });
 
@@ -100,7 +102,7 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
     function shutdownMarketConfigurator(address marketConfigurator)
         external
         override
-        onlyMarketConfiguratorOwner(marketConfigurator)
+        onlyMarketConfiguratorAdmin(marketConfigurator)
     {
         address contractsRegister = MarketConfigurator(marketConfigurator).contractsRegister();
         if (IContractsRegister(contractsRegister).getPools().length != 0) {
@@ -129,9 +131,10 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
     // --------- //
 
     function _configureGearStaking(bytes memory data) internal {
-        address gearStaking = _getContract(AP_GEAR_STAKING, NO_VERSION_CONTROL);
+        address gearStaking = _getAddressOrRevert(AP_GEAR_STAKING, NO_VERSION_CONTROL);
         if (IGearStakingV3(gearStaking).version() < 3_10) {
-            address marketConfiguratorLegacy = _getContract(AP_MARKET_CONFIGURATOR_LEGACY, NO_VERSION_CONTROL);
+            // QUESTION: what if we deply multiple legacy MCs?
+            address marketConfiguratorLegacy = _getAddressOrRevert(AP_MARKET_CONFIGURATOR_LEGACY, NO_VERSION_CONTROL);
             MarketConfiguratorLegacy(marketConfiguratorLegacy).configureGearStaking(data);
         } else {
             gearStaking.functionCall(data);

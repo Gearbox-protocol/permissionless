@@ -4,18 +4,36 @@
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
-import {Call, DeployParams} from "./Types.sol";
+import {Call, DeployParams, MarketFactories} from "./Types.sol";
 
 interface IMarketConfigurator is IVersion {
+    // ------ //
+    // EVENTS //
+    // ------ //
+
+    event AuthorizeFactory(address indexed factory, address indexed suite, address indexed target);
+
+    event UnauthorizeFactory(address indexed factory, address indexed suite, address indexed target);
+
+    event RequestRescue(bytes32 indexed callsHash);
+
+    event CancelRescue(bytes32 indexed callsHash);
+
+    event Rescue(bytes32 indexed callsHash);
+
+    // QUESTION: do we want events for factory upgrades?
+
     // ------ //
     // ERRORS //
     // ------ //
 
-    error CallerIsNotSelfException();
+    error CallerIsNotSelfException(address caller);
 
-    error CallerIsNotEmergencyAdminException();
+    error CallerIsNotAdminException(address caller);
 
-    error CallerIsNotMarketConfiguratorFactoryException();
+    error CallerIsNotEmergencyAdminException(address caller);
+
+    error CallerIsNotGearboxDAOException(address caller);
 
     error ContractNotAssignedToFactoryException(address);
 
@@ -25,21 +43,27 @@ interface IMarketConfigurator is IVersion {
 
     error CreditSuiteNotRegisteredException(address creditManager);
 
-    function contractName() external view returns (string memory);
+    // --------------- //
+    // STATE VARIABLES //
+    // --------------- //
+
+    function curatorName() external view returns (string memory);
+
+    function admin() external view returns (address);
+    function emergencyAdmin() external view returns (address);
+
+    function addressProvider() external view returns (address);
     function marketConfiguratorFactory() external view returns (address);
     function acl() external view returns (address);
     function contractsRegister() external view returns (address);
     function treasury() external view returns (address);
-
-    function emergencyAdmin() external view returns (address);
-
-    function accessList(address target) external view returns (address factory);
 
     // ----------------- //
     // MARKET MANAGEMENT //
     // ----------------- //
 
     function createMarket(
+        uint256 minorVersion,
         address underlying,
         string calldata name,
         string calldata symbol,
@@ -61,7 +85,9 @@ interface IMarketConfigurator is IVersion {
     // CREDIT SUITE MANAGEMENT //
     // ----------------------- //
 
-    function createCreditSuite(address pool, bytes calldata encdodedParams) external returns (address creditManager);
+    function createCreditSuite(uint256 minorVersion, address pool, bytes calldata encdodedParams)
+        external
+        returns (address creditManager);
 
     function shutdownCreditSuite(address creditManager) external;
 
@@ -119,17 +145,43 @@ interface IMarketConfigurator is IVersion {
 
     function revokeRole(bytes32 role, address account) external;
 
-    // ------------- //
-    // CONFIGURATION //
-    // ------------- //
+    function emergencyRevokeRole(bytes32 role, address account) external;
 
-    function addToAccessList(address target, address factory) external;
+    // --------- //
+    // FACTORIES //
+    // --------- //
 
-    function removeFromAccessList(address target, address factory) external;
+    function getMarketFactories(address pool) external view returns (MarketFactories memory);
 
-    function migrateAccessList(address newFactory, address oldFactory) external;
+    function getCreditFactory(address creditManager) external view returns (address);
 
-    function migrate(address newMarketConfigurator) external;
+    function getAuthorizedFactory(address target) external view returns (address);
 
-    function rescue(Call[] memory calls) external;
+    function getFactoryTargets(address factory, address suite) external view returns (address[] memory);
+
+    function authorizeFactory(address factory, address suite, address target) external;
+
+    function unauthorizeFactory(address factory, address suite, address target) external;
+
+    function upgradePoolFactory(address pool) external;
+
+    function upgradePriceOracleFactory(address pool) external;
+
+    function upgradeInterestRateModelFactory(address pool) external;
+
+    function upgradeRateKeeperFactory(address pool) external;
+
+    function upgradeLossLiquidatorFactory(address pool) external;
+
+    function upgradeCreditFactory(address creditManager) external;
+
+    // ------ //
+    // RESCUE //
+    // ------ //
+
+    function requestRescue(bytes32 callsHash) external;
+
+    function cancelRescue(bytes32 callsHash) external;
+
+    function rescue(Call[] calldata calls) external;
 }

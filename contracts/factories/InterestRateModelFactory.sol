@@ -41,17 +41,16 @@ contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFa
             _validateDefaultConstructorParams(pool, params.constructorParams);
         }
 
-        address interestRateModel = _deployByDomain({
-            domain: DOMAIN_IRM,
-            postfix: params.postfix,
-            version: version,
+        address interestRateModel = _deployLatestPatch({
+            contractType: _getContractType(DOMAIN_IRM, params.postfix),
+            minorVersion: version,
             constructorParams: params.constructorParams,
             salt: bytes32(bytes20(msg.sender))
         });
 
         return DeployResult({
             newContract: interestRateModel,
-            onInstallOps: CallBuilder.build(_addToAccessList(msg.sender, interestRateModel))
+            onInstallOps: CallBuilder.build(_authorizeFactory(msg.sender, pool, interestRateModel))
         });
     }
 
@@ -59,7 +58,7 @@ contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFa
     // MARKET HOOKS //
     // ------------ //
 
-    function onUpdateInterestRateModel(address, address newInterestRateModel, address oldInterestRateModel)
+    function onUpdateInterestRateModel(address pool, address newInterestRateModel, address oldInterestRateModel)
         external
         view
         override(AbstractMarketFactory, IMarketFactory)
@@ -71,6 +70,8 @@ contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFa
         if (_isVotingContract(newInterestRateModel)) {
             calls = calls.append(_setVotingContractStatus(newInterestRateModel, true));
         }
+
+        calls = calls.append(_unauthorizeFactory(msg.sender, pool, oldInterestRateModel));
     }
 
     // ------------- //

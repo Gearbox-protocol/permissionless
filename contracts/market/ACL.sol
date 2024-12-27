@@ -12,12 +12,16 @@ import {AP_ACL, ROLE_PAUSABLE_ADMIN, ROLE_UNPAUSABLE_ADMIN} from "../libraries/C
 /// @title Access control list
 contract ACL is IACL, Ownable2Step {
     using EnumerableSet for EnumerableSet.AddressSet;
+    using EnumerableSet for EnumerableSet.Bytes32Set;
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
 
     /// @notice Contract type
     bytes32 public constant override contractType = AP_ACL;
+
+    /// @dev Set of all existing roles
+    EnumerableSet.Bytes32Set internal _roles;
 
     /// @dev Set of accounts that have been granted role `role`
     mapping(bytes32 role => EnumerableSet.AddressSet) internal _roleHolders;
@@ -30,6 +34,11 @@ contract ACL is IACL, Ownable2Step {
     /// @notice Whether `account` is configurator
     function isConfigurator(address account) external view override returns (bool) {
         return account == owner();
+    }
+
+    /// @notice Returns the list of all existing roles
+    function getRoles() external view override returns (bytes32[] memory) {
+        return _roles.values();
     }
 
     /// @notice Returns the list of accounts that have been granted role `role`
@@ -45,6 +54,7 @@ contract ACL is IACL, Ownable2Step {
     /// @notice Grants role `role` to account `account`
     /// @dev Reverts if caller is not configurator
     function grantRole(bytes32 role, address account) external override onlyOwner {
+        if (_roles.add(role)) emit CreateRole(role);
         if (_roleHolders[role].add(account)) emit GrantRole(role, account);
     }
 

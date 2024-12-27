@@ -87,6 +87,10 @@ abstract contract AbstractMarketFactory is AbstractFactory, IMarketFactory {
         return IPoolQuotaKeeperV3(quotaKeeper).gauge();
     }
 
+    function _quotedTokens(address quotaKeeper) internal view returns (address[] memory) {
+        return IPoolQuotaKeeperV3(quotaKeeper).quotedTokens();
+    }
+
     function _isQuotedToken(address quotaKeeper, address token) internal view returns (bool) {
         return IPoolQuotaKeeperV3(quotaKeeper).isQuotedToken(token);
     }

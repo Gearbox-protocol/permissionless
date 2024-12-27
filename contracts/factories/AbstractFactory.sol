@@ -36,7 +36,7 @@ abstract contract AbstractFactory is AbstractDeployer, IFactory {
     // ----------- //
 
     constructor(address addressProvider_) AbstractDeployer(addressProvider_) {
-        marketConfiguratorFactory = _getContract(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
+        marketConfiguratorFactory = _getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
     }
 
     // ------------- //
@@ -79,17 +79,25 @@ abstract contract AbstractFactory is AbstractDeployer, IFactory {
         });
     }
 
-    function _addToAccessList(address marketConfigurator, address target) internal view returns (Call memory) {
+    function _authorizeFactory(address marketConfigurator, address suite, address target)
+        internal
+        view
+        returns (Call memory)
+    {
         return Call({
             target: marketConfigurator,
-            callData: abi.encodeCall(IMarketConfigurator.addToAccessList, (target, address(this)))
+            callData: abi.encodeCall(IMarketConfigurator.authorizeFactory, (address(this), suite, target))
         });
     }
 
-    function _removeFromAccessList(address marketConfigurator, address target) internal view returns (Call memory) {
+    function _unauthorizeFactory(address marketConfigurator, address suite, address target)
+        internal
+        view
+        returns (Call memory)
+    {
         return Call({
             target: marketConfigurator,
-            callData: abi.encodeCall(IMarketConfigurator.removeFromAccessList, (target, address(this)))
+            callData: abi.encodeCall(IMarketConfigurator.unauthorizeFactory, (address(this), suite, target))
         });
     }
 }

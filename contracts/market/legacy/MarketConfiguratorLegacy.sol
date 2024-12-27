@@ -6,6 +6,7 @@ pragma solidity ^0.8.23;
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
@@ -13,7 +14,7 @@ import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.so
 
 import {IACL} from "../../interfaces/extensions/IACL.sol";
 import {IContractsRegister} from "../../interfaces/extensions/IContractsRegister.sol";
-import {Call} from "../../interfaces/Types.sol";
+import {Call, MarketFactories} from "../../interfaces/Types.sol";
 
 import {
     AP_MARKET_CONFIGURATOR_LEGACY,
@@ -44,6 +45,8 @@ interface IContractsRegisterLegacy {
     function addCreditManager(address creditManager) external;
 }
 
+// TODO: somehow need to add MC Legacy to MC Factory. maybe we can deploy it from there?
+
 contract MarketConfiguratorLegacy is MarketConfigurator {
     using Address for address;
 
@@ -59,24 +62,30 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
 
     error AddressIsNotPausableAdminException(address admin);
     error AddressIsNotUnpausableAdminException(address admin);
+    error CallerIsNotMarketConfiguratorFactoryException(address caller);
     error CallsToLegacyContractsAreForbiddenException();
     error CreditManagerIsMisconfiguredException(address creditManager);
     error CollateralTokenIsNotQuotedException(address creditManager, address token);
 
+    modifier onlyMarketConfiguratorFactory() {
+        if (msg.sender != marketConfiguratorFactory) revert CallerIsNotMarketConfiguratorFactoryException(msg.sender);
+        _;
+    }
+
     /// @dev There's no way to validate that `pausableAdmins_` and `unpausableAdmins_` are exhaustive
     ///      because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
     constructor(
-        string memory name_,
-        address marketConfiguratorFactory_,
+        string memory curatorName_,
         address admin_,
         address emergencyAdmin_,
+        address addressProvider_,
         address aclLegacy_,
         address contractsRegisterLegacy_,
         address gearStakingLegacy_,
         address[] memory pausableAdmins_,
         address[] memory unpausableAdmins_,
         address[] memory emergencyLiquidators_
-    ) MarketConfigurator(name_, marketConfiguratorFactory_, admin_, emergencyAdmin_) {
+    ) MarketConfigurator(curatorName_, admin_, emergencyAdmin_, addressProvider_) {
         aclLegacy = aclLegacy_;
         contractsRegisterLegacy = contractsRegisterLegacy_;
         gearStakingLegacy = gearStakingLegacy_;
@@ -98,6 +107,9 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
             IACL(acl).grantRole(ROLE_EMERGENCY_LIQUIDATOR, emergencyLiquidators_[i]);
         }
 
+        MarketFactories memory marketFactories = _getLatestMarketFactories(version);
+        address creditFactory = _getLatestCreditFactory(version);
+
         address[] memory pools = IContractsRegisterLegacy(contractsRegisterLegacy).getPools();
         uint256 numPools = pools.length;
         for (uint256 i; i < numPools; ++i) {
@@ -108,11 +120,19 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
             uint256 numCreditManagers = creditManagers.length;
             if (numCreditManagers == 0) continue;
 
+            address quotaKeeper = _quotaKeeper(pool);
             address priceOracle = _priceOracle(creditManagers[0]);
             address lossLiquidator = _lossLiquidator(creditManagers[0]);
-            IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossLiquidator);
 
-            address quotaKeeper = _quotaKeeper(pool);
+            IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossLiquidator);
+            _marketFactories[pool] = marketFactories;
+            _authorizeFactory(marketFactories.poolFactory, pool, pool);
+            _authorizeFactory(marketFactories.poolFactory, pool, quotaKeeper);
+            _authorizeFactory(marketFactories.priceOracleFactory, pool, priceOracle);
+            _authorizeFactory(marketFactories.interestRateModelFactory, pool, _interestRateModel(pool));
+            _authorizeFactory(marketFactories.rateKeeperFactory, pool, _rateKeeper(quotaKeeper));
+            _authorizeFactory(marketFactories.lossLiquidatorFactory, pool, lossLiquidator);
+
             for (uint256 j; j < numCreditManagers; ++j) {
                 address creditManager = creditManagers[j];
                 // QUESTION: maybe revert with more detailed exceptions?
@@ -131,10 +151,19 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
                     }
                 }
 
-                IContractsRegister(contractsRegister).registerCreditSuite(creditManagers[j]);
-            }
+                address creditConfigurator = ICreditManagerV3(creditManager).creditConfigurator();
+                address creditFacade = ICreditManagerV3(creditManager).creditFacade();
+                IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
+                _authorizeFactory(creditFactory, creditManager, creditConfigurator);
+                _authorizeFactory(creditFactory, creditManager, creditFacade);
 
-            // TODO: set factories, fill access lists, etc
+                address[] memory adapters = ICreditConfiguratorV3(creditConfigurator).allowedAdapters();
+                uint256 numAdapters = adapters.length;
+                for (uint256 k; k < numAdapters; ++k) {
+                    // FIXME: getting stack too deep here
+                    // _authorizeFactory(creditFactory, creditManager, adapters[k]);
+                }
+            }
         }
     }
 
@@ -142,7 +171,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     // CONFIGURATION //
     // ------------- //
 
-    function claimLegacyACLOwnership() external onlyOwner {
+    function claimLegacyACLOwnership() external onlyAdmin {
         // on some chains, legacy ACL implements a 2-step ownership transfer
         try IACLLegacy(aclLegacy).pendingOwner() {
             IACLLegacy(aclLegacy).claimOwnership();
@@ -177,11 +206,6 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         super._revokeRole(role, account);
         if (role == ROLE_PAUSABLE_ADMIN) IACLLegacy(aclLegacy).removePausableAdmin(account);
         else if (role == ROLE_UNPAUSABLE_ADMIN) IACLLegacy(aclLegacy).removeUnpausableAdmin(account);
-    }
-
-    function _migrate(address newMarketConfigurator) internal override {
-        super._migrate(newMarketConfigurator);
-        IACLLegacy(aclLegacy).transferOwnership(newMarketConfigurator);
     }
 
     function _validateCallTarget(address target, address factory) internal override {

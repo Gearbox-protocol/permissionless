@@ -4,6 +4,7 @@
 pragma solidity ^0.8.23;
 
 import {IFactory} from "../interfaces/factories/IFactory.sol";
+import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
 import {ILossLiquidatorFactory} from "../interfaces/factories/ILossLiquidatorFactory.sol";
 import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 
@@ -41,18 +42,30 @@ contract LossLiquidatorFactory is AbstractMarketFactory, ILossLiquidatorFactory 
             _validateDefaultConstructorParams(pool, params.constructorParams);
         }
 
-        address lossLiquidator = _deployByDomain({
-            domain: DOMAIN_LOSS_LIQUIDATOR,
-            postfix: params.postfix,
-            version: version,
+        address lossLiquidator = _deployLatestPatch({
+            contractType: _getContractType(DOMAIN_LOSS_LIQUIDATOR, params.postfix),
+            minorVersion: version,
             constructorParams: params.constructorParams,
             salt: bytes32(bytes20(msg.sender))
         });
 
         return DeployResult({
             newContract: lossLiquidator,
-            onInstallOps: CallBuilder.build(_addToAccessList(msg.sender, lossLiquidator))
+            onInstallOps: CallBuilder.build(_authorizeFactory(msg.sender, pool, lossLiquidator))
         });
+    }
+
+    // ------------ //
+    // MARKET HOOKS //
+    // ------------ //
+
+    function onUpdateLossLiquidator(address pool, address, address oldLossLiquidator)
+        external
+        view
+        override(AbstractMarketFactory, IMarketFactory)
+        returns (Call[] memory calls)
+    {
+        calls = CallBuilder.build(_unauthorizeFactory(msg.sender, pool, oldLossLiquidator));
     }
 
     // ------------- //

@@ -16,8 +16,6 @@ import {SecurityReport, Source, BytecodeInfo, AuditorInfo} from "../interfaces/T
 // EXCEPTIONS
 import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
-import {LibString} from "@solady/utils/LibString.sol";
-
 /**
  * @title BytecodeRepository
  *
@@ -45,8 +43,6 @@ import {LibString} from "@solady/utils/LibString.sol";
 contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeRepository {
     using EnumerableSet for EnumerableSet.UintSet;
     using EnumerableSet for EnumerableSet.AddressSet;
-    using LibString for bytes32;
-    using LibString for string;
 
     //
     // CONSTANTS
@@ -187,29 +183,6 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
         try Ownable(newContract).transferOwnership(msg.sender) {} catch {}
     }
 
-    /**
-     * @notice Deploys a contract the same as deploy(...), getting domain & postfix as params
-     * @param _domain The domain of contract
-     * @param _postfix The postfix of contract
-     * @param _version The version of the contract to be deployed.
-     * @param constructorParams The constructor parameters to be passed to the contract.
-     * @param salt A salt used for the Create2 deployment to ensure a unique address. Conventionally it
-     *        represents market configurator address to avoid possible collisions
-     * @return newContract The address of the newly deployed contract.
-     * @dev Reverts if the bytecode for the specified contract type and version is not found.
-     *      Reverts if the deployed contract's type or version does not match the expected values.
-     *      If the deployed contract is ownable, ownership is automatically transferred to the caller.
-     */
-    function deployByDomain(
-        bytes32 _domain,
-        bytes32 _postfix,
-        uint256 _version,
-        bytes memory constructorParams,
-        bytes32 salt
-    ) external override returns (address newContract) {
-        return deploy(_getContractType(_domain, _postfix), _version, constructorParams, salt);
-    }
-
     function uploadByteCode(
         bytes32 _contractType,
         uint256 _version,
@@ -302,19 +275,6 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
     {
         return Create2.computeAddress(
             salt, keccak256(_getBytecodeWithParamsOrRevert(_contractType, _version, constructorParams))
-        );
-    }
-
-    function computeAddressByDomain(
-        bytes32 _domain,
-        bytes32 _postfix,
-        uint256 _version,
-        bytes memory constructorParams,
-        bytes32 salt
-    ) external view override returns (address) {
-        return Create2.computeAddress(
-            salt,
-            keccak256(_getBytecodeWithParamsOrRevert(_getContractType(_domain, _postfix), _version, constructorParams))
         );
     }
 
@@ -418,17 +378,19 @@ contract BytecodeRepository is Ownable2Step, SanityCheckTrait, IBytecodeReposito
         bytecodeWithParams = abi.encodePacked(bytecode, constructorParams);
     }
 
-    function _getContractType(bytes32 domain, bytes32 postfix) internal pure returns (bytes32) {
-        // Ignores postfix if it's empty; otherwise, concatenate domain_postfix
-        if (postfix == 0) return domain;
-        string memory contractType_ = string.concat(domain.fromSmallString(), "_", postfix.fromSmallString());
-        // FIXME: check is redundant since it is also present in `toSmallString`
-        if (bytes(contractType_).length > 31) {
-            revert TooLongContractTypeException(contractType_);
-        }
-        return contractType_.toSmallString();
+    function getTokenSpecificPostfix(address token) external view returns (bytes32) {
+        // TODO: implement
     }
 
-    // TODO:
-    function getTokenSpecificPostfix(address) external view returns (bytes32) {}
+    function getLatestVersion(bytes32 type_) external view returns (uint256) {
+        // TODO: implement
+    }
+
+    function getLatestMinorVersion(bytes32 type_, uint256 majorVersion) external view returns (uint256) {
+        // TODO: implement
+    }
+
+    function getLatestPatchVersion(bytes32 type_, uint256 minorVersion) external view returns (uint256) {
+        // TODO: implement
+    }
 }

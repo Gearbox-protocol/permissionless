@@ -73,7 +73,7 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
-        defaultInterestRateModel = _getContract(AP_DEFAULT_IRM, NO_VERSION_CONTROL);
+        defaultInterestRateModel = _getAddressOrRevert(AP_DEFAULT_IRM, NO_VERSION_CONTROL);
     }
 
     // ---------- //
@@ -97,8 +97,8 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         return DeployResult({
             newContract: pool,
             onInstallOps: CallBuilder.build(
-                _addToAccessList(msg.sender, pool),
-                _addToAccessList(msg.sender, quotaKeeper),
+                _authorizeFactory(msg.sender, pool, pool),
+                _authorizeFactory(msg.sender, pool, quotaKeeper),
                 _setQuotaKeeper(pool, quotaKeeper)
             )
         });
@@ -246,19 +246,18 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
             acl, contractsRegister, underlying, treasury, defaultInterestRateModel, type(uint256).max, name, symbol
         );
         bytes32 salt = bytes32(bytes20(marketConfigurator));
-        return _deployByDomain({
-            domain: DOMAIN_POOL,
-            postfix: postfix,
-            version: version,
+        return _deployLatestPatch({
+            contractType: _getContractType(DOMAIN_POOL, postfix),
+            minorVersion: version,
             constructorParams: constructorParams,
             salt: salt
         });
     }
 
     function _deployQuotaKeeper(address marketConfigurator, address pool) internal returns (address) {
-        return _deploy({
+        return _deployLatestPatch({
             contractType: AP_POOL_QUOTA_KEEPER,
-            version: version,
+            minorVersion: version,
             constructorParams: abi.encode(pool),
             salt: bytes32(bytes20(marketConfigurator))
         });

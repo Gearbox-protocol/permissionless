@@ -5,7 +5,6 @@ pragma solidity ^0.8.23;
 
 import {IRateKeeper} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IRateKeeper.sol";
 import {IGaugeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IGaugeV3.sol";
-import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 
 import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
@@ -48,7 +47,7 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
     {
         if (params.postfix == "GAUGE") {
             (address decodedPool, address decodedGearStaking) = abi.decode(params.constructorParams, (address, address));
-            if (decodedPool != pool || decodedGearStaking != _getContract(AP_GEAR_STAKING, NO_VERSION_CONTROL)) {
+            if (decodedPool != pool || decodedGearStaking != _getAddressOrRevert(AP_GEAR_STAKING, NO_VERSION_CONTROL)) {
                 revert InvalidConstructorParamsException();
             }
         } else if (params.postfix == "TUMBLER") {
@@ -60,17 +59,16 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
             _validateDefaultConstructorParams(pool, params.constructorParams);
         }
 
-        address rateKeeper = _deployByDomain({
-            domain: DOMAIN_RATE_KEEPER,
-            postfix: params.postfix,
-            version: version,
+        address rateKeeper = _deployLatestPatch({
+            contractType: _getContractType(DOMAIN_RATE_KEEPER, params.postfix),
+            minorVersion: version,
             constructorParams: params.constructorParams,
             salt: bytes32(bytes20(msg.sender))
         });
 
         return DeployResult({
             newContract: rateKeeper,
-            onInstallOps: CallBuilder.build(_addToAccessList(msg.sender, rateKeeper))
+            onInstallOps: CallBuilder.build(_authorizeFactory(msg.sender, pool, rateKeeper))
         });
     }
 
@@ -103,7 +101,7 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
         override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory calls)
     {
-        address[] memory tokens = IPoolQuotaKeeperV3(_quotaKeeper(pool)).quotedTokens();
+        address[] memory tokens = _quotedTokens(_quotaKeeper(pool));
         uint256 numTokens = tokens.length;
         calls = new Call[](numTokens);
         bytes32 type_ = _getRateKeeperType(newRateKeeper);
@@ -113,7 +111,7 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
         calls = calls.extend(
             _uninstallRateKeeper(oldRateKeeper, _getRateKeeperType(oldRateKeeper)).extend(
                 _installRateKeeper(newRateKeeper, type_)
-            )
+            ).append(_unauthorizeFactory(msg.sender, pool, oldRateKeeper))
         );
     }
 

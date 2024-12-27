@@ -11,8 +11,8 @@ interface IMarketConfiguratorFactory is IVersion {
     event ShutdownMarketConfigurator(address indexed marketConfigurator);
 
     error AddressIsNotMarketConfiguratorException();
-    error CallerIsNotMarketConfiguratorException();
-    error CallerIsNotMarketConfiguratorOwnerException();
+    error CallerIsNotMarketConfiguratorException(address caller);
+    error CallerIsNotMarketConfiguratorAdminException(address caller);
     error CantShutdownMarketConfiguratorException();
 
     function isMarketConfigurator(address account) external view returns (bool);

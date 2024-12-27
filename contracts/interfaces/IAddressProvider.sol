@@ -19,17 +19,21 @@ interface IAddressProvider is IVersion {
 
     function addresses(string memory key, uint256 _version) external view returns (address);
 
-    function getAddress(bytes32 key, uint256 _version) external view returns (address);
-
     function getAddressOrRevert(string memory key, uint256 _version) external view returns (address);
 
     function getAddressOrRevert(bytes32 key, uint256 _version) external view returns (address);
 
     function getAllSavedContracts() external view returns (ContractValue[] memory);
 
-    function getLatestAddressOrRevert(string memory key) external view returns (address);
+    function getLatestVersion(string memory key) external view returns (uint256);
 
-    function getLatestAddressOrRevert(bytes32 _key) external view returns (address result);
+    function getLatestMinorVersion(string memory key, uint256 majorVersion) external view returns (uint256);
+
+    function getLatestPatchVersion(string memory key, uint256 minorVersion) external view returns (uint256);
+
+    // ------------- //
+    // CONFIGURATION //
+    // ------------- //
 
     function setAddress(string memory key, address addr, bool saveVersion) external;
 

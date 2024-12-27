@@ -46,10 +46,6 @@ contract AddressProvider is Ownable2Step, IAddressProvider {
         return Ownable.owner();
     }
 
-    function getAddress(bytes32 key, uint256 _version) external view virtual override returns (address) {
-        return addresses[key.fromSmallString()][_version];
-    }
-
     /// @notice Returns the address of a contract with a given key and version
     function getAddressOrRevert(string memory key, uint256 _version)
         public
@@ -67,15 +63,16 @@ contract AddressProvider is Ownable2Step, IAddressProvider {
         return getAddressOrRevert(key.fromSmallString(), _version);
     }
 
-    /// @notice Returns the address of a contract with a given key and version
-    function getLatestAddressOrRevert(string memory key) public view virtual returns (address result) {
-        return getAddressOrRevert(key, latestVersions[key]);
+    function getLatestVersion(string memory key) external view override returns (uint256) {
+        // TODO: implement
     }
 
-    /// @notice Returns the address of a contract with a given key and version
-    function getLatestAddressOrRevert(bytes32 _key) public view virtual returns (address result) {
-        string memory key = _key.fromSmallString();
-        return getAddressOrRevert(key, latestVersions[key]);
+    function getLatestMinorVersion(string memory key, uint256 majorVersion) external view override returns (uint256) {
+        // TODO: implement
+    }
+
+    function getLatestPatchVersion(string memory key, uint256 minorVersion) external view override returns (uint256) {
+        // TODO: implement
     }
 
     /// @notice Sets the address for the passed contract key

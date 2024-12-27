@@ -9,6 +9,7 @@ bytes32 constant AP_ACL = "ACL";
 bytes32 constant AP_CONTRACTS_REGISTER = "CONTRACTS_REGISTER";
 
 bytes32 constant AP_ADDRESS_PROVIDER = "ADDRESS_PROVIDER";
+bytes32 constant AP_GEARBOX_DAO = "GEARBOX_DAO";
 
 bytes32 constant AP_POOL_QUOTA_KEEPER = "POOL_QUOTA_KEEPER";
 

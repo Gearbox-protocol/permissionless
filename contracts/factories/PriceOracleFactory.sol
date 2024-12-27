@@ -58,7 +58,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
-        priceFeedStore = _getContract(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
+        priceFeedStore = _getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
     }
 
     // ---------- //
@@ -66,16 +66,16 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
     // ---------- //
 
     function deployPriceOracle(address pool) external override onlyMarketConfigurators returns (DeployResult memory) {
-        address priceOracle = _deploy({
+        address priceOracle = _deployLatestPatch({
             contractType: AP_PRICE_ORACLE,
-            version: version,
+            minorVersion: version,
             constructorParams: abi.encode(_acl(pool)),
             salt: bytes32(bytes20(msg.sender))
         });
 
         return DeployResult({
             newContract: priceOracle,
-            onInstallOps: CallBuilder.build(_addToAccessList(msg.sender, priceOracle))
+            onInstallOps: CallBuilder.build(_authorizeFactory(msg.sender, pool, priceOracle))
         });
     }
 
@@ -94,14 +94,20 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         return _setPriceFeed(priceOracle, underlying, underlyingPriceFeed, false);
     }
 
-    function onUpdatePriceOracle(address, address newPriceOracle, address oldPriceOracle)
+    function onUpdatePriceOracle(address pool, address newPriceOracle, address oldPriceOracle)
         external
         view
         override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory calls)
     {
-        // QUESTION: maybe migrate pool's tokens instead?
-        address[] memory tokens = IPriceOracleV3(oldPriceOracle).getTokens();
+        calls = CallBuilder.build(_unauthorizeFactory(msg.sender, pool, oldPriceOracle));
+
+        address underlying = _underlying(pool);
+        calls = calls.extend(
+            _setPriceFeed(newPriceOracle, underlying, _getPriceFeed(oldPriceOracle, underlying, false), false)
+        );
+
+        address[] memory tokens = _quotedTokens(_quotaKeeper(pool));
         uint256 numTokens = tokens.length;
         for (uint256 i; i < numTokens; ++i) {
             // FIXME: reallocating the whole array is not the most optimal solution
