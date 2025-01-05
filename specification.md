@@ -29,6 +29,8 @@ This Bytecode Repository supports Gearbox  DAO in becoming a fully permissionles
     -	3: Major version (e.g., “Version 3” contracts)
     -	1: Minor version (an iteration or feature addition on Version 3)
     -	2: Patch version (small fixes within Version 3.1)
+- **Token-Specific Postfixes**: A suffix appended to the domain to indicate a specialized or unique contract version that inherits from a base contract but differs when used with specific tokens.
+Example: A “USDT pool” postfix might be required if the pool needs special fee computation to accommodate USDT’s behavior, ensuring compatibility without errors.
 - **Auditors**: A specialized role that issues cryptographic proofs or attestations regarding a particular version of bytecode. The list of recognized auditors is maintained via DAO voting, allowing a Gearbox DAO to add or remove auditors from the official registry.
 
 ## 4. IVersion interface
@@ -63,3 +65,48 @@ In the Bytecode Repository, domains are grouped into two categories: **public** 
 Any update to the bytecode under system domains requires an on-chain vote by the Gearbox DAO. This extra layer of governance ensures that core protocol components cannot be modified without community consensus.
 - **Security and Trust**: By segregating core contracts into system domains, the protocol maintains a clear boundary between foundational Gearbox functionality and the optional modules or plugins in public domains. DAO oversight further reduces the risk of malicious or accidental changes to mission-critical infrastructure.
 
+Below is a concise Section 6 with the updated struct.
+
+## 6. Uploading New Bytecodes
+
+To add a new contract implementation, a developer must invoke uploadBytecode(...) on Ethereum Mainnet. This ensures a single, trusted source of truth. After upload, one or more approved auditors can sign the bytecode to confirm its authenticity.
+
+#### 6.1 BytecodeMetaData Struct
+
+```solidity
+struct BytecodeMetaData {
+    bytes32 contractType;
+    bytes32 postfix;
+    uint256 version;
+    bytes bytecode;     // Also store its hash
+    string source;      // Could be a link to source code
+    address author;     // Automatically set to msg.sender
+}
+```
+
+`bytecodeMetaHash` is computed as `keccak256(abi.encode(contractType, postfix, version, keccak256(bytecode)))`. This hash uniquely identifies the bytecode metadata and is used for auditor signatures and cross-chain verification.
+
+
+#### 6.2 Workflow
+1.	**Developer Upload**
+•	Calls uploadBytecode(...) on Mainnet, providing contractType, postfix, version, bytecode, and source.
+•	The contract sets author to msg.sender.
+2.	**Auditor Signatures**
+•	Approved auditors verify the uploaded bytecode. They can sign a EIP-712 signature and provide it in a method `signBytecodeMetaHash(...)` with following parameters: `bytecodeMetaHash`, `reportUrl`, `r`, `s`, `v`.
+
+The signatures are stored in the `auditorSignatures` mapping. To support cross-chain deployment, the EIP-712 domain signature skips chainId, so if it's signed once, it's valid on any EVM-compatible chain.
+
+Auditors signatures are stored in the `auditorSignatures` mapping with the following structure:
+
+```solidity
+struct AuditorSignature {
+    string reportUrl;
+    bytes32 r;
+    bytes32 s;
+    uint8 v;
+}
+```
+•	If valid, they provide on-chain signatures.
+
+3.	**Cross-Chain Deployment**
+•	Once signed on Mainnet, the bytecode can be securely referenced and deployed on any EVM-compatible network. The mainnet contract can returned signed structure and in could be uploaded on any network. To sync the list of apporved auditors cross-chain instance managers is used.

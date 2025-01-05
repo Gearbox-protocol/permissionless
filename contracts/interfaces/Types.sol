@@ -26,7 +26,7 @@ struct MarketFactories {
     address lossLiquidatorFactory;
 }
 
-// The `BytecodeInfo` struct holds metadata about a bytecode in BytecodeRepository
+// The `BytecodeInfoMeta` struct holds metadata about a bytecode in BytecodeRepository
 //
 // - `author`: A person who first upload smart-contract to BCR
 // - `contractType`: A bytes32 identifier representing the type of the contract.
@@ -34,26 +34,15 @@ struct MarketFactories {
 // - `sources`: An array of `Source` structs, each containing a comment and a link related to the contract's source.
 // - `auditors`: An array of addresses representing the auditors who have reviewed the contract.
 // - `reports`: An array of `SecurityReport` structs, each containing information about security audits conducted on the contract.
-struct BytecodeInfo {
-    address author;
+struct BytecodeWithMeta {
     bytes32 contractType;
     uint256 version;
-    Source[] sources;
-    address[] auditors;
-    SecurityReport[] reports;
+    bytes bytecode; // store it's hash as well
+    address author;
+    string source;
 }
 
-struct SecurityReport {
-    address auditor;
-    string url;
-}
-
-struct Source {
-    string comment;
-    string link;
-}
-
-struct AuditorInfo {
-    string name;
-    bool forbidden;
+struct AuditorSignature {
+    string reportUrl;
+    bytes signature;
 }
