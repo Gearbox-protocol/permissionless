@@ -16,7 +16,7 @@ import {LibString} from "@solady/utils/LibString.sol";
 import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
 import {BytecodeWithMeta, AuditorSignature} from "../interfaces/Types.sol";
-
+import {EIP712Mainnet} from "../helpers/EIP712Mainnet.sol";
 /**
  * @title BytecodeRepository
  *
@@ -41,12 +41,14 @@ import {BytecodeWithMeta, AuditorSignature} from "../interfaces/Types.sol";
  *
  * This structure ensures consistency and clarity when deploying and managing contracts within the system.
  */
-contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, EIP712 {
+
+contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, EIP712Mainnet {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
     using ECDSA for bytes32;
     using LibString for bytes32;
     using LibString for string;
+    using LibString for uint256;
 
     //
     // CONSTANTS
@@ -56,46 +58,11 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     uint256 public constant override version = 3_10;
     bytes32 public constant override contractType = AP_BYTECODE_REPOSITORY;
 
-    // Hardcode chainId=1 by overriding _domainSeparatorV4 and _buildDomainSeparator.
-    // We'll store hashed name and version from the constructor.
-    bytes32 private immutable _CACHED_DOMAIN_SEPARATOR;
-
-    // EIP-712 domain typeHash
-    bytes32 private constant _EIP712_TYPE_HASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
-
-    // Name and version hashed
-    bytes32 private immutable _HASHED_NAME;
-    bytes32 private immutable _HASHED_VERSION;
-
-    // Hardcoded chainId = 1
-    uint256 private constant _HARDCODED_CHAIN_ID = 1;
-
     bytes32 private constant _SIGNATURE_TYPEHASH = keccak256("SignBytecodeMetaHash(bytes32 metaHash,string reportUrl)");
 
     //
     // ERRORS
     //
-
-    /// @notice Thrown when trying to deploy contract with forbidden bytecode
-    error BytecodeForbiddenException(bytes32 bytecodeHash);
-
-    /// @notice Thrown when trying to deploy contract that already exists at the computed address
-    error BytecodeAlreadyExistsAtAddressException(address addr);
-
-    /// @notice Thrown when trying to deploy contract with incorrect bytecode
-    error IncorrectBytecodeException();
-
-    /// @notice Thrown when trying to sign contract that is not audited
-    error ContractIsNotAuditedException();
-
-    /// @notice Thrown when trying to deploy contract with incorrect domain ownership
-    error NotDomainOwnerException();
-
-    /// @notice Thrown when trying to deploy contract with incorrect contract type
-    error ContractNameVersionAlreadyExistsException();
-
-    error OnlyAuthorCanSyncException();
 
     //
     // EVENTS
@@ -108,7 +75,7 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     event AddAuditor(address indexed auditor, string name);
 
     // Event emitted when an auditor is forbidden from the repository
-    event RemoveAuditor(address indexed auditor, string name);
+    event RemoveAuditor(address indexed auditor);
 
     // Event emitted when new bytecode is uploaded to the repository
     event UploadBytecode(
@@ -140,7 +107,7 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     // metaHash => array of AuditorSignature
     mapping(bytes32 => AuditorSignature[]) public auditorSignaturesByHash;
 
-    // contractName => version => metaHash
+    // contractType => version => metaHash
     mapping(bytes32 => mapping(uint256 => bytes32)) public approvedBytecodeMetaHash;
 
     // Forbidden bytecodes (by keccak256 of the raw bytecode)
@@ -158,22 +125,7 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     // Auditors
     EnumerableSet.AddressSet private _auditors;
 
-    // token => tokenSpecificPostfix
-    mapping(address => bytes32) public tokenSpecificPostfixes;
-
-    // +++ Governance +++
-    // forbiddenBytecode
-    // removeDomainOwner
-    // removeByteCode contractType + version
-
-    EnumerableSet.UintSet internal _hashStorage;
-
-    // Auditors
-
-    // Keep all auditors joined the repository
-    EnumerableSet.AddressSet internal _auditors;
-
-    // Store auditors info
+    // Auditor => name
     mapping(address => string) public auditorName;
 
     // Postfixes are used to deploy unique contract versions inherited from
@@ -181,35 +133,16 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     // For example, the USDT pool, which supports fee computation without errors
     mapping(address => bytes32) public tokenSpecificPostfixes;
 
-    constructor() EIP712(contractType, version) {
-        _HASHED_NAME = keccak256(contractType);
-        _HASHED_VERSION = keccak256(version);
+    // +++ Governance +++
+    // forbiddenBytecode
+    // removeDomainOwner
+    // removeByteCode contractType + version
 
-        _CACHED_DOMAIN_SEPARATOR =
-            _buildDomainSeparator(_EIP712_TYPE_HASH, _HASHED_NAME, _HASHED_VERSION, _HARDCODED_CHAIN_ID, address(this));
-    }
-
-    function computeContractName(bytes32 _domain, bytes32 _postfix) public pure returns (bytes32) {
-        if (_postfix == bytes32(0)) {
-            return _domain;
-        }
-
-        string memory domainStr = LibString.toSmallString(_domain);
-        string memory postfixStr = LibString.toSmallString(_postfix);
-        return computeContractName(domainStr, postfixStr);
-    }
-
-    function computeContractName(string memory _domain, string memory _postfix) public pure returns (bytes32) {
-        if (_postfix.length == 0) {
-            return LibString.toSmallBytes32(_domain);
-        }
-
-        return LibString.toSmallBytes32(string.concat(_domain, "_", _postfix));
-    }
+    constructor() EIP712Mainnet(contractType.fromSmallString(), version.toString()) Ownable() {}
 
     function computeBytecodeMetaHash(BytecodeWithMeta calldata _meta) public pure returns (bytes32) {
         return keccak256(
-            abi.encode(_meta.contractName, _meta.version, keccak256(_meta.bytecode), _meta.author, _meta.source)
+            abi.encode(_meta.contractType, _meta.version, keccak256(_meta.bytecode), _meta.author, _meta.source)
         );
     }
 
@@ -221,7 +154,7 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         bytes32 metaHash = computeBytecodeMetaHash(_meta);
 
         if (bytecodeWithMetaByHash[metaHash].author != address(0)) {
-            revert BytecodeAllreadyExistsException(_meta.contractName, _meta.version);
+            revert BytecodeAllreadyExistsException(_meta.contractType, _meta.version);
         }
 
         // Check if the bytecode is forbidden
@@ -231,14 +164,14 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         }
 
         // Check if the contract name and version already exists
-        if (approvedBytecodeMetaHash[_meta.contractName][_meta.version] != 0) {
+        if (approvedBytecodeMetaHash[_meta.contractType][_meta.version] != 0) {
             revert ContractNameVersionAlreadyExistsException();
         }
 
         bytecodeWithMetaByHash[metaHash] = _meta;
 
         // Emit with string-based domain/postfix
-        string memory ctString = LibString.toSmallString(_meta.contractName);
+        string memory ctString = LibString.fromSmallString(_meta.contractType);
 
         emit UploadBytecode(metaHash, ctString, _meta.version, _meta.author, _meta.source);
     }
@@ -307,7 +240,7 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
 
         auditorSignaturesByHash[metaHash].push(AuditorSignature(reportUrl, signature));
 
-        emit BytecodeSigned(metaHash, signer, reportUrl);
+        emit BytecodeSigned(metaHash, signer, reportUrl, signature);
 
         bytes32 _contractType = bytecodeWithMetaByHash[metaHash].contractType;
 
@@ -335,7 +268,8 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
 
     function _approveContract(bytes32 metaHash) internal {
         BytecodeWithMeta storage bytecodeWithMeta = bytecodeWithMetaByHash[metaHash];
-        if (bytecodeWithMeta.author != address(0)) {
+
+        if (approvedBytecodeMetaHash[bytecodeWithMeta.contractType][bytecodeWithMeta.version] == 0) {
             approvedBytecodeMetaHash[bytecodeWithMeta.contractType][bytecodeWithMeta.version] = metaHash;
         }
     }
@@ -343,10 +277,11 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     //
     // Auditor management
     //
-    function addAuditor(address auditor) external onlyOwner nonZeroAddress(auditor) {
+    function addAuditor(address auditor, string memory name) external onlyOwner nonZeroAddress(auditor) {
         bool added = _auditors.add(auditor);
         if (added) {
-            emit AddAuditor(auditor);
+            auditorName[auditor] = name;
+            emit AddAuditor(auditor, name);
         }
     }
 
@@ -376,8 +311,7 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
             return;
         }
 
-        bytes memory domainStr = bytes(LibString.toSmallString(domain));
-        if (domainStr.contains("_")) {
+        if (LibString.fromSmallString(domain).contains("_")) {
             return;
         }
 
@@ -404,8 +338,8 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
 
     // GETTERS
 
-    function isContractNameInPublicDomain(bytes32 contractName) public view returns (bool) {
-        string memory contractNameStr = LibString.toSmallString(contractName);
+    function isContractNameInPublicDomain(bytes32 _contractType) public view returns (bool) {
+        string memory contractNameStr = LibString.fromSmallString(_contractType);
         uint256 underscoreIndex = LibString.indexOf(contractNameStr, "_");
 
         // If no underscore found, treat the whole name as domain
@@ -415,7 +349,7 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
 
         // Extract domain part before underscore and convert to bytes32
         string memory domainStr = LibString.slice(contractNameStr, 0, underscoreIndex);
-        bytes32 domain = LibString.toSmallBytes32(domainStr);
+        bytes32 domain = LibString.toSmallString(domainStr);
 
         return isPublicDomain(domain);
     }
@@ -428,31 +362,40 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         return _publicDomains.values();
     }
 
-    // EIP-712 Helpers
-    /**
-     * @dev Build a domain separator that uses chainId=1.
-     */
-    function _buildDomainSeparator(
-        bytes32 typeHash,
-        bytes32 nameHash,
-        bytes32 versionHash,
-        uint256 chainId,
-        address verifyingContract
-    ) private pure returns (bytes32) {
-        return keccak256(abi.encode(typeHash, nameHash, versionHash, chainId, verifyingContract));
+    function getTokenSpecificPostfix(address token) external view returns (bytes32) {
+        return tokenSpecificPostfixes[token];
     }
 
-    /**
-     * @dev Return our cached domain separator (with chainId=1).
-     */
-    function _domainSeparatorV4() internal view override returns (bytes32) {
-        return _CACHED_DOMAIN_SEPARATOR;
+    function getLatestVersion(bytes32 type_) external view returns (uint256) {
+        uint256 latestVersion = 0;
+        for (uint256 i = 0; i < _bytecodeHashes[type_].length(); i++) {
+            uint256 version = _bytecodeHashes[type_].at(i);
+            if (version > latestVersion) {
+                latestVersion = version;
+            }
+        }
+        return latestVersion;
     }
 
-    /**
-     * @dev Hash typed data using the pinned domain separator.
-     */
-    function _hashTypedDataV4(bytes32 structHash) internal view override returns (bytes32) {
-        return ECDSA.toTypedDataHash(_domainSeparatorV4(), structHash);
+    function getLatestMinorVersion(bytes32 type_, uint256 majorVersion) external view returns (uint256) {
+        uint256 latestMinor = 0;
+        for (uint256 i = 0; i < _bytecodeHashes[type_].length(); i++) {
+            uint256 version = _bytecodeHashes[type_].at(i);
+            if (version / 100 == majorVersion && version > latestMinor) {
+                latestMinor = version;
+            }
+        }
+        return latestMinor;
+    }
+
+    function getLatestPatchVersion(bytes32 type_, uint256 minorVersion) external view returns (uint256) {
+        uint256 latestPatch = 0;
+        for (uint256 i = 0; i < _bytecodeHashes[type_].length(); i++) {
+            uint256 version = _bytecodeHashes[type_].at(i);
+            if (version / 10 == minorVersion && version > latestPatch) {
+                latestPatch = version;
+            }
+        }
+        return latestPatch;
     }
 }

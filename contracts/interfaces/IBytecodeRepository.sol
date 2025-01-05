@@ -43,6 +43,17 @@ interface IBytecodeRepository is IVersion {
     // Thrown if the caller does not have valid auditor permissions
     error NoValidAuditorPermissionsAException();
 
+    /// @notice Thrown when trying to deploy contract with forbidden bytecode
+    error BytecodeForbiddenException(bytes32 bytecodeHash);
+
+    /// @notice Thrown when trying to deploy contract with incorrect domain ownership
+    error NotDomainOwnerException();
+
+    /// @notice Thrown when trying to deploy contract with incorrect contract type
+    error ContractNameVersionAlreadyExistsException();
+
+    error OnlyAuthorCanSyncException();
+
     function deploy(bytes32 type_, uint256 version_, bytes memory constructorParams, bytes32 salt)
         external
         returns (address);

@@ -8,6 +8,12 @@ struct Call {
     bytes callData;
 }
 
+struct CrossChainCall {
+    uint256 chainId; // 0 means to be executed on all chains
+    address target;
+    bytes callData;
+}
+
 struct DeployParams {
     bytes32 postfix;
     bytes constructorParams;
