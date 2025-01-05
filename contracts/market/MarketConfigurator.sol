@@ -15,7 +15,7 @@ import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.so
 import {ICreditFactory} from "../interfaces/factories/ICreditFactory.sol";
 import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IInterestRateModelFactory} from "../interfaces/factories/IInterestRateModelFactory.sol";
-import {ILossLiquidatorFactory} from "../interfaces/factories/ILossLiquidatorFactory.sol";
+import {ILossPolicyFactory} from "../interfaces/factories/ILossPolicyFactory.sol";
 import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
 import {IPoolFactory} from "../interfaces/factories/IPoolFactory.sol";
 import {IPriceOracleFactory} from "../interfaces/factories/IPriceOracleFactory.sol";
@@ -27,9 +27,8 @@ import {Call, DeployParams, DeployResult, MarketFactories} from "../interfaces/T
 
 import {
     AP_CREDIT_FACTORY,
-    AP_GEARBOX_DAO,
     AP_INTEREST_RATE_MODEL_FACTORY,
-    AP_LOSS_LIQUIDATOR_FACTORY,
+    AP_LOSS_POLICY_FACTORY,
     AP_MARKET_CONFIGURATOR,
     AP_MARKET_CONFIGURATOR_FACTORY,
     AP_POOL_FACTORY,
@@ -42,7 +41,7 @@ import {
 
 import {ACL} from "./ACL.sol";
 import {ContractsRegister} from "./ContractsRegister.sol";
-import {TreasurySplitter} from "../market/TreasurySplitter.sol";
+import {TreasurySplitter} from "./TreasurySplitter.sol";
 
 /// @title Market configurator
 contract MarketConfigurator is IMarketConfigurator {
@@ -91,11 +90,6 @@ contract MarketConfigurator is IMarketConfigurator {
         _;
     }
 
-    modifier onlyGearboxDAO() {
-        _ensureCallerIsGearboxDAO();
-        _;
-    }
-
     modifier onlyRegisteredMarket(address pool) {
         _ensureRegisteredMarket(pool);
         _;
@@ -116,16 +110,14 @@ contract MarketConfigurator is IMarketConfigurator {
         emergencyAdmin = emergencyAdmin_;
 
         addressProvider = addressProvider_;
-        marketConfiguratorFactory = _getAddressOrRevert(AP_MARKET_CONFIGURATOR, NO_VERSION_CONTROL);
+        marketConfiguratorFactory = _getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
 
         acl = address(new ACL());
         contractsRegister = address(new ContractsRegister(acl));
-        // TODO: transfer ownership to the 2/2 multisig of `msg.sender` and DAO (to be introduced)
-        // or redesign splitter to work similarly to rescue
         treasury = address(new TreasurySplitter());
 
-        _grantRole(ROLE_PAUSABLE_ADMIN, address(this));
-        _grantRole(ROLE_UNPAUSABLE_ADMIN, address(this));
+        ACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, address(this));
+        ACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, address(this));
     }
 
     // -------- //
@@ -149,35 +141,51 @@ contract MarketConfigurator is IMarketConfigurator {
         return _curatorName.fromSmallString();
     }
 
+    // ---------------- //
+    // ROLES MANAGEMENT //
+    // ---------------- //
+
+    function grantRole(bytes32 role, address account) external override onlyAdmin {
+        _grantRole(role, account);
+    }
+
+    function revokeRole(bytes32 role, address account) external override onlyAdmin {
+        _revokeRole(role, account);
+    }
+
+    function emergencyRevokeRole(bytes32 role, address account) external override onlyEmergencyAdmin {
+        _revokeRole(role, account);
+    }
+
     // ----------------- //
     // MARKET MANAGEMENT //
     // ----------------- //
 
     function createMarket(
-        uint256 majorVersion,
+        uint256 minorVersion,
         address underlying,
         string calldata name,
         string calldata symbol,
         DeployParams calldata interestRateModelParams,
         DeployParams calldata rateKeeperParams,
-        DeployParams calldata lossLiquidatorParams,
+        DeployParams calldata lossPolicyParams,
         address underlyingPriceFeed
     ) external override onlyAdmin returns (address pool) {
-        MarketFactories memory factories = _getLatestMarketFactories(majorVersion);
+        MarketFactories memory factories = _getLatestMarketFactories(minorVersion);
         pool = _deployPool(factories.poolFactory, underlying, name, symbol);
         address priceOracle = _deployPriceOracle(factories.priceOracleFactory, pool);
         address interestRateModel =
             _deployInterestRateModel(factories.interestRateModelFactory, pool, interestRateModelParams);
         address rateKeeper = _deployRateKeeper(factories.rateKeeperFactory, pool, rateKeeperParams);
-        address lossLiquidator = _deployLossLiquidator(factories.lossLiquidatorFactory, pool, lossLiquidatorParams);
+        address lossPolicy = _deployLossPolicy(factories.lossPolicyFactory, pool, lossPolicyParams);
         _marketFactories[pool] = factories;
 
-        _registerMarket(pool, priceOracle, lossLiquidator);
+        _registerMarket(pool, priceOracle, lossPolicy);
         _executeMarketHooks(
             pool,
             abi.encodeCall(
                 IMarketFactory.onCreateMarket,
-                (pool, priceOracle, interestRateModel, rateKeeper, lossLiquidator, underlyingPriceFeed)
+                (pool, priceOracle, interestRateModel, rateKeeper, lossPolicy, underlyingPriceFeed)
             )
         );
     }
@@ -222,14 +230,14 @@ contract MarketConfigurator is IMarketConfigurator {
     // CREDIT SUITE MANAGEMENT //
     // ----------------------- //
 
-    function createCreditSuite(uint256 majorVersion, address pool, bytes calldata encodedParams)
+    function createCreditSuite(uint256 minorVersion, address pool, bytes calldata encodedParams)
         external
         override
         onlyAdmin
         onlyRegisteredMarket(pool)
         returns (address creditManager)
     {
-        address factory = _getLatestCreditFactory(majorVersion);
+        address factory = _getLatestCreditFactory(minorVersion);
         creditManager = _deployCreditSuite(factory, pool, encodedParams);
         _creditFactories[creditManager] = factory;
 
@@ -422,24 +430,22 @@ contract MarketConfigurator is IMarketConfigurator {
         return deployResult.newContract;
     }
 
-    // -------------------------- //
-    // LOSS LIQUIDATOR MANAGEMENT //
-    // -------------------------- //
+    // ---------------------- //
+    // LOSS POLICY MANAGEMENT //
+    // ---------------------- //
 
-    function updateLossLiquidator(address pool, DeployParams calldata params)
+    function updateLossPolicy(address pool, DeployParams calldata params)
         external
         override
         onlyAdmin
         onlyRegisteredMarket(pool)
-        returns (address lossLiquidator)
+        returns (address lossPolicy)
     {
-        address oldLossLiquidator = ContractsRegister(contractsRegister).getLossLiquidator(pool);
-        lossLiquidator = _deployLossLiquidator(_marketFactories[pool].lossLiquidatorFactory, pool, params);
+        address oldLossPolicy = ContractsRegister(contractsRegister).getLossPolicy(pool);
+        lossPolicy = _deployLossPolicy(_marketFactories[pool].lossPolicyFactory, pool, params);
 
-        ContractsRegister(contractsRegister).setLossLiquidator(pool, lossLiquidator);
-        _executeMarketHooks(
-            pool, abi.encodeCall(IMarketFactory.onUpdateLossLiquidator, (pool, lossLiquidator, oldLossLiquidator))
-        );
+        ContractsRegister(contractsRegister).setLossPolicy(pool, lossPolicy);
+        _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onUpdateLossPolicy, (pool, lossPolicy, oldLossPolicy)));
 
         address[] memory creditManagers = _registeredCreditManagers(pool);
         uint256 numManagers = creditManagers.length;
@@ -447,63 +453,36 @@ contract MarketConfigurator is IMarketConfigurator {
             address creditManager = creditManagers[i];
             _executeHook(
                 _creditFactories[creditManager],
-                abi.encodeCall(
-                    ICreditFactory.onUpdateLossLiquidator, (creditManager, lossLiquidator, oldLossLiquidator)
-                )
+                abi.encodeCall(ICreditFactory.onUpdateLossPolicy, (creditManager, lossPolicy, oldLossPolicy))
             );
         }
     }
 
-    function configureLossLiquidator(address pool, bytes calldata data)
+    function configureLossPolicy(address pool, bytes calldata data)
         external
         override
         onlyAdmin
         onlyRegisteredMarket(pool)
     {
-        _configure(_marketFactories[pool].lossLiquidatorFactory, pool, data);
+        _configure(_marketFactories[pool].lossPolicyFactory, pool, data);
     }
 
-    function emergencyConfigureLossLiquidator(address pool, bytes calldata data)
+    function emergencyConfigureLossPolicy(address pool, bytes calldata data)
         external
         override
         onlyEmergencyAdmin
         onlyRegisteredMarket(pool)
     {
-        _emergencyConfigure(_marketFactories[pool].lossLiquidatorFactory, pool, data);
+        _emergencyConfigure(_marketFactories[pool].lossPolicyFactory, pool, data);
     }
 
-    function _deployLossLiquidator(address factory, address pool, DeployParams calldata params)
+    function _deployLossPolicy(address factory, address pool, DeployParams calldata params)
         internal
         returns (address)
     {
-        DeployResult memory deployResult = ILossLiquidatorFactory(factory).deployLossLiquidator(pool, params);
+        DeployResult memory deployResult = ILossPolicyFactory(factory).deployLossPolicy(pool, params);
         _executeHook(factory, deployResult.onInstallOps);
         return deployResult.newContract;
-    }
-
-    // ---------------- //
-    // ROLES MANAGEMENT //
-    // ---------------- //
-
-    function grantRole(bytes32 role, address account) external override onlyAdmin {
-        if (account == address(this) && (role == ROLE_PAUSABLE_ADMIN || role == ROLE_UNPAUSABLE_ADMIN)) {
-            revert(); // TODO: exception
-        }
-        _grantRole(role, account);
-    }
-
-    function revokeRole(bytes32 role, address account) external override onlyAdmin {
-        if (account == address(this) && (role == ROLE_PAUSABLE_ADMIN || role == ROLE_UNPAUSABLE_ADMIN)) {
-            revert(); // TODO: exception
-        }
-        _revokeRole(role, account);
-    }
-
-    function emergencyRevokeRole(bytes32 role, address account) external override onlyEmergencyAdmin {
-        if (account == address(this) && (role == ROLE_PAUSABLE_ADMIN || role == ROLE_UNPAUSABLE_ADMIN)) {
-            revert(); // TODO: exception
-        }
-        _revokeRole(role, account);
     }
 
     // --------- //
@@ -527,15 +506,13 @@ contract MarketConfigurator is IMarketConfigurator {
     }
 
     function authorizeFactory(address factory, address suite, address target) external override onlySelf {
-        if (_authorizedFactories[target] != address(0)) revert(); // TODO: exception
+        if (_authorizedFactories[target] != address(0)) revert UnauthorizedFactoryException(factory, target);
         _authorizeFactory(factory, suite, target);
     }
 
     function unauthorizeFactory(address factory, address suite, address target) external override onlySelf {
-        if (_authorizedFactories[target] != factory) revert(); // TODO: exception
-        _authorizedFactories[target] = address(0);
-        _factoryTargets[factory][suite].remove(target);
-        emit UnauthorizeFactory(factory, suite, target);
+        if (_authorizedFactories[target] != factory) revert UnauthorizedFactoryException(factory, target);
+        _unauthorizeFactory(factory, suite, target);
     }
 
     function upgradePoolFactory(address pool) external override onlyAdmin {
@@ -570,11 +547,11 @@ contract MarketConfigurator is IMarketConfigurator {
         _migrateFactoryTargets(oldFactory, newFactory, pool);
     }
 
-    function upgradeLossLiquidatorFactory(address pool) external override onlyAdmin {
-        address oldFactory = _marketFactories[pool].lossLiquidatorFactory;
+    function upgradeLossPolicyFactory(address pool) external override onlyAdmin {
+        address oldFactory = _marketFactories[pool].lossPolicyFactory;
         address newFactory = _getLatestPatch(oldFactory);
         if (newFactory == oldFactory) return;
-        _marketFactories[pool].lossLiquidatorFactory = newFactory;
+        _marketFactories[pool].lossPolicyFactory = newFactory;
         _migrateFactoryTargets(oldFactory, newFactory, pool);
     }
 
@@ -584,32 +561,6 @@ contract MarketConfigurator is IMarketConfigurator {
         if (newFactory == oldFactory) return;
         _creditFactories[creditManager] = newFactory;
         _migrateFactoryTargets(oldFactory, newFactory, creditManager);
-    }
-
-    // ------ //
-    // RESCUE //
-    // ------ //
-
-    // QUESTION: can `requestRescue` and `cancelRescue` be `onlyEmergencyAdmin` instead?
-
-    function requestRescue(bytes32 callsHash) external override onlyAdmin {
-        // TODO: implement
-        emit RequestRescue(callsHash);
-    }
-
-    function cancelRescue(bytes32 callsHash) external override onlyAdmin {
-        // TODO: implement
-        emit CancelRescue(callsHash);
-    }
-
-    function rescue(Call[] calldata calls) external override onlyGearboxDAO {
-        bytes32 callsHash = keccak256(abi.encode(calls));
-        // TODO: implement
-        uint256 numCalls = calls.length;
-        for (uint256 i; i < numCalls; ++i) {
-            calls[i].target.functionCall(calls[i].callData);
-        }
-        emit Rescue(callsHash);
     }
 
     // --------- //
@@ -628,12 +579,6 @@ contract MarketConfigurator is IMarketConfigurator {
         if (msg.sender != emergencyAdmin) revert CallerIsNotEmergencyAdminException(msg.sender);
     }
 
-    function _ensureCallerIsGearboxDAO() internal view {
-        if (msg.sender != _getAddressOrRevert(AP_GEARBOX_DAO, NO_VERSION_CONTROL)) {
-            revert CallerIsNotGearboxDAOException(msg.sender);
-        }
-    }
-
     function _ensureRegisteredMarket(address pool) internal view {
         if (!ContractsRegister(contractsRegister).isPool(pool)) {
             revert MarketNotRegisteredException(pool);
@@ -647,16 +592,6 @@ contract MarketConfigurator is IMarketConfigurator {
     }
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
-    function _registerMarket(address pool, address priceOracle, address lossLiquidator) internal virtual {
-        ContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossLiquidator);
-    }
-
-    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
-    function _registerCreditSuite(address creditManager) internal virtual {
-        ContractsRegister(contractsRegister).registerCreditSuite(creditManager);
-    }
-
-    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
     function _grantRole(bytes32 role, address account) internal virtual {
         ACL(acl).grantRole(role, account);
     }
@@ -666,10 +601,20 @@ contract MarketConfigurator is IMarketConfigurator {
         ACL(acl).revokeRole(role, account);
     }
 
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function _registerMarket(address pool, address priceOracle, address lossPolicy) internal virtual {
+        ContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
+    }
+
+    /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
+    function _registerCreditSuite(address creditManager) internal virtual {
+        ContractsRegister(contractsRegister).registerCreditSuite(creditManager);
+    }
+
     /// @dev `MarketConfiguratorLegacy` performs additional checks, hence the `virtual` modifier
     function _validateCallTarget(address target, address factory) internal virtual {
         if (target != address(this) && target != marketConfiguratorFactory && _authorizedFactories[target] != factory) {
-            revert ContractNotAssignedToFactoryException(target);
+            revert UnauthorizedFactoryException(factory, target);
         }
     }
 
@@ -693,7 +638,7 @@ contract MarketConfigurator is IMarketConfigurator {
             priceOracleFactory: _getLatestPatch(AP_PRICE_ORACLE_FACTORY, minorVersion),
             interestRateModelFactory: _getLatestPatch(AP_INTEREST_RATE_MODEL_FACTORY, minorVersion),
             rateKeeperFactory: _getLatestPatch(AP_RATE_KEEPER_FACTORY, minorVersion),
-            lossLiquidatorFactory: _getLatestPatch(AP_LOSS_LIQUIDATOR_FACTORY, minorVersion)
+            lossPolicyFactory: _getLatestPatch(AP_LOSS_POLICY_FACTORY, minorVersion)
         });
     }
 
@@ -705,6 +650,12 @@ contract MarketConfigurator is IMarketConfigurator {
         _authorizedFactories[target] = factory;
         _factoryTargets[factory][suite].add(target);
         emit AuthorizeFactory(factory, suite, target);
+    }
+
+    function _unauthorizeFactory(address factory, address suite, address target) internal {
+        _authorizedFactories[target] = address(0);
+        _factoryTargets[factory][suite].remove(target);
+        emit UnauthorizeFactory(factory, suite, target);
     }
 
     function _migrateFactoryTargets(address oldFactory, address newFactory, address suite) internal {
@@ -726,7 +677,7 @@ contract MarketConfigurator is IMarketConfigurator {
         _executeHook(factories.priceOracleFactory, data);
         _executeHook(factories.interestRateModelFactory, data);
         _executeHook(factories.rateKeeperFactory, data);
-        _executeHook(factories.lossLiquidatorFactory, data);
+        _executeHook(factories.lossPolicyFactory, data);
     }
 
     function _executeHook(address factory, bytes memory data) internal {

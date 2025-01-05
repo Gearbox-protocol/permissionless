@@ -7,7 +7,7 @@ import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {IACL} from "../interfaces/extensions/IACL.sol";
-import {AP_ACL, ROLE_PAUSABLE_ADMIN, ROLE_UNPAUSABLE_ADMIN} from "../libraries/ContractLiterals.sol";
+import {AP_ACL} from "../libraries/ContractLiterals.sol";
 
 /// @title Access control list
 contract ACL is IACL, Ownable2Step {

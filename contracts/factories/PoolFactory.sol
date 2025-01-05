@@ -11,6 +11,8 @@ import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 
+import {DefaultIRM} from "../helpers/DefaultIRM.sol";
+
 import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
 import {IPoolFactory} from "../interfaces/factories/IPoolFactory.sol";
@@ -20,11 +22,7 @@ import {Call, DeployResult} from "../interfaces/Types.sol";
 
 import {CallBuilder} from "../libraries/CallBuilder.sol";
 import {
-    AP_DEFAULT_IRM,
-    AP_POOL_FACTORY,
-    AP_POOL_QUOTA_KEEPER,
-    DOMAIN_POOL,
-    NO_VERSION_CONTROL
+    AP_POOL_FACTORY, AP_POOL_QUOTA_KEEPER, DOMAIN_POOL, NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
@@ -73,7 +71,7 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
-        defaultInterestRateModel = _getAddressOrRevert(AP_DEFAULT_IRM, NO_VERSION_CONTROL);
+        defaultInterestRateModel = address(new DefaultIRM());
     }
 
     // ---------- //

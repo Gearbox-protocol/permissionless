@@ -55,6 +55,7 @@ abstract contract AbstractDeployer {
         bytes memory constructorParams,
         bytes32 salt
     ) internal returns (address) {
+        // NOTE: it's best to add a check that deployed contract's version matches the expected one in the governor
         return _deploy(
             contractType,
             IBytecodeRepository(bytecodeRepository).getLatestPatchVersion(contractType, minorVersion),

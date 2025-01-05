@@ -15,33 +15,21 @@ interface IMarketConfigurator is IVersion {
 
     event UnauthorizeFactory(address indexed factory, address indexed suite, address indexed target);
 
-    event RequestRescue(bytes32 indexed callsHash);
-
-    event CancelRescue(bytes32 indexed callsHash);
-
-    event Rescue(bytes32 indexed callsHash);
-
-    // QUESTION: do we want events for factory upgrades?
-
     // ------ //
     // ERRORS //
     // ------ //
-
-    error CallerIsNotSelfException(address caller);
 
     error CallerIsNotAdminException(address caller);
 
     error CallerIsNotEmergencyAdminException(address caller);
 
-    error CallerIsNotGearboxDAOException(address caller);
+    error CallerIsNotSelfException(address caller);
 
-    error ContractNotAssignedToFactoryException(address);
-
-    error ContractAlreadyInAccessListException(address);
+    error CreditSuiteNotRegisteredException(address creditManager);
 
     error MarketNotRegisteredException(address pool);
 
-    error CreditSuiteNotRegisteredException(address creditManager);
+    error UnauthorizedFactoryException(address factory, address target);
 
     // --------------- //
     // STATE VARIABLES //
@@ -58,6 +46,16 @@ interface IMarketConfigurator is IVersion {
     function contractsRegister() external view returns (address);
     function treasury() external view returns (address);
 
+    // ---------------- //
+    // ROLES MANAGEMENT //
+    // ---------------- //
+
+    function grantRole(bytes32 role, address account) external;
+
+    function revokeRole(bytes32 role, address account) external;
+
+    function emergencyRevokeRole(bytes32 role, address account) external;
+
     // ----------------- //
     // MARKET MANAGEMENT //
     // ----------------- //
@@ -69,7 +67,7 @@ interface IMarketConfigurator is IVersion {
         string calldata symbol,
         DeployParams calldata interestRateModelParams,
         DeployParams calldata rateKeeperParams,
-        DeployParams calldata lossLiquidatorParams,
+        DeployParams calldata lossPolicyParams,
         address underlyingPriceFeed
     ) external returns (address pool);
 
@@ -125,27 +123,15 @@ interface IMarketConfigurator is IVersion {
 
     function emergencyConfigureRateKeeper(address pool, bytes calldata data) external;
 
-    // -–------------------------ //
-    // LOSS LIQUIDATOR MANAGEMENT //
-    // -–------------------------ //
+    // -–-------------------- //
+    // LOSS POLICY MANAGEMENT //
+    // -–-------------------- //
 
-    function updateLossLiquidator(address pool, DeployParams calldata params)
-        external
-        returns (address lossLiqudiator);
+    function updateLossPolicy(address pool, DeployParams calldata params) external returns (address lossPolicy);
 
-    function configureLossLiquidator(address pool, bytes calldata data) external;
+    function configureLossPolicy(address pool, bytes calldata data) external;
 
-    function emergencyConfigureLossLiquidator(address pool, bytes calldata data) external;
-
-    // ---------------- //
-    // ROLES MANAGEMENT //
-    // ---------------- //
-
-    function grantRole(bytes32 role, address account) external;
-
-    function revokeRole(bytes32 role, address account) external;
-
-    function emergencyRevokeRole(bytes32 role, address account) external;
+    function emergencyConfigureLossPolicy(address pool, bytes calldata data) external;
 
     // --------- //
     // FACTORIES //
@@ -171,17 +157,7 @@ interface IMarketConfigurator is IVersion {
 
     function upgradeRateKeeperFactory(address pool) external;
 
-    function upgradeLossLiquidatorFactory(address pool) external;
+    function upgradeLossPolicyFactory(address pool) external;
 
     function upgradeCreditFactory(address creditManager) external;
-
-    // ------ //
-    // RESCUE //
-    // ------ //
-
-    function requestRescue(bytes32 callsHash) external;
-
-    function cancelRescue(bytes32 callsHash) external;
-
-    function rescue(Call[] calldata calls) external;
 }

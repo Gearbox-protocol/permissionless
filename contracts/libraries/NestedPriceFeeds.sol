@@ -99,7 +99,6 @@ library NestedPriceFeeds {
         } else if (index == 7) {
             selector = priceFeed.priceFeed7.selector;
         }
-        // QUESTION: why not try-catch?
         (bool success, bytes memory result) = address(priceFeed).staticcall(abi.encodePacked(selector));
         if (!success || result.length == 0) return address(0);
         return abi.decode(result, (address));

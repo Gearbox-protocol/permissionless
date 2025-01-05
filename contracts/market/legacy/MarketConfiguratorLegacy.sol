@@ -12,6 +12,8 @@ import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/I
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
+import {DefaultLossPolicy} from "../../helpers/DefaultLossPolicy.sol";
+
 import {IACL} from "../../interfaces/extensions/IACL.sol";
 import {IContractsRegister} from "../../interfaces/extensions/IContractsRegister.sol";
 import {Call, MarketFactories} from "../../interfaces/Types.sol";
@@ -26,6 +28,7 @@ import {
 import {MarketConfigurator} from "../MarketConfigurator.sol";
 
 interface IACLLegacy {
+    function owner() external view returns (address);
     function pendingOwner() external view returns (address);
     function transferOwnership(address newOwner) external;
     function claimOwnership() external;
@@ -42,10 +45,9 @@ interface IACLLegacy {
 interface IContractsRegisterLegacy {
     function getPools() external view returns (address[] memory);
     function addPool(address pool) external;
+    function getCreditManagers() external view returns (address[] memory);
     function addCreditManager(address creditManager) external;
 }
-
-// TODO: somehow need to add MC Legacy to MC Factory. maybe we can deploy it from there?
 
 contract MarketConfiguratorLegacy is MarketConfigurator {
     using Address for address;
@@ -64,8 +66,8 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     error AddressIsNotUnpausableAdminException(address admin);
     error CallerIsNotMarketConfiguratorFactoryException(address caller);
     error CallsToLegacyContractsAreForbiddenException();
-    error CreditManagerIsMisconfiguredException(address creditManager);
     error CollateralTokenIsNotQuotedException(address creditManager, address token);
+    error CreditManagerIsMisconfiguredException(address creditManager);
 
     modifier onlyMarketConfiguratorFactory() {
         if (msg.sender != marketConfiguratorFactory) revert CallerIsNotMarketConfiguratorFactoryException(msg.sender);
@@ -107,9 +109,6 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
             IACL(acl).grantRole(ROLE_EMERGENCY_LIQUIDATOR, emergencyLiquidators_[i]);
         }
 
-        MarketFactories memory marketFactories = _getLatestMarketFactories(version);
-        address creditFactory = _getLatestCreditFactory(version);
-
         address[] memory pools = IContractsRegisterLegacy(contractsRegisterLegacy).getPools();
         uint256 numPools = pools.length;
         for (uint256 i; i < numPools; ++i) {
@@ -122,24 +121,14 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
 
             address quotaKeeper = _quotaKeeper(pool);
             address priceOracle = _priceOracle(creditManagers[0]);
-            address lossLiquidator = _lossLiquidator(creditManagers[0]);
+            address lossPolicy = address(new DefaultLossPolicy(acl));
 
-            IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossLiquidator);
-            _marketFactories[pool] = marketFactories;
-            _authorizeFactory(marketFactories.poolFactory, pool, pool);
-            _authorizeFactory(marketFactories.poolFactory, pool, quotaKeeper);
-            _authorizeFactory(marketFactories.priceOracleFactory, pool, priceOracle);
-            _authorizeFactory(marketFactories.interestRateModelFactory, pool, _interestRateModel(pool));
-            _authorizeFactory(marketFactories.rateKeeperFactory, pool, _rateKeeper(quotaKeeper));
-            _authorizeFactory(marketFactories.lossLiquidatorFactory, pool, lossLiquidator);
+            IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
+            _setMarketFactories(pool, quotaKeeper, priceOracle, lossPolicy);
 
             for (uint256 j; j < numCreditManagers; ++j) {
                 address creditManager = creditManagers[j];
-                // QUESTION: maybe revert with more detailed exceptions?
-                if (
-                    !_isV3Contract(creditManager) || _priceOracle(creditManager) != priceOracle
-                        || _lossLiquidator(creditManager) != lossLiquidator
-                ) {
+                if (!_isV3Contract(creditManager) || _priceOracle(creditManager) != priceOracle) {
                     revert CreditManagerIsMisconfiguredException(creditManager);
                 }
 
@@ -151,19 +140,33 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
                     }
                 }
 
-                address creditConfigurator = ICreditManagerV3(creditManager).creditConfigurator();
-                address creditFacade = ICreditManagerV3(creditManager).creditFacade();
                 IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
-                _authorizeFactory(creditFactory, creditManager, creditConfigurator);
-                _authorizeFactory(creditFactory, creditManager, creditFacade);
-
-                address[] memory adapters = ICreditConfiguratorV3(creditConfigurator).allowedAdapters();
-                uint256 numAdapters = adapters.length;
-                for (uint256 k; k < numAdapters; ++k) {
-                    // FIXME: getting stack too deep here
-                    // _authorizeFactory(creditFactory, creditManager, adapters[k]);
-                }
+                _setCreditFactory(creditManager);
             }
+        }
+    }
+
+    function _setMarketFactories(address pool, address quotaKeeper, address priceOracle, address lossPolicy) internal {
+        MarketFactories memory factories = _getLatestMarketFactories(version);
+        _marketFactories[pool] = factories;
+        _authorizeFactory(factories.poolFactory, pool, pool);
+        _authorizeFactory(factories.poolFactory, pool, quotaKeeper);
+        _authorizeFactory(factories.priceOracleFactory, pool, priceOracle);
+        _authorizeFactory(factories.interestRateModelFactory, pool, _interestRateModel(pool));
+        _authorizeFactory(factories.rateKeeperFactory, pool, _rateKeeper(quotaKeeper));
+        _authorizeFactory(factories.lossPolicyFactory, pool, lossPolicy);
+    }
+
+    function _setCreditFactory(address creditManager) internal {
+        address factory = _getLatestCreditFactory(version);
+        _creditFactories[creditManager] = factory;
+        address creditConfigurator = ICreditManagerV3(creditManager).creditConfigurator();
+        _authorizeFactory(factory, creditManager, creditConfigurator);
+        _authorizeFactory(factory, creditManager, ICreditManagerV3(creditManager).creditFacade());
+        address[] memory adapters = ICreditConfiguratorV3(creditConfigurator).allowedAdapters();
+        uint256 numAdapters = adapters.length;
+        for (uint256 k; k < numAdapters; ++k) {
+            _authorizeFactory(factory, creditManager, adapters[k]);
         }
     }
 
@@ -171,13 +174,17 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     // CONFIGURATION //
     // ------------- //
 
-    function claimLegacyACLOwnership() external onlyAdmin {
-        // on some chains, legacy ACL implements a 2-step ownership transfer
+    function finalizeMigration() external onlyAdmin {
+        // NOTE: on some chains, legacy ACL implements a 2-step ownership transfer
         try IACLLegacy(aclLegacy).pendingOwner() {
             IACLLegacy(aclLegacy).claimOwnership();
         } catch {}
+
+        IACLLegacy(aclLegacy).addPausableAdmin(address(this));
+        IACLLegacy(aclLegacy).addUnpausableAdmin(address(this));
     }
 
+    // TODO: change to `onlyInstanceManager` once ready
     function configureGearStaking(bytes calldata data) external onlyMarketConfiguratorFactory {
         gearStakingLegacy.functionCall(data);
     }
@@ -185,16 +192,6 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     // --------- //
     // INTERNALS //
     // --------- //
-
-    function _registerMarket(address pool, address priceOracle, address lossLiquidator) internal override {
-        super._registerMarket(pool, priceOracle, lossLiquidator);
-        IContractsRegisterLegacy(contractsRegisterLegacy).addPool(pool);
-    }
-
-    function _registerCreditSuite(address creditManager) internal override {
-        super._registerCreditSuite(creditManager);
-        IContractsRegisterLegacy(contractsRegisterLegacy).addCreditManager(creditManager);
-    }
 
     function _grantRole(bytes32 role, address account) internal override {
         super._grantRole(role, account);
@@ -206,6 +203,16 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         super._revokeRole(role, account);
         if (role == ROLE_PAUSABLE_ADMIN) IACLLegacy(aclLegacy).removePausableAdmin(account);
         else if (role == ROLE_UNPAUSABLE_ADMIN) IACLLegacy(aclLegacy).removeUnpausableAdmin(account);
+    }
+
+    function _registerMarket(address pool, address priceOracle, address lossPolicy) internal override {
+        super._registerMarket(pool, priceOracle, lossPolicy);
+        IContractsRegisterLegacy(contractsRegisterLegacy).addPool(pool);
+    }
+
+    function _registerCreditSuite(address creditManager) internal override {
+        super._registerCreditSuite(creditManager);
+        IContractsRegisterLegacy(contractsRegisterLegacy).addCreditManager(creditManager);
     }
 
     function _validateCallTarget(address target, address factory) internal override {
@@ -225,9 +232,5 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
 
     function _priceOracle(address creditManager) internal view returns (address) {
         return ICreditManagerV3(creditManager).priceOracle();
-    }
-
-    function _lossLiquidator(address creditManager) internal view returns (address) {
-        return ICreditFacadeV3(ICreditManagerV3(creditManager).creditFacade()).lossLiquidator();
     }
 }

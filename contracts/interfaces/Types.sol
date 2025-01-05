@@ -23,7 +23,7 @@ struct MarketFactories {
     address priceOracleFactory;
     address interestRateModelFactory;
     address rateKeeperFactory;
-    address lossLiquidatorFactory;
+    address lossPolicyFactory;
 }
 
 // The `BytecodeInfo` struct holds metadata about a bytecode in BytecodeRepository

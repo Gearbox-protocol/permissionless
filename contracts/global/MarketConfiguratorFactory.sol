@@ -26,6 +26,8 @@ import {
 import {MarketConfiguratorLegacy} from "../market/legacy/MarketConfiguratorLegacy.sol";
 import {MarketConfigurator} from "../market/MarketConfigurator.sol";
 
+// TODO: somehow need to add MC Legacy to MC Factory. maybe we can deploy it from here?
+
 contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketConfiguratorFactory {
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -88,9 +90,9 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
 
     function createMarketConfigurator(string calldata name) external override returns (address marketConfigurator) {
         // TODO: deploy timelocks
-        marketConfigurator = _deploy({
+        marketConfigurator = _deployLatestPatch({
             contractType: AP_MARKET_CONFIGURATOR,
-            version: version,
+            minorVersion: version,
             constructorParams: abi.encode(name, msg.sender, msg.sender, addressProvider),
             salt: bytes32(bytes20(msg.sender))
         });
@@ -113,22 +115,19 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
         emit ShutdownMarketConfigurator(marketConfigurator);
     }
 
+    // TODO: probably move these two to the instance manager, don't forget to change it in the MC
+
     function setVotingContractStatus(address votingContract, VotingContractStatus status)
         external
         override
         onlyMarketConfigurators
     {
-        // QUESTION: do we need to check that votingContract's voter is indeed the GEAR staking contract?
         _configureGearStaking(abi.encodeCall(IGearStakingV3.setVotingContractStatus, (votingContract, status)));
     }
 
     function configureGearStaking(bytes calldata data) external override onlyOwner {
         _configureGearStaking(data);
     }
-
-    // --------- //
-    // INTERNALS //
-    // --------- //
 
     function _configureGearStaking(bytes memory data) internal {
         address gearStaking = _getAddressOrRevert(AP_GEAR_STAKING, NO_VERSION_CONTROL);
