@@ -14,6 +14,12 @@ struct CrossChainCall {
     bytes callData;
 }
 
+struct SignedProposal {
+    CrossChainCall[] calls;
+    bytes32 prevHash;
+    bytes[] signatures;
+}
+
 struct DeployParams {
     bytes32 postfix;
     bytes constructorParams;

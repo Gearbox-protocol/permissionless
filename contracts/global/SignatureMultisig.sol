@@ -14,8 +14,9 @@ import {LibString} from "@solady/utils/LibString.sol";
 import {EIP712Mainnet} from "../helpers/EIP712Mainnet.sol";
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {ISignatureMultisig} from "../interfaces/ISignatureMultisig.sol";
 
-contract SignatureMultisig is EIP712Mainnet, Ownable, IVersion, ReentrancyGuard {
+contract SignatureMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ISignatureMultisig {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
     using LibString for bytes32;
@@ -32,42 +33,15 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, IVersion, ReentrancyGuard 
     bytes32 public constant PROPOSAL_TYPEHASH = keccak256("Proposal(bytes32 proposalHash,bytes32 prevHash)");
 
     uint8 public confirmationThreshold;
+
     bytes32 public lastProposalHash;
 
     EnumerableSet.AddressSet internal _signers;
 
     bytes32[] public executedProposalHashes;
 
-    mapping(bytes32 => EnumerableSet.Bytes32Set) internal proposalHashes;
-    mapping(bytes32 => SignedProposal) public signedProposals;
-
-    // Events
-    event SignerAdded(address indexed signer);
-    event SignerRemoved(address indexed signer);
-    event ConfirmationThresholdSet(uint8 newconfirmationThreshold);
-
-    event ProposalSubmitted(bytes32 indexed proposalHash);
-    event ProposalSigned(bytes32 indexed proposalHash, address indexed signer);
-    event ProposalExecuted(bytes32 indexed proposalHash);
-    // Errors
-
-    error InvalidconfirmationThresholdException();
-    error AlreadySignedException();
-
-    error InvalidPrevHashException();
-    error ProposalDoesNotExistException();
-    error SignerAlreadyExistsException();
-    error SignerDoesNotExistException();
-    error InvalidconfirmationThresholdValueException();
-    error MaxSignersTooLowException();
-    error CallExecutionFailedException();
-    error ProposalExpiredException();
-    error CantBeExecutedOnCurrentChainException();
-    error OnlySelfException();
-    error NoCallsInProposalException();
-    error NotEnoughSignaturesException();
-    error InconsistentSelfCallOnOtherChainException();
-    error InvalidConfirmationThresholdValueException();
+    mapping(bytes32 => EnumerableSet.Bytes32Set) internal _connectedProposalHashes;
+    mapping(bytes32 => SignedProposal) internal _signedProposals;
 
     modifier onlyOnMainnet() {
         if (block.chainid != 1) revert CantBeExecutedOnCurrentChainException();
@@ -96,11 +70,11 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, IVersion, ReentrancyGuard 
         uint256 len = initialSigners.length;
 
         for (uint256 i = 0; i < len; ++i) {
-            _addSigner(initialSigners[i]);
+            _addSigner(initialSigners[i]); // U:[SM-1]
         }
 
-        _setConfirmationThreshold(_confirmationThreshold);
-        _transferOwnership(_owner);
+        _setConfirmationThreshold(_confirmationThreshold); // U:[SM-1]
+        _transferOwnership(_owner); // U:[SM-1]
     }
 
     // @dev: Submit a new proposal
@@ -115,10 +89,10 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, IVersion, ReentrancyGuard 
     {
         _verifyProposal({calls: calls, prevHash: prevHash});
 
-        bytes32 proposalHash = _hashProposal({calls: calls, prevHash: prevHash});
+        bytes32 proposalHash = hashProposal({calls: calls, prevHash: prevHash});
 
         // Copy proposal to storage
-        SignedProposal storage signedProposal = signedProposals[proposalHash];
+        SignedProposal storage signedProposal = _signedProposals[proposalHash];
 
         uint256 len = calls.length;
         for (uint256 i = 0; i < len; ++i) {
@@ -126,7 +100,7 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, IVersion, ReentrancyGuard 
         }
         signedProposal.prevHash = prevHash;
 
-        proposalHashes[lastProposalHash].add(proposalHash);
+        _connectedProposalHashes[lastProposalHash].add(proposalHash);
 
         emit ProposalSubmitted(proposalHash);
     }
@@ -136,10 +110,10 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, IVersion, ReentrancyGuard 
     // @param: proposalHash - Hash of the proposal to sign
     // @param: signature - Signature of the proposal
     function signProposal(bytes32 proposalHash, bytes calldata signature) external onlyOnMainnet nonReentrant {
-        address signer = ECDSA.recover(proposalHash, signature);
+        address signer = ECDSA.recover(_hashTypedDataV4(proposalHash), signature);
         if (!_signers.contains(signer)) revert SignerDoesNotExistException();
 
-        SignedProposal storage signedProposal = signedProposals[proposalHash];
+        SignedProposal storage signedProposal = _signedProposals[proposalHash];
         if (signedProposal.prevHash != lastProposalHash) {
             revert InvalidPrevHashException();
         }
@@ -158,7 +132,7 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, IVersion, ReentrancyGuard 
 
     // @dev: Execute a proposal on other chain permissionlessly
     function executeProposal(SignedProposal calldata signedProposal) external onlyOnNotMainnet nonReentrant {
-        bytes32 proposalHash = _hashProposal(signedProposal.calls, signedProposal.prevHash);
+        bytes32 proposalHash = hashProposal(signedProposal.calls, signedProposal.prevHash);
 
         // Check proposal is valid
         _verifyProposal({calls: signedProposal.calls, prevHash: signedProposal.prevHash});
@@ -196,7 +170,7 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, IVersion, ReentrancyGuard 
         // Check for duplicate signatures
         uint256 len = signatures.length;
         for (uint256 i = 0; i < len; ++i) {
-            address signer = ECDSA.recover(proposalHash, signatures[i]);
+            address signer = ECDSA.recover(_hashTypedDataV4(proposalHash), signatures[i]);
 
             // It's not reverted to avoid the case, when 2 proposals are submitted
             // and the first one is about removing a signer. The signer could add his signature
@@ -257,33 +231,77 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, IVersion, ReentrancyGuard 
         if (newConfirmationThreshold == 0 || newConfirmationThreshold > _signers.length()) {
             revert InvalidConfirmationThresholdValueException();
         }
-        confirmationThreshold = newConfirmationThreshold;
-        emit ConfirmationThresholdSet(newConfirmationThreshold);
+        confirmationThreshold = newConfirmationThreshold; // U:[SM-1]
+        emit ConfirmationThresholdSet(newConfirmationThreshold); // U:[SM-1]
     }
 
     //
     // HELPERS
     //
-    function _hashCrossChainCall(CrossChainCall calldata call) internal pure returns (bytes32) {
+    function hashCrossChainCall(CrossChainCall calldata call) public pure returns (bytes32) {
         return keccak256(abi.encode(CROSS_CHAIN_CALL_TYPEHASH, call.chainId, call.target, call.callData));
     }
 
-    function _hashProposal(CrossChainCall[] calldata calls, bytes32 prevHash) internal view returns (bytes32) {
+    function hashProposal(CrossChainCall[] calldata calls, bytes32 prevHash) public view returns (bytes32) {
         bytes32[] memory callsHash = new bytes32[](calls.length);
         uint256 len = calls.length;
         for (uint256 i = 0; i < len; ++i) {
-            callsHash[i] = _hashCrossChainCall(calls[i]);
+            callsHash[i] = hashCrossChainCall(calls[i]);
         }
 
         return
             _hashTypedDataV4(keccak256(abi.encode(PROPOSAL_TYPEHASH, keccak256(abi.encodePacked(callsHash)), prevHash)));
     }
 
+    //
+    // GETTERS
+    //
     function getCurrentProposals() external view returns (SignedProposal[] memory result) {
-        uint256 len = proposalHashes[lastProposalHash].length();
+        uint256 len = _connectedProposalHashes[lastProposalHash].length();
         result = new SignedProposal[](len);
         for (uint256 i = 0; i < len; ++i) {
-            result[i] = signedProposals[proposalHashes[lastProposalHash].at(i)];
+            result[i] = _signedProposals[_connectedProposalHashes[lastProposalHash].at(i)];
         }
+    }
+
+    function getSigners() external view returns (address[] memory) {
+        return _signers.values();
+    }
+
+    function getExecutedProposals() external view returns (SignedProposal[] memory result) {
+        uint256 len = executedProposalHashes.length;
+        result = new SignedProposal[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            result[i] = _signedProposals[executedProposalHashes[i]];
+        }
+    }
+
+    function getExecutedProposals(uint256 offset, uint256 limit)
+        external
+        view
+        returns (SignedProposal[] memory result)
+    {
+        uint256 len = executedProposalHashes.length;
+        if (offset >= len) {
+            return new SignedProposal[](0);
+        }
+
+        uint256 end = offset + limit;
+        if (end > len) {
+            end = len;
+        }
+
+        result = new SignedProposal[](end - offset);
+        for (uint256 i = offset; i < end; ++i) {
+            result[i - offset] = _signedProposals[executedProposalHashes[i]];
+        }
+    }
+
+    function isSigner(address account) external view returns (bool) {
+        return _signers.contains(account);
+    }
+
+    function signedProposals(bytes32 proposalHash) external view returns (SignedProposal memory) {
+        return _signedProposals[proposalHash];
     }
 }
