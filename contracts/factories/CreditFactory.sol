@@ -105,14 +105,10 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         onlyMarketConfigurators
         returns (DeployResult memory)
     {
-        address contractsRegister = IMarketConfigurator(msg.sender).contractsRegister();
-        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
-        address lossLiquidator = IContractsRegister(contractsRegister).getLossLiquidator(pool);
-
         (CreditManagerParams memory params, CreditFacadeParams memory facadeParams) =
             abi.decode(encodedParams, (CreditManagerParams, CreditFacadeParams));
 
-        address creditManager = _deployCreditManager(msg.sender, pool, priceOracle, params);
+        address creditManager = _deployCreditManager(msg.sender, pool, params);
         address creditConfigurator = _deployCreditConfigurator(msg.sender, creditManager);
         address creditFacade = _deployCreditFacade(msg.sender, creditManager, facadeParams);
 
@@ -124,7 +120,6 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
                 _authorizeFactory(msg.sender, creditManager, creditConfigurator),
                 _authorizeFactory(msg.sender, creditManager, creditFacade),
                 _setCreditFacade(creditConfigurator, creditFacade, false),
-                _setLossLiquidator(creditConfigurator, lossLiquidator),
                 _setDebtLimits(creditConfigurator, params.minDebt, params.maxDebt)
             )
         });
@@ -143,13 +138,13 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         return CallBuilder.build(_setPriceOracle(_creditConfigurator(creditManager), newPriceOracle));
     }
 
-    function onUpdateLossLiquidator(address creditManager, address newLossLiquidator, address)
+    function onUpdateLossPolicy(address creditManager, address newLossPolicy, address)
         external
         view
         override
         returns (Call[] memory)
     {
-        return CallBuilder.build(_setLossLiquidator(_creditConfigurator(creditManager), newLossLiquidator));
+        return CallBuilder.build(_setLossPolicy(_creditConfigurator(creditManager), newLossPolicy));
     }
 
     // ------------- //
@@ -238,12 +233,13 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     // INTERNALS //
     // --------- //
 
-    function _deployCreditManager(
-        address marketConfigurator,
-        address pool,
-        address priceOracle,
-        CreditManagerParams memory params
-    ) internal returns (address) {
+    function _deployCreditManager(address marketConfigurator, address pool, CreditManagerParams memory params)
+        internal
+        returns (address)
+    {
+        address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
+        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
+
         bytes32 postfix = _getTokenSpecificPostfix(IPoolV3(pool).asset());
 
         // TODO: ensure that account factory is registered, add manager to it
@@ -269,7 +265,8 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     }
 
     function _deployCreditConfigurator(address marketConfigurator, address creditManager) internal returns (address) {
-        bytes memory constructorParams = abi.encode(creditManager);
+        address acl = IMarketConfigurator(marketConfigurator).acl();
+        bytes memory constructorParams = abi.encode(acl, creditManager);
 
         return _deployLatestPatch({
             contractType: AP_CREDIT_CONFIGURATOR,
@@ -284,10 +281,13 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         returns (address)
     {
         address acl = IMarketConfigurator(marketConfigurator).acl();
+        address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
+        address lossPolicy = IContractsRegister(contractsRegister).getLossPolicy(ICreditManagerV3(creditManager).pool());
+
         // TODO: ensure that botList is registered, coincides with the previous one, add manager to it
         // TODO: ensure that degenNFT is registered, add facade to it
         bytes memory constructorParams =
-            abi.encode(acl, creditManager, params.botList, weth, params.degenNFT, params.expirable);
+            abi.encode(acl, creditManager, lossPolicy, params.botList, weth, params.degenNFT, params.expirable);
 
         return _deployLatestPatch({
             contractType: AP_CREDIT_FACADE,
@@ -304,7 +304,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         address decodedCreditManager = address(bytes20(bytes32(params.constructorParams)));
         if (decodedCreditManager != creditManager) revert InvalidConstructorParamsException();
 
-        // NOTE: unlike other contracts, this might be deployed multiple times, so using the same salt
+        // FIXME: unlike other contracts, this might be deployed multiple times, so using the same salt
         // can be an issue. Same thing can happen to rate keepers, IRMs, etc.
         return _deployLatestPatch({
             contractType: _getContractType(DOMAIN_ADAPTER, params.postfix),
@@ -346,12 +346,8 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         return Call(creditConfigurator, abi.encodeCall(ICreditConfiguratorV3.setPriceOracle, priceOracle));
     }
 
-    function _setLossLiquidator(address creditConfigurator, address lossLiquidator)
-        internal
-        pure
-        returns (Call memory)
-    {
-        return Call(creditConfigurator, abi.encodeCall(ICreditConfiguratorV3.setLossLiquidator, lossLiquidator));
+    function _setLossPolicy(address creditConfigurator, address lossPolicy) internal pure returns (Call memory) {
+        return Call(creditConfigurator, abi.encodeCall(ICreditConfiguratorV3.setLossPolicy, lossPolicy));
     }
 
     function _allowAdapter(address creditConfigurator, address adapter) internal pure returns (Call memory) {

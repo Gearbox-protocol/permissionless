@@ -36,7 +36,7 @@ abstract contract AbstractMarketFactory is AbstractFactory, IMarketFactory {
 
     function onUpdateRateKeeper(address, address, address) external virtual override returns (Call[] memory) {}
 
-    function onUpdateLossLiquidator(address, address, address) external virtual override returns (Call[] memory) {}
+    function onUpdateLossPolicy(address, address, address) external virtual override returns (Call[] memory) {}
 
     function onAddToken(address, address, address) external virtual override returns (Call[] memory) {}
 
@@ -79,8 +79,8 @@ abstract contract AbstractMarketFactory is AbstractFactory, IMarketFactory {
         return IContractsRegister(_contractsRegister(pool)).getPriceOracle(pool);
     }
 
-    function _lossLiquidator(address pool) internal view returns (address) {
-        return IContractsRegister(_contractsRegister(pool)).getLossLiquidator(pool);
+    function _lossPolicy(address pool) internal view returns (address) {
+        return IContractsRegister(_contractsRegister(pool)).getLossPolicy(pool);
     }
 
     function _rateKeeper(address quotaKeeper) internal view returns (address) {

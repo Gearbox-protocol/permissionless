@@ -37,8 +37,8 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
     /// @dev Mapping from registered pools to price oracles in respective markets
     mapping(address => address) internal _priceOracles;
 
-    /// @dev Mapping from registered pools to loss liquidators in respective markets
-    mapping(address => address) internal _lossLiquidators;
+    /// @dev Mapping from registered pools to loss policies in respective markets
+    mapping(address => address) internal _lossPolicies;
 
     /// @notice Constructor
     /// @param acl_ ACL contract address
@@ -70,30 +70,30 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
         return _priceOracles[pool];
     }
 
-    /// @notice Returns the loss liquidator of the market corresponding to `pool`
+    /// @notice Returns the loss policy of the market corresponding to `pool`
     /// @dev Reverts if `pool` is not registered
-    function getLossLiquidator(address pool) external view override returns (address) {
+    function getLossPolicy(address pool) external view override returns (address) {
         if (!isPool(pool)) revert MarketNotRegisteredException(pool);
-        return _lossLiquidators[pool];
+        return _lossPolicies[pool];
     }
 
     /// @notice Registers the market corresponding to `pool`, sets `priceOracle` as its price oracle
-    ///         and `lossLiquidator` as its loss liquidator
+    ///         and `lossPolicy` as its loss policy
     /// @dev Reverts if market was previously shutdown
     /// @dev Reverts if caller is not configurator
-    /// @dev Reverts if any of `priceOracle` and `lossLiquidator` is `address(0)`
-    function registerMarket(address pool, address priceOracle, address lossLiquidator)
+    /// @dev Reverts if any of `priceOracle` and `lossPolicy` is `address(0)`
+    function registerMarket(address pool, address priceOracle, address lossPolicy)
         external
         override
         configuratorOnly
         nonZeroAddress(priceOracle)
-        nonZeroAddress(lossLiquidator)
+        nonZeroAddress(lossPolicy)
     {
         if (!_registeredPoolsSet.add(pool)) return;
         if (_shutdownPoolsSet.contains(pool)) revert MarketShutDownException(pool);
         _priceOracles[pool] = priceOracle;
-        _lossLiquidators[pool] = lossLiquidator;
-        emit RegisterMarket(pool, priceOracle, lossLiquidator);
+        _lossPolicies[pool] = lossPolicy;
+        emit RegisterMarket(pool, priceOracle, lossPolicy);
     }
 
     /// @notice Shuts down the market corresponding to `pool`
@@ -107,7 +107,7 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
             revert MarketNotEmptyException(pool);
         }
         _priceOracles[pool] = address(0);
-        _lossLiquidators[pool] = address(0);
+        _lossPolicies[pool] = address(0);
         emit ShutdownMarket(pool);
     }
 
@@ -127,14 +127,20 @@ contract ContractsRegister is IContractsRegister, ACLTrait, SanityCheckTrait {
         emit SetPriceOracle(pool, priceOracle);
     }
 
-    /// @notice Sets `lossLiquidator` as loss liquidator of the market corresponding to `pool`
+    /// @notice Sets `lossPolicy` as loss policy of the market corresponding to `pool`
     /// @dev Reverts if market is not registered
     /// @dev Reverts if caller is not configurator
-    function setLossLiquidator(address pool, address lossLiquidator) external override configuratorOnly {
+    /// @dev Reverts if `lossPolicy` is `address(0)`
+    function setLossPolicy(address pool, address lossPolicy)
+        external
+        override
+        configuratorOnly
+        nonZeroAddress(lossPolicy)
+    {
         if (!isPool(pool)) revert MarketNotRegisteredException(pool);
-        if (_lossLiquidators[pool] == lossLiquidator) return;
-        _lossLiquidators[pool] = lossLiquidator;
-        emit SetLossLiquidator(pool, lossLiquidator);
+        if (_lossPolicies[pool] == lossPolicy) return;
+        _lossPolicies[pool] = lossPolicy;
+        emit SetLossPolicy(pool, lossPolicy);
     }
 
     // ------------- //

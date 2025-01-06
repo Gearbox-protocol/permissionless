@@ -17,7 +17,7 @@ interface ICreditFactory is IFactory {
         external
         returns (Call[] memory calls);
 
-    function onUpdateLossLiquidator(address creditManager, address newLossLiquidator, address oldLossLiquidator)
+    function onUpdateLossPolicy(address creditManager, address newLossPolicy, address oldLossPolicy)
         external
         returns (Call[] memory calls);
 }

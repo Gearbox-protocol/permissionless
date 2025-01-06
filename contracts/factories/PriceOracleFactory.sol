@@ -70,7 +70,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
             contractType: AP_PRICE_ORACLE,
             minorVersion: version,
             constructorParams: abi.encode(_acl(pool)),
-            salt: bytes32(bytes20(msg.sender))
+            salt: bytes32(bytes20(pool))
         });
 
         return DeployResult({

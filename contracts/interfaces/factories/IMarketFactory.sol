@@ -16,7 +16,7 @@ interface IMarketFactory is IFactory {
         address priceOracle,
         address interestRateModel,
         address rateKeeper,
-        address lossLiquidator,
+        address lossPolicy,
         address underlyingPriceFeed
     ) external returns (Call[] memory calls);
 
@@ -38,7 +38,7 @@ interface IMarketFactory is IFactory {
         external
         returns (Call[] memory calls);
 
-    function onUpdateLossLiquidator(address pool, address newLossLiquidator, address oldLossLiquidator)
+    function onUpdateLossPolicy(address pool, address newLossPolicy, address oldLossPolicy)
         external
         returns (Call[] memory calls);
 
