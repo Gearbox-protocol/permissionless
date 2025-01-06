@@ -84,12 +84,8 @@ contract TreasurySplitter is Ownable, ITreasurySplitter {
 
         uint256 propSum = 0;
 
-        for (uint256 i = 0; i < proportions.length;) {
+        for (uint256 i = 0; i < proportions.length; ++i) {
             propSum += proportions[i];
-
-            unchecked {
-                ++i;
-            }
         }
 
         if (propSum != PERCENTAGE_FACTOR) revert PropotionSumIncorrectException();
