@@ -16,6 +16,8 @@ import {EIP712Mainnet} from "../helpers/EIP712Mainnet.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {ISignatureMultisig} from "../interfaces/ISignatureMultisig.sol";
 
+import {AP_CHAIN_SIGNATURE_MULTISIG} from "../libraries/ContractLiterals.sol";
+
 contract SignatureMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ISignatureMultisig {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
@@ -25,7 +27,7 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ISignatur
 
     /// @notice Meta info about contract type & version
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "SIGNATURE_MULTISIG";
+    bytes32 public constant override contractType = AP_CHAIN_SIGNATURE_MULTISIG;
 
     // EIP-712 type hash for Proposal only
     bytes32 public constant CROSS_CHAIN_CALL_TYPEHASH =

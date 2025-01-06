@@ -87,6 +87,26 @@ interface ISignatureMultisig is IVersion {
     /// @param proposal The signed proposal to execute
     function executeProposal(SignedProposal calldata proposal) external;
 
+    /// @notice Adds a new signer to the multisig
+    /// @param signer Address of the signer to add
+    function addSigner(address signer) external;
+
+    /// @notice Removes a signer from the multisig
+    /// @param signer Address of the signer to remove
+    function removeSigner(address signer) external;
+
+    /// @notice Sets a new confirmation threshold
+    /// @param newThreshold New threshold value
+    function setConfirmationThreshold(uint8 newThreshold) external;
+
+    /// @notice Hashes a proposal according to EIP-712
+    /// @param calls Array of cross-chain calls
+    /// @param prevHash Hash of the previous proposal
+    /// @return bytes32 Hash of the proposal
+    function hashProposal(CrossChainCall[] calldata calls, bytes32 prevHash) external view returns (bytes32);
+
+    // GETTERS
+
     /// @notice Returns the current confirmation threshold
     function confirmationThreshold() external view returns (uint8);
 
