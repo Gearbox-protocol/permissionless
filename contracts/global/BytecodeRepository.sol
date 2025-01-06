@@ -61,10 +61,6 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     bytes32 private constant _SIGNATURE_TYPEHASH = keccak256("SignBytecodeMetaHash(bytes32 metaHash,string reportUrl)");
 
     //
-    // ERRORS
-    //
-
-    //
     // EVENTS
     //
 
@@ -90,6 +86,9 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
 
     // Event emitted when a public domain is removed
     event RemovePublicDomain(bytes32 indexed domain);
+
+    // Event emitted when contract type owner is removed
+    event RemoveContractTypeOwner(bytes32 indexed contractType);
 
     // Event emitted when bytecode is forbidden
     event ForbidBytecode(bytes32 indexed bytecodeHash);
@@ -133,10 +132,13 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     // For example, the USDT pool, which supports fee computation without errors
     mapping(address => bytes32) public tokenSpecificPostfixes;
 
+    // Version control
+    mapping(bytes32 => uint256) public latestVersion;
+    mapping(bytes32 => mapping(uint256 => uint256)) public latestMinorVersion;
+    mapping(bytes32 => mapping(uint256 => uint256)) public latestPatchVersion;
+
     // +++ Governance +++
-    // forbiddenBytecode
     // removeDomainOwner
-    // removeByteCode contractType + version
 
     constructor() EIP712Mainnet(contractType.fromSmallString(), version.toString()) Ownable() {}
 
@@ -220,6 +222,32 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         try Ownable(newContract).transferOwnership(msg.sender) {} catch {}
     }
 
+    function computeAddress(bytes32 _contractType, uint256 _version, bytes memory constructorParams, bytes32 salt)
+        external
+        view
+        returns (address)
+    {
+        // Retrieve metaHash
+        bytes32 metaHash = approvedBytecodeMetaHash[_contractType][_version];
+        if (metaHash == 0) {
+            revert ContractIsNotAuditedException();
+        }
+        BytecodeWithMeta storage meta = bytecodeWithMetaByHash[metaHash];
+
+        // Check if forbidden
+        bytes32 rawHash = keccak256(meta.bytecode);
+        if (forbiddenBytecode[rawHash]) {
+            revert BytecodeForbiddenException(rawHash);
+        }
+
+        // Combine code + constructor params
+        bytes memory bytecodeWithParams = abi.encodePacked(meta.bytecode, constructorParams);
+
+        // Return CREATE2 address
+        bytes32 codeHash = keccak256(bytecodeWithParams);
+        return Create2.computeAddress(salt, codeHash, address(this));
+    }
+
     // Auditing
     function signBytecodeMetaHash(bytes32 metaHash, string calldata reportUrl, bytes calldata signature) external {
         // Must point to existing metadata
@@ -269,8 +297,23 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     function _approveContract(bytes32 metaHash) internal {
         BytecodeWithMeta storage bytecodeWithMeta = bytecodeWithMetaByHash[metaHash];
 
-        if (approvedBytecodeMetaHash[bytecodeWithMeta.contractType][bytecodeWithMeta.version] == 0) {
-            approvedBytecodeMetaHash[bytecodeWithMeta.contractType][bytecodeWithMeta.version] = metaHash;
+        uint256 bytecodeVersion = bytecodeWithMeta.version;
+
+        if (approvedBytecodeMetaHash[bytecodeWithMeta.contractType][bytecodeVersion] == 0) {
+            approvedBytecodeMetaHash[bytecodeWithMeta.contractType][bytecodeVersion] = metaHash;
+
+            uint256 majorVersion = (bytecodeVersion / 100) * 100;
+            uint256 minorVersion = ((bytecodeVersion / 10) % 10) * 10 + majorVersion;
+
+            if (latestVersion[bytecodeWithMeta.contractType] < bytecodeVersion) {
+                latestVersion[bytecodeWithMeta.contractType] = bytecodeVersion;
+            }
+            if (latestMinorVersion[bytecodeWithMeta.contractType][majorVersion] < bytecodeVersion) {
+                latestMinorVersion[bytecodeWithMeta.contractType][majorVersion] = bytecodeVersion;
+            }
+            if (latestPatchVersion[bytecodeWithMeta.contractType][minorVersion] < bytecodeVersion) {
+                latestPatchVersion[bytecodeWithMeta.contractType][minorVersion] = bytecodeVersion;
+            }
         }
     }
 
@@ -336,6 +379,13 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         emit SetTokenSpecificPostfix(token, postfix);
     }
 
+    function removeContractTypeOwner(bytes32 _contractType) external onlyOwner {
+        if (contractTypeOwner[_contractType] != address(0)) {
+            contractTypeOwner[_contractType] = address(0);
+            emit RemoveContractTypeOwner(_contractType);
+        }
+    }
+
     // GETTERS
 
     function isContractNameInPublicDomain(bytes32 _contractType) public view returns (bool) {
@@ -366,36 +416,16 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         return tokenSpecificPostfixes[token];
     }
 
-    function getLatestVersion(bytes32 type_) external view returns (uint256) {
-        uint256 latestVersion = 0;
-        for (uint256 i = 0; i < _bytecodeHashes[type_].length(); i++) {
-            uint256 version = _bytecodeHashes[type_].at(i);
-            if (version > latestVersion) {
-                latestVersion = version;
-            }
-        }
-        return latestVersion;
+    // @dev Returns the latest version of the contract, otherwise 0
+    function getLatestVersion(bytes32 _contractType) external view returns (uint256) {
+        return latestVersion[_contractType];
     }
 
-    function getLatestMinorVersion(bytes32 type_, uint256 majorVersion) external view returns (uint256) {
-        uint256 latestMinor = 0;
-        for (uint256 i = 0; i < _bytecodeHashes[type_].length(); i++) {
-            uint256 version = _bytecodeHashes[type_].at(i);
-            if (version / 100 == majorVersion && version > latestMinor) {
-                latestMinor = version;
-            }
-        }
-        return latestMinor;
+    function getLatestMinorVersion(bytes32 _contractType, uint256 majorVersion) external view returns (uint256) {
+        return latestMinorVersion[_contractType][majorVersion];
     }
 
-    function getLatestPatchVersion(bytes32 type_, uint256 minorVersion) external view returns (uint256) {
-        uint256 latestPatch = 0;
-        for (uint256 i = 0; i < _bytecodeHashes[type_].length(); i++) {
-            uint256 version = _bytecodeHashes[type_].at(i);
-            if (version / 10 == minorVersion && version > latestPatch) {
-                latestPatch = version;
-            }
-        }
-        return latestPatch;
+    function getLatestPatchVersion(bytes32 _contractType, uint256 minorVersion) external view returns (uint256) {
+        return latestPatchVersion[_contractType][minorVersion];
     }
 }
