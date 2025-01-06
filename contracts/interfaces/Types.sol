@@ -38,6 +38,13 @@ struct MarketFactories {
     address lossPolicyFactory;
 }
 
+struct PriceFeedInfo {
+    address author;
+    uint32 stalenessPeriod;
+    bytes32 priceFeedType;
+    uint256 version;
+}
+
 // The `BytecodeInfoMeta` struct holds metadata about a bytecode in BytecodeRepository
 //
 // - `author`: A person who first upload smart-contract to BCR
