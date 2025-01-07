@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Gearbox Protocol. Generalized leverage for DeFi protocols
 // (c) Gearbox Foundation, 2023.
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.23;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -50,16 +50,12 @@ contract TreasurySplitter is Ownable, ITreasurySplitter {
 
         uint256 balanceDiff = IERC20(token).balanceOf(address(this)) - lastBalance[token];
 
-        for (uint256 i = 0; i < len;) {
+        for (uint256 i = 0; i < len; ++i) {
             address receiver = split.receivers[i];
             uint16 proportion = split.proportions[i];
 
             if (receiver != address(this)) {
                 IERC20(token).safeTransfer(receiver, proportion * balanceDiff / PERCENTAGE_FACTOR);
-            }
-
-            unchecked {
-                ++i;
             }
         }
 
@@ -88,12 +84,8 @@ contract TreasurySplitter is Ownable, ITreasurySplitter {
 
         uint256 propSum = 0;
 
-        for (uint256 i = 0; i < proportions.length;) {
+        for (uint256 i = 0; i < proportions.length; ++i) {
             propSum += proportions[i];
-
-            unchecked {
-                ++i;
-            }
         }
 
         if (propSum != PERCENTAGE_FACTOR) revert PropotionSumIncorrectException();

@@ -8,6 +8,18 @@ struct Call {
     bytes callData;
 }
 
+struct CrossChainCall {
+    uint256 chainId; // 0 means to be executed on all chains
+    address target;
+    bytes callData;
+}
+
+struct SignedProposal {
+    CrossChainCall[] calls;
+    bytes32 prevHash;
+    bytes[] signatures;
+}
+
 struct DeployParams {
     bytes32 postfix;
     bytes constructorParams;
@@ -26,7 +38,14 @@ struct MarketFactories {
     address lossPolicyFactory;
 }
 
-// The `BytecodeInfo` struct holds metadata about a bytecode in BytecodeRepository
+struct PriceFeedInfo {
+    address author;
+    uint32 stalenessPeriod;
+    bytes32 priceFeedType;
+    uint256 version;
+}
+
+// The `BytecodeInfoMeta` struct holds metadata about a bytecode in BytecodeRepository
 //
 // - `author`: A person who first upload smart-contract to BCR
 // - `contractType`: A bytes32 identifier representing the type of the contract.
@@ -34,26 +53,17 @@ struct MarketFactories {
 // - `sources`: An array of `Source` structs, each containing a comment and a link related to the contract's source.
 // - `auditors`: An array of addresses representing the auditors who have reviewed the contract.
 // - `reports`: An array of `SecurityReport` structs, each containing information about security audits conducted on the contract.
-struct BytecodeInfo {
-    address author;
+struct Bytecode {
     bytes32 contractType;
     uint256 version;
-    Source[] sources;
-    address[] auditors;
-    SecurityReport[] reports;
+    bytes initCode; // store it's hash as well
+    address author;
+    string source;
+    bytes authorSignature;
 }
 
-struct SecurityReport {
+struct AuditorSignature {
+    string reportUrl;
     address auditor;
-    string url;
-}
-
-struct Source {
-    string comment;
-    string link;
-}
-
-struct AuditorInfo {
-    string name;
-    bool forbidden;
+    bytes signature;
 }

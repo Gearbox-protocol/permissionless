@@ -37,5 +37,7 @@ interface IAddressProvider is IVersion {
 
     function setAddress(string memory key, address addr, bool saveVersion) external;
 
+    function setAddress(bytes32 key, address value, bool saveVersion) external;
+
     function setAddress(address addr, bool saveVersion) external;
 }

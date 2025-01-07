@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.23;
 
 import "@gearbox-protocol/core-v3/contracts/test/lib/constants.sol";
 import {TreasurySplitter} from "../market/TreasurySplitter.sol";
-import {ITreasurySplitterEvents, ITreasurySplitterExceptions, Split} from "../interfaces/ITreasurySplitter.sol";
+import {ITreasurySplitter, Split} from "../interfaces/ITreasurySplitter.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
-contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitterExceptions {
+contract TreasurySplitterTest is Test {
     TreasurySplitter splitter;
     ERC20Mock token1;
     ERC20Mock token2;
@@ -38,7 +38,7 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
         ERC20Mock token3 = new ERC20Mock();
         token3.mint(address(splitter), 5000 * 10 ** 18);
 
-        vm.expectRevert(UndefinedSplitException.selector);
+        vm.expectRevert(ITreasurySplitter.UndefinedSplitException.selector);
         splitter.distribute(address(token3));
 
         address[] memory defaultReceivers = new address[](3);
@@ -58,7 +58,7 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
         token1.mint(address(splitter), amount1);
 
         vm.expectEmit(true, false, false, true);
-        emit DistributeToken(address(token1), amount1);
+        emit ITreasurySplitter.DistributeToken(address(token1), amount1);
         splitter.distribute(address(token1));
 
         assertEq(token1.balanceOf(receiver1), 500 * 1e18);
@@ -83,7 +83,7 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
         token2.mint(address(splitter), amount2);
 
         vm.expectEmit(true, false, false, true);
-        emit DistributeToken(address(token2), amount2);
+        emit ITreasurySplitter.DistributeToken(address(token2), amount2);
         splitter.distribute(address(token2));
 
         assertEq(token2.balanceOf(receiver1), 400 * 1e18);
@@ -95,7 +95,7 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
         token2.mint(address(splitter), amount3);
 
         vm.expectEmit(true, false, false, true);
-        emit DistributeToken(address(token2), amount3);
+        emit ITreasurySplitter.DistributeToken(address(token2), amount3);
         splitter.distribute(address(token2));
 
         assertEq(token2.balanceOf(receiver1), 600 * 1e18);
@@ -115,7 +115,7 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
         proportions[1] = 4000;
 
         vm.expectEmit(true, false, false, true);
-        emit SetTokenSplit(address(token1), receivers, proportions);
+        emit ITreasurySplitter.SetTokenSplit(address(token1), receivers, proportions);
 
         vm.prank(CONFIGURATOR);
         splitter.setTokenSplit(address(token1), receivers, proportions);
@@ -127,13 +127,13 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
         assertEq(split.proportions.length, proportions.length);
 
         proportions[1] = 3000;
-        vm.expectRevert(PropotionSumIncorrectException.selector);
+        vm.expectRevert(ITreasurySplitter.PropotionSumIncorrectException.selector);
         vm.prank(CONFIGURATOR);
         splitter.setTokenSplit(address(token1), receivers, proportions);
 
         uint16[] memory shortProportions = new uint16[](1);
         shortProportions[0] = 10000;
-        vm.expectRevert(SplitArraysDifferentLengthException.selector);
+        vm.expectRevert(ITreasurySplitter.SplitArraysDifferentLengthException.selector);
         vm.prank(CONFIGURATOR);
         splitter.setTokenSplit(address(token1), receivers, shortProportions);
 
@@ -155,7 +155,7 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
         proportions[2] = 2000;
 
         vm.expectEmit(false, false, false, true);
-        emit SetDefaultSplit(receivers, proportions);
+        emit ITreasurySplitter.SetDefaultSplit(receivers, proportions);
         vm.prank(CONFIGURATOR);
         splitter.setDefaultSplit(receivers, proportions);
 
@@ -165,14 +165,14 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
         assertEq(split.proportions, proportions);
 
         proportions[2] = 1000;
-        vm.expectRevert(PropotionSumIncorrectException.selector);
+        vm.expectRevert(ITreasurySplitter.PropotionSumIncorrectException.selector);
         vm.prank(CONFIGURATOR);
         splitter.setDefaultSplit(receivers, proportions);
 
         uint16[] memory shortProportions = new uint16[](2);
         shortProportions[0] = 5000;
         shortProportions[1] = 5000;
-        vm.expectRevert(SplitArraysDifferentLengthException.selector);
+        vm.expectRevert(ITreasurySplitter.SplitArraysDifferentLengthException.selector);
         vm.prank(CONFIGURATOR);
         splitter.setDefaultSplit(receivers, shortProportions);
 
@@ -187,7 +187,7 @@ contract TreasurySplitterTest is Test, ITreasurySplitterEvents, ITreasurySplitte
         token1.mint(address(splitter), amount);
 
         vm.expectEmit(true, false, false, true);
-        emit WithdrawToken(address(token1), receiver1, 300 * 10 ** 18);
+        emit ITreasurySplitter.WithdrawToken(address(token1), receiver1, 300 * 10 ** 18);
         vm.prank(CONFIGURATOR);
         splitter.withdrawToken(address(token1), receiver1, 300 * 10 ** 18);
 

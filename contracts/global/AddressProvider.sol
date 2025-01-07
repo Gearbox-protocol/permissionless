@@ -83,6 +83,10 @@ contract AddressProvider is Ownable2Step, IAddressProvider {
         _setAddress(key, value, saveVersion ? IVersion(value).version() : NO_VERSION_CONTROL);
     }
 
+    function setAddress(bytes32 key, address value, bool saveVersion) external override onlyOwner {
+        _setAddress(key.fromSmallString(), value, saveVersion ? IVersion(value).version() : NO_VERSION_CONTROL);
+    }
+
     /// @notice Sets the address for the passed contract key
     /// @param addr Contract address
     /// @param saveVersion Whether to save contract's version

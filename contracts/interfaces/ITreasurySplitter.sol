@@ -9,7 +9,8 @@ struct Split {
     uint16[] proportions;
 }
 
-interface ITreasurySplitterExceptions {
+/// @title Treasury splitter
+interface ITreasurySplitter {
     /// @notice Thrown when attempting to set a split with different-sized receiver and proportion arrays
     error SplitArraysDifferentLengthException();
 
@@ -18,9 +19,7 @@ interface ITreasurySplitterExceptions {
 
     /// @notice Thrown when attempting to distribute a token for which a split is not defined
     error UndefinedSplitException();
-}
 
-interface ITreasurySplitterEvents {
     /// @notice Emitted when a new default split is set
     event SetDefaultSplit(address[] receivers, uint16[] proportions);
 
@@ -32,10 +31,7 @@ interface ITreasurySplitterEvents {
 
     /// @notice Emitted when tokens are distributed
     event DistributeToken(address indexed token, uint256 distributedAmount);
-}
 
-/// @title Treasury splitter
-interface ITreasurySplitter is ITreasurySplitterEvents, ITreasurySplitterExceptions {
     function distribute(address token) external;
 
     function tokenSplits(address token) external view returns (Split memory);
