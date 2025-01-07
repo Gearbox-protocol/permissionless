@@ -59,9 +59,11 @@ struct BytecodeWithMeta {
     bytes bytecode; // store it's hash as well
     address author;
     string source;
+    bytes authorSignature;
 }
 
 struct AuditorSignature {
     string reportUrl;
+    address auditor;
     bytes signature;
 }

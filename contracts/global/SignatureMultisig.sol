@@ -18,6 +18,9 @@ import {ISignatureMultisig} from "../interfaces/ISignatureMultisig.sol";
 
 import {AP_CHAIN_SIGNATURE_MULTISIG} from "../libraries/ContractLiterals.sol";
 
+// set FINANCIAL_MULTISIG to 0x3434343 on Chain X
+// Onchain mainnet governance -> SignatureMultisig.submitProposal()
+
 contract SignatureMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ISignatureMultisig {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
@@ -197,7 +200,7 @@ contract SignatureMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ISignatur
             uint256 chainId = call.chainId;
 
             if (chainId == 0 || chainId == block.chainid) {
-                // QUESTION: any security concerns?
+                // QUESTION: add try{} catch{} to achieve 100% execution
                 Address.functionCall(call.target, call.callData, "Call execution failed");
             }
         }

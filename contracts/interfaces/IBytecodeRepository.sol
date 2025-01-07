@@ -54,6 +54,47 @@ interface IBytecodeRepository is IVersion {
 
     error OnlyAuthorCanSyncException();
 
+    error AuditorAlreadySignedException();
+
+    error NoValidAuditorSignatureException();
+
+    error InvalidAuthorSignatureException();
+    //
+    // EVENTS
+    //
+
+    // Emitted when new smart contract was deployed
+    event DeployContact(address indexed addr, bytes32 indexed contractType, uint256 indexed version);
+
+    // Event emitted when a new auditor is added to the repository
+    event AddAuditor(address indexed auditor, string name);
+
+    // Event emitted when an auditor is forbidden from the repository
+    event RemoveAuditor(address indexed auditor);
+
+    // Event emitted when new bytecode is uploaded to the repository
+    event UploadBytecode(
+        bytes32 indexed metaHash, string contractType, uint256 indexed version, address indexed author, string source
+    );
+
+    // Event emitted when bytecode is signed by an auditor
+    event BytecodeSigned(bytes32 indexed metaHash, address indexed signer, string reportUrl, bytes signature);
+
+    // Event emitted when a public domain is added
+    event AddPublicDomain(bytes32 indexed domain);
+
+    // Event emitted when a public domain is removed
+    event RemovePublicDomain(bytes32 indexed domain);
+
+    // Event emitted when contract type owner is removed
+    event RemoveContractTypeOwner(bytes32 indexed contractType);
+
+    // Event emitted when bytecode is forbidden
+    event ForbidBytecode(bytes32 indexed bytecodeHash);
+
+    // Event emitted when token specific postfix is set
+    event SetTokenSpecificPostfix(address indexed token, bytes32 indexed postfix);
+
     function deploy(bytes32 type_, uint256 version_, bytes memory constructorParams, bytes32 salt)
         external
         returns (address);
