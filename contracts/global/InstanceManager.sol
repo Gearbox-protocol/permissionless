@@ -6,8 +6,12 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {AP_INSTANCE_MANAGER, AP_TREASURY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {ProxyCall} from "../helpers/ProxyCall.sol";
+import {LibString} from "@solady/utils/LibString.sol";
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 contract InstanceManager is Ownable {
+    using LibString for string;
+
     address public immutable addressProvider;
     address public immutable bytecodeRepository;
 
@@ -17,6 +21,8 @@ contract InstanceManager is Ownable {
 
     address public marketConfiguratorFactory;
     address public priceFeedStore;
+
+    error InvalidKeyException(string key);
 
     modifier onlyCrossChainGovernance() {
         require(
@@ -73,6 +79,13 @@ contract InstanceManager is Ownable {
     }
 
     function setAddress(string memory key, address addr, bool saveVersion) external onlyCrossChainGovernance {
+        IAddressProvider(addressProvider).setAddress(key, addr, saveVersion);
+    }
+
+    function setLocalAddress(string memory key, address addr, bool saveVersion) external onlyOwner {
+        if (!key.startsWith("LOCAL_")) {
+            revert InvalidKeyException(key);
+        }
         IAddressProvider(addressProvider).setAddress(key, addr, saveVersion);
     }
 
