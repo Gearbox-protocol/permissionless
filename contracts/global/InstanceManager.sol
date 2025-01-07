@@ -5,11 +5,8 @@ import {BytecodeRepository} from "./BytecodeRepository.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {AP_INSTANCE_MANAGER, AP_TREASURY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
-import {LibString} from "@solady/utils/LibString.sol";
 
 contract InstanceManager is Ownable {
-    using LibString for bytes32;
-
     BytecodeRepository public immutable bytecodeRepository;
 
     address public crossChainGovernance;
@@ -25,8 +22,7 @@ contract InstanceManager is Ownable {
 
     modifier onlyTreasury() {
         require(
-            msg.sender
-                == IAddressProvider(addressProvider).getAddressOrRevert(AP_TREASURY.fromSmallString(), NO_VERSION_CONTROL),
+            msg.sender == IAddressProvider(addressProvider).getAddressOrRevert(AP_TREASURY, NO_VERSION_CONTROL),
             "Only financial multisig can call this function"
         );
         _;
@@ -42,8 +38,8 @@ contract InstanceManager is Ownable {
         if (!isInstanceActivated()) {
             _verifyCoreContractsDeploy();
             _transferOwnership(_instanceOwner);
-            IAddressProvider(addressProvider).setAddress(AP_INSTANCE_MANAGER.fromSmallString(), address(this), true);
-            IAddressProvider(addressProvider).setAddress(AP_TREASURY.fromSmallString(), _treasury, false);
+            IAddressProvider(addressProvider).setAddress(AP_INSTANCE_MANAGER, address(this), true);
+            IAddressProvider(addressProvider).setAddress(AP_TREASURY, _treasury, false);
         }
     }
 

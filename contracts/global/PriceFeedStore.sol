@@ -56,18 +56,14 @@ contract PriceFeedStore is Ownable2Step, SanityCheckTrait, PriceFeedValidationTr
 
         address[] memory _res = new address[](len0 + len1);
 
-        for (uint256 i = 0; i < len0;) {
+        for (uint256 i = 0; i < len0; ++i) {
             _res[i] = a0[i];
-
-            unchecked {
-                ++i;
-            }
         }
 
         uint256 k = len0;
 
-        for (uint256 i = 0; i < len1;) {
-            for (uint256 j = 0; j <= k;) {
+        for (uint256 i = 0; i < len1; ++i) {
+            for (uint256 j = 0; j <= k; ++j) {
                 if (j == k) {
                     _res[k] = a1[i];
                     ++k;
@@ -75,14 +71,6 @@ contract PriceFeedStore is Ownable2Step, SanityCheckTrait, PriceFeedValidationTr
                 }
 
                 if (_res[j] == a1[i]) break;
-
-                unchecked {
-                    ++j;
-                }
-            }
-
-            unchecked {
-                ++i;
             }
         }
 

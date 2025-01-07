@@ -15,7 +15,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {LibString} from "@solady/utils/LibString.sol";
 import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 
-import {BytecodeWithMeta, AuditorSignature} from "../interfaces/Types.sol";
+import {Bytecode, AuditorSignature} from "../interfaces/Types.sol";
 import {EIP712Mainnet} from "../helpers/EIP712Mainnet.sol";
 import {Domain} from "../libraries/Domain.sol";
 
@@ -59,23 +59,29 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     uint256 public constant override version = 3_10;
     bytes32 public constant override contractType = AP_BYTECODE_REPOSITORY;
 
-    bytes32 private constant _SIGNATURE_TYPEHASH = keccak256("SignBytecodeMetaHash(bytes32 metaHash,string reportUrl)");
+    bytes32 public constant BYTECODE_META_TYPEHASH =
+        keccak256("BytecodeMeta(bytes32 contractType,uint256 version,bytes initCode,address author,string source)");
+
+    bytes32 public constant _SIGNATURE_TYPEHASH = keccak256("SignBytecodeHash(bytes32 bytecodeHash,string reportUrl)");
 
     //
     // STORAGE
     //
 
-    // metaHash =>  BytecodeWithMeta
-    mapping(bytes32 => BytecodeWithMeta) public bytecodeWithMetaByHash;
+    // bytecodeHash =>  Bytecode
+    mapping(bytes32 => Bytecode) public bytecodeByHash;
 
-    // metaHash => array of AuditorSignature
+    // bytecodeHash => array of AuditorSignature
     mapping(bytes32 => AuditorSignature[]) internal _auditorSignaturesByHash;
 
-    // contractType => version => metaHash
-    mapping(bytes32 => mapping(uint256 => bytes32)) public approvedBytecodeMetaHash;
+    // contractType => version => bytecodeHash
+    mapping(bytes32 => mapping(uint256 => bytes32)) public approvedBytecodeHash;
 
-    // Forbidden bytecodes (by keccak256 of the raw bytecode)
-    mapping(bytes32 => bool) public forbiddenBytecode;
+    // address => bytecodeHash
+    mapping(address => bytes32) public deployedContracts;
+
+    // Forbidden initCodes
+    mapping(bytes32 => bool) public forbiddenInitCode;
 
     // Allowed system contracts
     mapping(bytes32 => bool) public allowedSystemContracts;
@@ -106,56 +112,62 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         _transferOwnership(_owner);
     }
 
-    /// @notice Computes a unique hash for bytecode metadata
-    /// @param _meta Bytecode metadata including contract type, version, bytecode, author and source
+    /// @notice Computes a unique hash for _bytecode metadata
+    /// @param _bytecode Bytecode metadata including contract type, version, _bytecode, author and source
     /// @return bytes32 Hash of the metadata
-    function computeBytecodeMetaHash(BytecodeWithMeta calldata _meta) public pure returns (bytes32) {
+    function computeBytecodeHash(Bytecode calldata _bytecode) public pure returns (bytes32) {
         return keccak256(
-            abi.encode(_meta.contractType, _meta.version, keccak256(_meta.bytecode), _meta.author, _meta.source)
+            abi.encode(
+                BYTECODE_META_TYPEHASH,
+                _bytecode.contractType,
+                _bytecode.version,
+                keccak256(_bytecode.initCode),
+                _bytecode.author,
+                _bytecode.source
+            )
         );
     }
 
-    /// @notice Uploads new bytecode to the repository
-    /// @param _meta Bytecode metadata to upload
+    /// @notice Uploads new _bytecode to the repository
+    /// @param _bytecode Bytecode metadata to upload
     /// @dev Only the author can upload on mainnet
-    function uploadBytecode(BytecodeWithMeta calldata _meta) external nonZeroAddress(_meta.author) {
-        if (block.chainid == 1 && msg.sender != _meta.author) {
+    function uploadBytecode(Bytecode calldata _bytecode) external nonZeroAddress(_bytecode.author) {
+        if (block.chainid == 1 && msg.sender != _bytecode.author) {
             revert OnlyAuthorCanSyncException();
         }
-        // Check if bytecode is already uploaded
-        bytes32 metaHash = computeBytecodeMetaHash(_meta);
+        // Check if _bytecode is already uploaded
+        bytes32 bytecodeHash = computeBytecodeHash(_bytecode);
 
-        if (bytecodeWithMetaByHash[metaHash].author != address(0)) {
-            revert BytecodeAllreadyExistsException(_meta.contractType, _meta.version);
+        if (isBytecodeUploaded(bytecodeHash)) {
+            revert BytecodeAlreadyExistsException();
         }
 
-        // Verify author's signature of the bytecode metadata
-        bytes32 digest = _hashTypedDataV4(metaHash);
-        address recoveredAuthor = ECDSA.recover(digest, _meta.authorSignature);
-        if (recoveredAuthor != _meta.author) {
+        // Verify author's signature of the _bytecode metadata
+        address recoveredAuthor = ECDSA.recover(_hashTypedDataV4(bytecodeHash), _bytecode.authorSignature);
+        if (recoveredAuthor != _bytecode.author) {
             revert InvalidAuthorSignatureException();
         }
 
-        // Check if the bytecode is forbidden
-        bytes32 bytecodeHash = keccak256(_meta.bytecode);
-        if (forbiddenBytecode[bytecodeHash]) {
-            revert BytecodeForbiddenException(bytecodeHash);
-        }
+        // Revert if the initCode is forbidden
+        revertIfInitCodeForbidden(_bytecode.initCode);
 
         // Check if the contract name and version already exists
-        if (approvedBytecodeMetaHash[_meta.contractType][_meta.version] != 0) {
+        if (approvedBytecodeHash[_bytecode.contractType][_bytecode.version] != 0) {
             revert ContractNameVersionAlreadyExistsException();
         }
 
-        bytecodeWithMetaByHash[metaHash] = _meta;
+        bytecodeByHash[bytecodeHash] = _bytecode;
 
-        // Emit with string-based domain/postfix
-        string memory ctString = LibString.fromSmallString(_meta.contractType);
-
-        emit UploadBytecode(metaHash, ctString, _meta.version, _meta.author, _meta.source);
+        emit UploadBytecode(
+            bytecodeHash,
+            _bytecode.contractType.fromSmallString(),
+            _bytecode.version,
+            _bytecode.author,
+            _bytecode.source
+        );
     }
 
-    /// @notice Deploys a contract using stored bytecode
+    /// @notice Deploys a contract using stored _bytecode
     /// @param _contractType Type identifier of the contract
     /// @param _version Version of the contract to deploy
     /// @param constructorParams Constructor parameters for deployment
@@ -165,41 +177,30 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         external
         returns (address newContract)
     {
-        // Retrieve metaHash
-        bytes32 metaHash = approvedBytecodeMetaHash[_contractType][_version];
-        if (metaHash == 0) {
-            revert ContractIsNotAuditedException();
-        }
-        BytecodeWithMeta storage meta = bytecodeWithMetaByHash[metaHash];
-
-        // Check if forbidden
-        bytes32 rawHash = keccak256(meta.bytecode);
-        if (forbiddenBytecode[rawHash]) {
-            revert BytecodeForbiddenException(rawHash);
+        // Retrieve bytecodeHash
+        bytes32 bytecodeHash = approvedBytecodeHash[_contractType][_version];
+        if (bytecodeHash == 0) {
+            revert BytecodeIsNotApprovedException(_contractType, _version);
         }
 
-        // Check that it has at least one auditor signature
-        bool hasValidSignature = false;
-        uint256 len = _auditorSignaturesByHash[metaHash].length;
-
-        for (uint256 i = 0; i < len; ++i) {
-            AuditorSignature memory sig = _auditorSignaturesByHash[metaHash][i];
-            if (isAuditor(sig.auditor)) {
-                hasValidSignature = true;
-                break;
-            }
+        if (!isBytecodeAudited(bytecodeHash)) {
+            revert BytecodeIsNotAuditedException();
         }
 
-        if (!hasValidSignature) {
-            revert NoValidAuditorSignatureException();
-        }
+        Bytecode storage _bytecode = bytecodeByHash[bytecodeHash];
+
+        bytes memory initCode = _bytecode.initCode;
+
+        // Revert if the initCode is forbidden
+        revertIfInitCodeForbidden(initCode);
 
         // Combine code + constructor params
-        bytes memory bytecodeWithParams = abi.encodePacked(meta.bytecode, constructorParams);
+        bytes memory bytecodeWithParams = abi.encodePacked(initCode, constructorParams);
 
-        // CREATE2 address
-        bytes32 codeHash = keccak256(bytecodeWithParams);
-        newContract = Create2.computeAddress(salt, codeHash, address(this));
+        // Compute CREATE2 address
+        newContract = Create2.computeAddress(salt, keccak256(bytecodeWithParams), address(this));
+
+        // Check if the contract already deployed
         if (newContract.code.length != 0) {
             revert BytecodeAlreadyExistsAtAddressException(newContract);
         }
@@ -209,8 +210,11 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
 
         // Verify IVersion
         if (IVersion(newContract).contractType() != _contractType || IVersion(newContract).version() != _version) {
-            revert IncorrectBytecodeException();
+            revert IncorrectBytecodeException(bytecodeHash);
         }
+
+        // add to deployedContracts
+        deployedContracts[newContract] = bytecodeHash;
 
         emit DeployContact(newContract, _contractType, _version);
 
@@ -229,124 +233,118 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         view
         returns (address)
     {
-        // Retrieve metaHash
-        bytes32 metaHash = approvedBytecodeMetaHash[_contractType][_version];
-        if (metaHash == 0) {
-            revert ContractIsNotAuditedException();
+        // Retrieve bytecodeHash
+        bytes32 bytecodeHash = approvedBytecodeHash[_contractType][_version];
+        if (bytecodeHash == 0) {
+            revert BytecodeIsNotApprovedException(_contractType, _version);
         }
-        BytecodeWithMeta storage meta = bytecodeWithMetaByHash[metaHash];
-
-        // Check if forbidden
-        bytes32 rawHash = keccak256(meta.bytecode);
-        if (forbiddenBytecode[rawHash]) {
-            // should be reverted or returned address(0)
-            revert BytecodeForbiddenException(rawHash);
-        }
+        Bytecode storage _bytecode = bytecodeByHash[bytecodeHash];
 
         // Combine code + constructor params
-        bytes memory bytecodeWithParams = abi.encodePacked(meta.bytecode, constructorParams);
+        bytes memory bytecodeWithParams = abi.encodePacked(_bytecode.initCode, constructorParams);
 
         // Return CREATE2 address
-        bytes32 codeHash = keccak256(bytecodeWithParams);
-        return Create2.computeAddress(salt, codeHash, address(this));
+        return Create2.computeAddress(salt, keccak256(bytecodeWithParams), address(this));
     }
 
     // Auditing
-    // TODO:Author should sign bytecode meta hash!
-    /// @notice Allows auditors to sign bytecode metadata
-    /// @param metaHash Hash of the bytecode metadata to sign
+    // TODO:Author should sign _bytecode _bytecode hash!
+    /// @notice Allows auditors to sign _bytecode metadata
+    /// @param bytecodeHash Hash of the _bytecode metadata to sign
     /// @param reportUrl URL of the audit report
     /// @param signature Cryptographic signature of the auditor
-    function signBytecodeMetaHash(bytes32 metaHash, string calldata reportUrl, bytes memory signature) external {
+    function signBytecodeHash(bytes32 bytecodeHash, string calldata reportUrl, bytes memory signature) external {
         // Must point to existing metadata
-        if (bytecodeWithMetaByHash[metaHash].author == address(0)) {
+        if (!isBytecodeUploaded(bytecodeHash)) {
             // TODO: change error message
-            revert ContractIsNotAuditedException();
+            revert BytecodeIsNotUploadedException(bytecodeHash);
         }
 
         // Re-create typed data
-        bytes32 structHash = keccak256(abi.encode(_SIGNATURE_TYPEHASH, metaHash, keccak256(bytes(reportUrl))));
+        bytes32 structHash = keccak256(abi.encode(_SIGNATURE_TYPEHASH, bytecodeHash, keccak256(bytes(reportUrl))));
         // Hash with our pinned domain
-        bytes32 digest = _hashTypedDataV4(structHash);
-        address signer = ECDSA.recover(digest, signature);
+        address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);
 
         // Must match msg.sender and be an approved auditor
         if (!_auditors.contains(signer)) {
-            revert ContractIsNotAuditedException();
+            revert SignerIsNotAuditorException(signer);
         }
 
         // do not allow duplicates
-        uint256 len = _auditorSignaturesByHash[metaHash].length;
+        uint256 len = _auditorSignaturesByHash[bytecodeHash].length;
         for (uint256 i = 0; i < len; ++i) {
-            if (keccak256(_auditorSignaturesByHash[metaHash][i].signature) == keccak256(signature)) {
+            if (keccak256(_auditorSignaturesByHash[bytecodeHash][i].signature) == keccak256(signature)) {
                 revert AuditorAlreadySignedException();
             }
         }
-        _auditorSignaturesByHash[metaHash].push(
+        _auditorSignaturesByHash[bytecodeHash].push(
             AuditorSignature({reportUrl: reportUrl, auditor: signer, signature: signature})
         );
 
-        emit BytecodeSigned(metaHash, signer, reportUrl, signature);
+        emit BytecodeSigned(bytecodeHash, signer, reportUrl, signature);
 
-        bytes32 _contractType = bytecodeWithMetaByHash[metaHash].contractType;
-
-        if (approvedBytecodeMetaHash[_contractType][bytecodeWithMetaByHash[metaHash].version] == 0) {
-            if (isContractNameInPublicDomain(_contractType)) {
-                // public domain => (domain, postfix) ownership
-                address currentOwner = contractTypeOwner[_contractType];
-                address author = bytecodeWithMetaByHash[metaHash].author;
-
-                if (currentOwner == address(0)) {
-                    contractTypeOwner[_contractType] = author;
-                } else if (currentOwner != author) {
-                    revert NotDomainOwnerException();
-                }
-                _approveContract(metaHash);
-            } else {
-                if (allowedSystemContracts[metaHash]) {
-                    _approveContract(metaHash);
-                }
-            }
-        }
+        _approveContract(bytecodeHash);
     }
 
     /// @notice Allows owner to mark contracts as system contracts
-    /// @param metaHash Hash of the bytecode metadata to allow
-    function allowSystemContract(bytes32 metaHash) external onlyOwner {
-        allowedSystemContracts[metaHash] = true;
-        _approveContract(metaHash);
+    /// @param bytecodeHash Hash of the _bytecode metadata to allow
+    function allowSystemContract(bytes32 bytecodeHash) external onlyOwner {
+        allowedSystemContracts[bytecodeHash] = true;
+        _approveContract(bytecodeHash);
     }
 
-    /// @notice Internal function to approve contract bytecode
-    /// @param metaHash Hash of the bytecode metadata to approve
-    function _approveContract(bytes32 metaHash) internal {
-        BytecodeWithMeta storage bytecodeWithMeta = bytecodeWithMetaByHash[metaHash];
-
-        // check that bytecodeWithMeta.author is not address(0)
-        if (bytecodeWithMeta.author == address(0)) {
+    /// @notice Internal function to approve contract _bytecode
+    /// @param bytecodeHash Hash of the _bytecode metadata to approve
+    function _approveContract(bytes32 bytecodeHash) internal {
+        if (!isBytecodeUploaded(bytecodeHash)) {
             return;
         }
 
-        contractTypeOwner[bytecodeWithMeta.contractType] = bytecodeWithMeta.author;
+        Bytecode storage _bytecode = bytecodeByHash[bytecodeHash];
 
-        uint256 bytecodeVersion = bytecodeWithMeta.version;
+        bytes32 _contractType = _bytecode.contractType;
 
-        if (approvedBytecodeMetaHash[bytecodeWithMeta.contractType][bytecodeVersion] == 0) {
-            approvedBytecodeMetaHash[bytecodeWithMeta.contractType][bytecodeVersion] = metaHash;
+        if (approvedBytecodeHash[_contractType][_bytecode.version] != 0) {
+            return;
+        }
+
+        address author = _bytecode.author;
+        if (allowedSystemContracts[bytecodeHash]) {
+            // System contracts could have any author if it signed by DAO
+            contractTypeOwner[_contractType] = author;
+        } else if (isContractNameInPublicDomain(_contractType)) {
+            // public domain => (domain, postfix) ownership
+            address currentOwner = contractTypeOwner[_contractType];
+
+            if (currentOwner == address(0)) {
+                contractTypeOwner[_contractType] = author;
+            } else if (currentOwner != author) {
+                revert NotDomainOwnerException();
+            }
+        } else {
+            revert NotAllowedSystemContractException(bytecodeHash);
+        }
+
+        uint256 bytecodeVersion = _bytecode.version;
+
+        if (approvedBytecodeHash[_bytecode.contractType][bytecodeVersion] == 0) {
+            approvedBytecodeHash[_bytecode.contractType][bytecodeVersion] = bytecodeHash;
 
             uint256 majorVersion = (bytecodeVersion / 100) * 100;
             uint256 minorVersion = ((bytecodeVersion / 10) % 10) * 10 + majorVersion;
 
-            if (latestVersion[bytecodeWithMeta.contractType] < bytecodeVersion) {
-                latestVersion[bytecodeWithMeta.contractType] = bytecodeVersion;
+            if (latestVersion[_bytecode.contractType] < bytecodeVersion) {
+                latestVersion[_bytecode.contractType] = bytecodeVersion;
             }
-            if (latestMinorVersion[bytecodeWithMeta.contractType][majorVersion] < bytecodeVersion) {
-                latestMinorVersion[bytecodeWithMeta.contractType][majorVersion] = bytecodeVersion;
+            if (latestMinorVersion[_bytecode.contractType][majorVersion] < bytecodeVersion) {
+                latestMinorVersion[_bytecode.contractType][majorVersion] = bytecodeVersion;
             }
-            if (latestPatchVersion[bytecodeWithMeta.contractType][minorVersion] < bytecodeVersion) {
-                latestPatchVersion[bytecodeWithMeta.contractType][minorVersion] = bytecodeVersion;
+            if (latestPatchVersion[_bytecode.contractType][minorVersion] < bytecodeVersion) {
+                latestPatchVersion[_bytecode.contractType][minorVersion] = bytecodeVersion;
             }
         }
+
+        emit ApproveContract(bytecodeHash, _contractType, _bytecode.version);
     }
 
     //
@@ -414,11 +412,11 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         }
     }
 
-    /// @notice Marks bytecode as forbidden
-    /// @param bytecodeHash Hash of bytecode to forbid
-    function forbidBytecode(bytes32 bytecodeHash) external onlyOwner {
-        forbiddenBytecode[bytecodeHash] = true;
-        emit ForbidBytecode(bytecodeHash);
+    /// @notice Marks initCode as forbidden
+    /// @param initCodeHash Hash of initCode to forbid
+    function forbidInitCode(bytes32 initCodeHash) external onlyOwner {
+        forbiddenInitCode[initCodeHash] = true;
+        emit ForbidBytecode(initCodeHash);
     }
 
     /// @notice Sets token-specific postfix
@@ -436,6 +434,13 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         if (contractTypeOwner[_contractType] != address(0)) {
             contractTypeOwner[_contractType] = address(0);
             emit RemoveContractTypeOwner(_contractType);
+        }
+    }
+
+    function revokeApproval(bytes32 _contractType, uint256 _version, bytes32 _bytecodeHash) external onlyOwner {
+        if (approvedBytecodeHash[_contractType][_version] == _bytecodeHash) {
+            approvedBytecodeHash[_contractType][_version] = bytes32(0);
+            emit RevokeApproval(_bytecodeHash, _contractType, _version);
         }
     }
 
@@ -492,11 +497,42 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         return latestPatchVersion[_contractType][minorVersion];
     }
 
-    function auditorSignaturesByHash(bytes32 metaHash) external view returns (AuditorSignature[] memory) {
-        return _auditorSignaturesByHash[metaHash];
+    function auditorSignaturesByHash(bytes32 bytecodeHash) external view returns (AuditorSignature[] memory) {
+        return _auditorSignaturesByHash[bytecodeHash];
     }
 
-    function auditorSignaturesByHash(bytes32 metaHash, uint256 index) external view returns (AuditorSignature memory) {
-        return _auditorSignaturesByHash[metaHash][index];
+    function auditorSignaturesByHash(bytes32 bytecodeHash, uint256 index)
+        external
+        view
+        returns (AuditorSignature memory)
+    {
+        return _auditorSignaturesByHash[bytecodeHash][index];
+    }
+
+    //
+    // HELPERS
+    //
+    function isBytecodeUploaded(bytes32 bytecodeHash) public view returns (bool) {
+        return bytecodeByHash[bytecodeHash].author != address(0);
+    }
+
+    function revertIfInitCodeForbidden(bytes memory initCode) public view {
+        bytes32 initCodeHash = keccak256(initCode);
+        if (forbiddenInitCode[initCodeHash]) {
+            revert BytecodeForbiddenException(initCodeHash);
+        }
+    }
+
+    function isBytecodeAudited(bytes32 bytecodeHash) public view returns (bool) {
+        uint256 len = _auditorSignaturesByHash[bytecodeHash].length;
+
+        for (uint256 i = 0; i < len; ++i) {
+            AuditorSignature memory sig = _auditorSignaturesByHash[bytecodeHash][i];
+            if (isAuditor(sig.auditor)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

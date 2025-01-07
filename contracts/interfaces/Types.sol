@@ -53,10 +53,10 @@ struct PriceFeedInfo {
 // - `sources`: An array of `Source` structs, each containing a comment and a link related to the contract's source.
 // - `auditors`: An array of addresses representing the auditors who have reviewed the contract.
 // - `reports`: An array of `SecurityReport` structs, each containing information about security audits conducted on the contract.
-struct BytecodeWithMeta {
+struct Bytecode {
     bytes32 contractType;
     uint256 version;
-    bytes bytecode; // store it's hash as well
+    bytes initCode; // store it's hash as well
     address author;
     string source;
     bytes authorSignature;

@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import {Test} from "forge-std/Test.sol";
 import {BytecodeRepository} from "../../global/BytecodeRepository.sol";
 import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
-import {BytecodeWithMeta, AuditorSignature} from "../../interfaces/Types.sol";
+import {Bytecode, AuditorSignature} from "../../interfaces/Types.sol";
 import {LibString} from "@solady/utils/LibString.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";

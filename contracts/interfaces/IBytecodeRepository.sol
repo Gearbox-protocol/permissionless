@@ -9,9 +9,10 @@ interface IBytecodeRepository is IVersion {
     //
     // ERRORS
     //
+    error BytecodeIsNotApprovedException(bytes32 contractType, uint256 version);
 
     // Thrown if the deployed contract has a different contractType/version than it's indexed in the repository
-    error IncorrectBytecodeException();
+    error IncorrectBytecodeException(bytes32 bytecodeHash);
 
     // Thrown if the bytecode provided is empty
     error EmptyBytecodeException();
@@ -23,13 +24,18 @@ interface IBytecodeRepository is IVersion {
     error TooLongContractTypeException(string);
 
     //  Thrown if requested bytecode wasn't found in the repository
-    error BytecodeNotFoundException(bytes32 contractType, uint256 version);
+    error BytecodeIsNotUploadedException(bytes32 bytecodeHash);
 
     // Thrown if someone tries to replace existing bytecode with the same contact type & version
-    error BytecodeAllreadyExistsException(bytes32 contractType, uint256 version);
+    error BytecodeAlreadyExistsException();
+
+    // Thrown if requested bytecode wasn't found in the repository
+    error BytecodeIsNotAuditedException();
 
     // Thrown if someone tries to deploy a contract which wasn't audited enough
     error ContractIsNotAuditedException();
+
+    error SignerIsNotAuditorException(address signer);
 
     // Thrown when an attempt is made to add an auditor that already exists
     error AuditorAlreadyAddedException();
@@ -48,6 +54,9 @@ interface IBytecodeRepository is IVersion {
 
     /// @notice Thrown when trying to deploy contract with incorrect domain ownership
     error NotDomainOwnerException();
+
+    /// @notice Thrown when trying to deploy contract with incorrect domain ownership
+    error NotAllowedSystemContractException(bytes32 bytecodeHash);
 
     /// @notice Thrown when trying to deploy contract with incorrect contract type
     error ContractNameVersionAlreadyExistsException();
@@ -94,6 +103,14 @@ interface IBytecodeRepository is IVersion {
 
     // Event emitted when token specific postfix is set
     event SetTokenSpecificPostfix(address indexed token, bytes32 indexed postfix);
+
+    // Event emitted when bytecode is approved
+    event ApproveContract(bytes32 indexed bytecodeHash, bytes32 indexed contractType, uint256 version);
+
+    // Event emitted when bytecode is revoked
+    event RevokeApproval(bytes32 indexed bytecodeHash, bytes32 indexed contractType, uint256 version);
+
+    // FUNCTIONS
 
     function deploy(bytes32 type_, uint256 version_, bytes memory constructorParams, bytes32 salt)
         external
