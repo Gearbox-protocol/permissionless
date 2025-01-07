@@ -5,18 +5,25 @@ import {BytecodeRepository} from "./BytecodeRepository.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {AP_INSTANCE_MANAGER, AP_TREASURY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
+import {ProxyCall} from "../helpers/ProxyCall.sol";
 
 contract InstanceManager is Ownable {
-    BytecodeRepository public immutable bytecodeRepository;
+    address public immutable addressProvider;
+    address public immutable bytecodeRepository;
 
-    address public crossChainGovernance;
+    address public instanceManagerProxy;
+    address public treasuryProxy;
+    address public crossChainGovernanceProxy;
 
-    address public addressProvider;
     address public marketConfiguratorFactory;
     address public priceFeedStore;
 
     modifier onlyCrossChainGovernance() {
-        require(msg.sender == crossChainGovernance, "Only cross-chain governance can call this function");
+        require(
+            msg.sender
+                == IAddressProvider(addressProvider).getAddressOrRevert(AP_CROSS_CHAIN_GOVERNANCE, NO_VERSION_CONTROL),
+            "Only financial multisig can call this function"
+        );
         _;
     }
 
@@ -29,8 +36,21 @@ contract InstanceManager is Ownable {
     }
 
     constructor(address _bytecodeRepository, address _owner) {
-        bytecodeRepository = BytecodeRepository(_bytecodeRepository);
+        bytecodeRepository = address(new BytecodeRepository());
+        addressProvider = address(new AddressProvider());
+
+        IAddressProvider(addressProvider).setAddress(AP_BYTECODE_REPOSITORY, address(bytecodeRepository), true);
+        IAddressProvider(addressProvider).setAddress(AP_INSTANCE_MANAGER, address(this), true);
+
         crossChainGovernance = _owner;
+        instanceManagerProxy = address(new ProxyCall());
+        treasuryProxy = address(new ProxyCall());
+        crossChainGovernanceProxy = address(new ProxyCall());
+
+        IAddressProvider(addressProvider).setAddress(AP_INSTANCE_MANAGER_PROXY, instanceManagerProxy, false);
+        IAddressProvider(addressProvider).setAddress(AP_TREASURY_PROXY, treasuryProxy, false);
+        IAddressProvider(addressProvider).setAddress(AP_CROSS_CHAIN_GOVERNANCE_PROXY, crossChainGovernanceProxy, false);
+
         _transferOwnership(_owner);
     }
 
@@ -38,27 +58,38 @@ contract InstanceManager is Ownable {
         if (!isInstanceActivated()) {
             _verifyCoreContractsDeploy();
             _transferOwnership(_instanceOwner);
-            IAddressProvider(addressProvider).setAddress(AP_INSTANCE_MANAGER, address(this), true);
+
             IAddressProvider(addressProvider).setAddress(AP_TREASURY, _treasury, false);
         }
     }
 
-    function updateSystemAddressProvider(address _systemAddressProvider) external onlyCrossChainGovernance {}
-
-    function updateInstanceAddressProvider(address _instance) external onlyOwner {
-        // updates for DOMAIN
+    function deploySystemContract(bytes32 _contractName, uint256 _version) external onlyCrossChainGovernance {
+        // deploy contract
+        // set address in address provider
+        address newSystemContract = IBytecodeRepository(bytecodeRepository).deployContract(
+            _contractName, _version, abi.encode(addressProvider), 0
+        );
+        IAddressProvider(addressProvider).setAddress(_contractName, newSystemContract, true);
     }
 
-    function updateFinancialMultisig(address _treasury) external onlyTreasury {
-        // updates for DOMAIN
+    function setAddress(string memory key, address addr, bool saveVersion) external onlyCrossChainGovernance {
+        IAddressProvider(addressProvider).setAddress(key, addr, saveVersion);
     }
 
     function _verifyCoreContractsDeploy() internal view {
         // verify that all core contracts are deployed
     }
 
-    function transferCrossChainGovernance(address _newCrossChainGovernance) external onlyCrossChainGovernance {
-        crossChainGovernance = _newCrossChainGovernance;
+    function configureGovernance(address target, bytes calldata data) external onlyCrossChainGovernance {
+        ProxyCall(crossChainGovernanceProxy).proxyCall(target, data);
+    }
+
+    function configureTreasury(address target, bytes calldata data) external onlyTreasury {
+        ProxyCall(treasuryProxy).proxyCall(target, data);
+    }
+
+    function configureInstanceManager(address target, bytes calldata data) external onlyOwner {
+        ProxyCall(instanceManagerProxy).proxyCall(target, data);
     }
 
     function isInstanceActivated() public view returns (bool) {
