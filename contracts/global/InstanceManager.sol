@@ -106,15 +106,15 @@ contract InstanceManager is Ownable {
         // verify that all core contracts are deployed
     }
 
-    function configureGovernance(address target, bytes calldata data) external onlyCrossChainGovernance {
+    function configureGlobal(address target, bytes calldata data) external onlyCrossChainGovernance {
         ProxyCall(crossChainGovernanceProxy).proxyCall(target, data);
+    }
+
+    function configureLocal(address target, bytes calldata data) external onlyOwner {
+        ProxyCall(instanceManagerProxy).proxyCall(target, data);
     }
 
     function configureTreasury(address target, bytes calldata data) external onlyTreasury {
         ProxyCall(treasuryProxy).proxyCall(target, data);
-    }
-
-    function configureInstanceManager(address target, bytes calldata data) external onlyOwner {
-        ProxyCall(instanceManagerProxy).proxyCall(target, data);
     }
 }
