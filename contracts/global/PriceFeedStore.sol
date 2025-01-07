@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {SanityCheckTrait} from "@gearbox-protocol/core-v3/contracts/traits/SanityCheckTrait.sol";
@@ -14,7 +14,7 @@ import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import {AP_PRICE_FEED_STORE} from "../libraries/ContractLiterals.sol";
 import {PriceFeedInfo} from "../interfaces/Types.sol";
 
-contract PriceFeedStore is Ownable2Step, SanityCheckTrait, PriceFeedValidationTrait, IPriceFeedStore {
+contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, IPriceFeedStore {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     //
@@ -32,68 +32,38 @@ contract PriceFeedStore is Ownable2Step, SanityCheckTrait, PriceFeedValidationTr
     /// @dev Set of all known price feeds
     EnumerableSet.AddressSet internal _knownPriceFeeds;
 
+    /// @dev Set of all known price feeds
+    EnumerableSet.AddressSet internal _knownTokens;
+
     /// @dev Mapping from token address to its set of allowed price feeds
     mapping(address => EnumerableSet.AddressSet) internal _allowedPriceFeeds;
-
-    /// @notice Mapping from token address to its equivalent token. A token can use any price feeds of its equivalent.
-    mapping(address => address) public equivalentTokens;
 
     /// @notice Mapping from price feed address to its data
     mapping(address => PriceFeedInfo) public priceFeedInfo;
 
-    /// @notice Returns the list of price feeds available for a token
-    function getPriceFeeds(address token) external view returns (address[] memory) {
-        address[] memory priceFeeds = _allowedPriceFeeds[token].values();
-        address[] memory equivalentPriceFeeds = _allowedPriceFeeds[equivalentTokens[token]].values();
-
-        return _mergeArrays(priceFeeds, equivalentPriceFeeds);
+    constructor(address _addressProvider) {
+        address instanceManager =
+            IAddressProvider(_addressProvider).getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL);
+        _transferOwnership(instanceManager);
     }
 
-    /// @dev Merges two address arrays so that there are no repetitions
-    function _mergeArrays(address[] memory a0, address[] memory a1) internal pure returns (address[] memory result) {
-        uint256 len0 = a0.length;
-        uint256 len1 = a1.length;
-
-        address[] memory _res = new address[](len0 + len1);
-
-        for (uint256 i = 0; i < len0; ++i) {
-            _res[i] = a0[i];
-        }
-
-        uint256 k = len0;
-
-        for (uint256 i = 0; i < len1; ++i) {
-            for (uint256 j = 0; j <= k; ++j) {
-                if (j == k) {
-                    _res[k] = a1[i];
-                    ++k;
-                    break;
-                }
-
-                if (_res[j] == a1[i]) break;
-            }
-        }
-
-        result = new address[](k);
-
-        for (uint256 i = 0; i < k;) {
-            result[i] = _res[i];
-
-            unchecked {
-                ++i;
-            }
-        }
+    /// @notice Returns the list of price feeds available for a token
+    function getPriceFeeds(address token) external view returns (address[] memory) {
+        return _allowedPriceFeeds[token].values();
     }
 
     /// @notice Returns whether a price feed is allowed to be used for a token
     function isAllowedPriceFeed(address token, address priceFeed) external view returns (bool) {
-        return _allowedPriceFeeds[equivalentTokens[token]].contains(priceFeed)
-            || _allowedPriceFeeds[token].contains(priceFeed);
+        return _allowedPriceFeeds[token].contains(priceFeed);
     }
 
     /// @notice Returns the staleness period for a price feed
     function getStalenessPeriod(address priceFeed) external view returns (uint32) {
         return priceFeedInfo[priceFeed].stalenessPeriod;
+    }
+
+    function getKnownTokens() external view returns (address[] memory) {
+        return _knownTokens.values();
     }
 
     /**
@@ -175,24 +145,5 @@ contract PriceFeedStore is Ownable2Step, SanityCheckTrait, PriceFeedValidationTr
         _allowedPriceFeeds[token].remove(priceFeed);
 
         emit ForbidPriceFeed(token, priceFeed);
-    }
-
-    /**
-     * @notice Sets an equivalent for a token
-     * @param token Address of the token
-     * @param equivalentToken Address of the equivalent token
-     * @dev A token can use all of the price feeds of its equivalent token (as long as they are verified). A typical use case is a token being staked
-     *      into a pool with a strictly 1:1 ratio - in this case the same price feed can be used for both the token and the staked position.
-     */
-    function setEquivalentToken(address token, address equivalentToken)
-        external
-        onlyOwner
-        nonZeroAddress(token)
-        nonZeroAddress(equivalentToken)
-    {
-        if (equivalentTokens[token] != equivalentToken) {
-            equivalentTokens[token] = equivalentToken;
-            emit SetEquivalentToken(token, equivalentToken);
-        }
     }
 }
