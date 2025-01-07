@@ -11,7 +11,8 @@ import {PriceFeedValidationTrait} from "@gearbox-protocol/core-v3/contracts/trai
 import {IPriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
 
 import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
-import {AP_PRICE_FEED_STORE} from "../libraries/ContractLiterals.sol";
+import {AP_PRICE_FEED_STORE, AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
+import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {PriceFeedInfo} from "../interfaces/Types.sol";
 
 contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, IPriceFeedStore {

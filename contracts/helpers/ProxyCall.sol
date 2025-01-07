@@ -41,12 +41,6 @@ contract ProxyCall {
         returns (bool success, bytes memory result)
     {
         // Make the call using OpenZeppelin's Address library
-        try target.functionCall(data) returns (bytes memory returndata) {
-            return (true, returndata);
-        } catch (bytes memory reason) {
-            return (false, reason);
-        }
-
-        emit ProxyCallExecuted(target, data);
+        return (true, target.functionCall(data));
     }
 }

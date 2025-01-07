@@ -38,9 +38,6 @@ interface IPriceFeedStore is IVersion {
     /// @notice Emitted when a price feed is forbidden for a token
     event ForbidPriceFeed(address token, address priceFeed);
 
-    /// @notice Emitted when an equivalent is set for a token
-    event SetEquivalentToken(address token, address equivalent);
-
     //
     // GETTERS
     //
@@ -55,5 +52,4 @@ interface IPriceFeedStore is IVersion {
     function setStalenessPeriod(address priceFeed, uint32 stalenessPeriod) external;
     function allowPriceFeed(address token, address priceFeed) external;
     function forbidPriceFeed(address token, address priceFeed) external;
-    function setEquivalentToken(address token, address equivalentToken) external;
 }

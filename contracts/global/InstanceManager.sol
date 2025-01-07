@@ -3,11 +3,22 @@ pragma solidity ^0.8.23;
 
 import {BytecodeRepository} from "./BytecodeRepository.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {AP_INSTANCE_MANAGER, AP_TREASURY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
+import {
+    AP_INSTANCE_MANAGER,
+    AP_CROSS_CHAIN_GOVERNANCE,
+    AP_TREASURY,
+    NO_VERSION_CONTROL,
+    AP_BYTECODE_REPOSITORY,
+    AP_ADDRESS_PROVIDER,
+    AP_INSTANCE_MANAGER_PROXY,
+    AP_CROSS_CHAIN_GOVERNANCE_PROXY,
+    AP_TREASURY_PROXY
+} from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {ProxyCall} from "../helpers/ProxyCall.sol";
 import {LibString} from "@solady/utils/LibString.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {AddressProvider} from "./AddressProvider.sol";
 
 contract InstanceManager is Ownable {
     using LibString for string;
@@ -21,6 +32,8 @@ contract InstanceManager is Ownable {
 
     address public marketConfiguratorFactory;
     address public priceFeedStore;
+
+    bool public isActivated;
 
     error InvalidKeyException(string key);
 
@@ -41,14 +54,14 @@ contract InstanceManager is Ownable {
         _;
     }
 
-    constructor(address _bytecodeRepository, address _owner) {
-        bytecodeRepository = address(new BytecodeRepository());
+    constructor(address _owner) {
+        bytecodeRepository = address(new BytecodeRepository(address(this)));
         addressProvider = address(new AddressProvider());
 
         IAddressProvider(addressProvider).setAddress(AP_BYTECODE_REPOSITORY, address(bytecodeRepository), true);
         IAddressProvider(addressProvider).setAddress(AP_INSTANCE_MANAGER, address(this), true);
+        IAddressProvider(addressProvider).setAddress(AP_CROSS_CHAIN_GOVERNANCE, _owner, false);
 
-        crossChainGovernance = _owner;
         instanceManagerProxy = address(new ProxyCall());
         treasuryProxy = address(new ProxyCall());
         crossChainGovernanceProxy = address(new ProxyCall());
@@ -61,20 +74,20 @@ contract InstanceManager is Ownable {
     }
 
     function activate(address _instanceOwner, address _treasury) external onlyOwner {
-        if (!isInstanceActivated()) {
+        if (!isActivated) {
             _verifyCoreContractsDeploy();
             _transferOwnership(_instanceOwner);
 
             IAddressProvider(addressProvider).setAddress(AP_TREASURY, _treasury, false);
+            isActivated = true;
         }
     }
 
     function deploySystemContract(bytes32 _contractName, uint256 _version) external onlyCrossChainGovernance {
         // deploy contract
         // set address in address provider
-        address newSystemContract = IBytecodeRepository(bytecodeRepository).deployContract(
-            _contractName, _version, abi.encode(addressProvider), 0
-        );
+        address newSystemContract =
+            BytecodeRepository(bytecodeRepository).deploy(_contractName, _version, abi.encode(addressProvider), 0);
         IAddressProvider(addressProvider).setAddress(_contractName, newSystemContract, true);
     }
 
@@ -103,9 +116,5 @@ contract InstanceManager is Ownable {
 
     function configureInstanceManager(address target, bytes calldata data) external onlyOwner {
         ProxyCall(instanceManagerProxy).proxyCall(target, data);
-    }
-
-    function isInstanceActivated() public view returns (bool) {
-        return owner() != crossChainGovernance;
     }
 }
