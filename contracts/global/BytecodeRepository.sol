@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
@@ -18,7 +18,7 @@ import "@gearbox-protocol/core-v3/contracts/interfaces/IExceptions.sol";
 import {Bytecode, AuditorSignature} from "../interfaces/Types.sol";
 import {EIP712Mainnet} from "../helpers/EIP712Mainnet.sol";
 import {Domain} from "../libraries/Domain.sol";
-
+import {ImmutableOwnableTrait} from "../traits/ImmutableOwnableTrait.sol";
 /**
  * @title BytecodeRepository
  *
@@ -43,7 +43,8 @@ import {Domain} from "../libraries/Domain.sol";
  *
  * This structure ensures consistency and clarity when deploying and managing contracts within the system.
  */
-contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, EIP712Mainnet {
+
+contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecodeRepository, EIP712Mainnet {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
     using ECDSA for bytes32;
@@ -108,9 +109,7 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     mapping(bytes32 => mapping(uint256 => uint256)) public latestMinorVersion;
     mapping(bytes32 => mapping(uint256 => uint256)) public latestPatchVersion;
 
-    constructor(address _owner) EIP712Mainnet(contractType.fromSmallString(), version.toString()) Ownable() {
-        _transferOwnership(_owner);
-    }
+    constructor() EIP712Mainnet(contractType.fromSmallString(), version.toString()) ImmutableOwnableTrait(msg.sender) {}
 
     /// @notice Computes a unique hash for _bytecode metadata
     /// @param _bytecode Bytecode metadata including contract type, version, _bytecode, author and source
@@ -197,8 +196,10 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         // Combine code + constructor params
         bytes memory bytecodeWithParams = abi.encodePacked(initCode, constructorParams);
 
+        bytes32 saltUnique = keccak256(abi.encode(salt, msg.sender));
+
         // Compute CREATE2 address
-        newContract = Create2.computeAddress(salt, keccak256(bytecodeWithParams), address(this));
+        newContract = Create2.computeAddress(saltUnique, keccak256(bytecodeWithParams));
 
         // Check if the contract already deployed
         if (newContract.code.length != 0) {
@@ -206,7 +207,7 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         }
 
         // Deploy
-        Create2.deploy(0, salt, bytecodeWithParams);
+        Create2.deploy(0, saltUnique, bytecodeWithParams);
 
         // Verify IVersion
         if (IVersion(newContract).contractType() != _contractType || IVersion(newContract).version() != _version) {
@@ -228,11 +229,13 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
     /// @param constructorParams Constructor parameters
     /// @param salt Unique salt for CREATE2 deployment
     /// @return Address where the contract would be deployed
-    function computeAddress(bytes32 _contractType, uint256 _version, bytes memory constructorParams, bytes32 salt)
-        external
-        view
-        returns (address)
-    {
+    function computeAddress(
+        bytes32 _contractType,
+        uint256 _version,
+        bytes memory constructorParams,
+        bytes32 salt,
+        address deployer
+    ) external view returns (address) {
         // Retrieve bytecodeHash
         bytes32 bytecodeHash = approvedBytecodeHash[_contractType][_version];
         if (bytecodeHash == 0) {
@@ -243,8 +246,10 @@ contract BytecodeRepository is Ownable, SanityCheckTrait, IBytecodeRepository, E
         // Combine code + constructor params
         bytes memory bytecodeWithParams = abi.encodePacked(_bytecode.initCode, constructorParams);
 
+        bytes32 saltUnique = keccak256(abi.encode(salt, deployer));
+
         // Return CREATE2 address
-        return Create2.computeAddress(salt, keccak256(bytecodeWithParams), address(this));
+        return Create2.computeAddress(saltUnique, keccak256(bytecodeWithParams));
     }
 
     // Auditing

@@ -2,14 +2,14 @@
 pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
-import {SignatureMultisigHarness} from "./SignatuerMultisigHarness.sol";
-import {CrossChainCall, SignedProposal} from "../../interfaces/ISignatureMultisig.sol";
+import {CrossChainMultisigHarness} from "./CrossChainMultisigHarness.sol";
+import {CrossChainCall, SignedProposal} from "../../interfaces/ICrossChainMultisig.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {ISignatureMultisig} from "../../interfaces/ISignatureMultisig.sol";
+import {ICrossChainMultisig} from "../../interfaces/ICrossChainMultisig.sol";
 import {console} from "forge-std/console.sol";
 
-contract SignatureMultisigTest is Test {
-    SignatureMultisigHarness multisig;
+contract CrossChainMultisigTest is Test {
+    CrossChainMultisigHarness multisig;
 
     uint256 signer0PrivateKey = vm.randomUint();
     uint256 signer1PrivateKey = vm.randomUint();
@@ -33,7 +33,7 @@ contract SignatureMultisigTest is Test {
         owner = makeAddr("owner");
 
         // Deploy contract
-        multisig = new SignatureMultisigHarness(signers, THRESHOLD, owner);
+        multisig = new CrossChainMultisigHarness(signers, THRESHOLD, owner);
     }
 
     function _getDigest(bytes32 structHash) internal view returns (bytes32) {
@@ -71,19 +71,19 @@ contract SignatureMultisigTest is Test {
 
         // Check events emitted during deployment
         vm.expectEmit(true, false, false, false);
-        emit ISignatureMultisig.SignerAdded(signers[0]);
+        emit ICrossChainMultisig.SignerAdded(signers[0]);
 
         vm.expectEmit(true, false, false, false);
-        emit ISignatureMultisig.SignerAdded(signers[1]);
+        emit ICrossChainMultisig.SignerAdded(signers[1]);
 
         vm.expectEmit(true, false, false, false);
-        emit ISignatureMultisig.SignerAdded(signers[2]);
+        emit ICrossChainMultisig.SignerAdded(signers[2]);
 
         vm.expectEmit(false, false, false, true);
-        emit ISignatureMultisig.ConfirmationThresholdSet(THRESHOLD);
+        emit ICrossChainMultisig.ConfirmationThresholdSet(THRESHOLD);
 
         // Re-deploy to verify events
-        new SignatureMultisigHarness(signers, THRESHOLD, owner);
+        new CrossChainMultisigHarness(signers, THRESHOLD, owner);
     }
 
     /// @dev U:[SM-2]: Access modifiers work correctly
@@ -93,26 +93,26 @@ contract SignatureMultisigTest is Test {
         vm.startPrank(owner);
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = CrossChainCall({chainId: 1, target: address(0x123), callData: hex"1234"});
-        vm.expectRevert(ISignatureMultisig.CantBeExecutedOnCurrentChainException.selector);
+        vm.expectRevert(ICrossChainMultisig.CantBeExecutedOnCurrentChainException.selector);
         multisig.submitProposal(calls, bytes32(0));
 
-        vm.expectRevert(ISignatureMultisig.CantBeExecutedOnCurrentChainException.selector);
+        vm.expectRevert(ICrossChainMultisig.CantBeExecutedOnCurrentChainException.selector);
         multisig.signProposal(bytes32(0), new bytes(65));
         vm.stopPrank();
 
         // Test onlyOnNotMainnet modifier
         vm.chainId(1);
-        vm.expectRevert(ISignatureMultisig.CantBeExecutedOnCurrentChainException.selector);
+        vm.expectRevert(ICrossChainMultisig.CantBeExecutedOnCurrentChainException.selector);
         multisig.executeProposal(SignedProposal({calls: calls, prevHash: bytes32(0), signatures: new bytes[](0)}));
 
         // Test onlySelf modifier
-        vm.expectRevert(ISignatureMultisig.OnlySelfException.selector);
+        vm.expectRevert(ICrossChainMultisig.OnlySelfException.selector);
         multisig.addSigner(address(0x123));
 
-        vm.expectRevert(ISignatureMultisig.OnlySelfException.selector);
+        vm.expectRevert(ICrossChainMultisig.OnlySelfException.selector);
         multisig.removeSigner(signers[0]);
 
-        vm.expectRevert(ISignatureMultisig.OnlySelfException.selector);
+        vm.expectRevert(ICrossChainMultisig.OnlySelfException.selector);
         multisig.setConfirmationThreshold(3);
 
         // Test onlyOwner modifier
@@ -146,7 +146,7 @@ contract SignatureMultisigTest is Test {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = CrossChainCall({chainId: 1, target: address(0x123), callData: hex"1234"});
 
-        vm.expectRevert(ISignatureMultisig.InvalidPrevHashException.selector);
+        vm.expectRevert(ICrossChainMultisig.InvalidPrevHashException.selector);
         multisig.submitProposal(calls, bytes32(uint256(1))); // Invalid prevHash
     }
 
@@ -156,7 +156,7 @@ contract SignatureMultisigTest is Test {
 
         CrossChainCall[] memory calls = new CrossChainCall[](0);
 
-        vm.expectRevert(ISignatureMultisig.NoCallsInProposalException.selector);
+        vm.expectRevert(ICrossChainMultisig.NoCallsInProposalException.selector);
         multisig.submitProposal(calls, bytes32(0));
     }
 
@@ -218,7 +218,7 @@ contract SignatureMultisigTest is Test {
         bytes32 nonExistentHash = keccak256("non-existent");
         bytes memory signature = _signProposalHash(signer0PrivateKey, nonExistentHash);
 
-        vm.expectRevert(ISignatureMultisig.InvalidPrevHashException.selector);
+        vm.expectRevert(ICrossChainMultisig.InvalidPrevHashException.selector);
         multisig.signProposal(nonExistentHash, signature);
     }
 
@@ -239,7 +239,7 @@ contract SignatureMultisigTest is Test {
         multisig.signProposal(proposalHash, signature);
 
         // Try to sign again with same signer
-        vm.expectRevert(ISignatureMultisig.AlreadySignedException.selector);
+        vm.expectRevert(ICrossChainMultisig.AlreadySignedException.selector);
         multisig.signProposal(proposalHash, signature);
     }
 
@@ -259,7 +259,7 @@ contract SignatureMultisigTest is Test {
         uint256 nonSignerKey = 999;
         bytes memory signature = _signProposalHash(nonSignerKey, proposalHash);
 
-        vm.expectRevert(ISignatureMultisig.SignerDoesNotExistException.selector);
+        vm.expectRevert(ICrossChainMultisig.SignerDoesNotExistException.selector);
         multisig.signProposal(proposalHash, signature);
     }
 
@@ -272,7 +272,7 @@ contract SignatureMultisigTest is Test {
         calls[0] = CrossChainCall({
             chainId: 0,
             target: address(multisig),
-            callData: abi.encodeWithSelector(ISignatureMultisig.setConfirmationThreshold.selector, 3)
+            callData: abi.encodeWithSelector(ICrossChainMultisig.setConfirmationThreshold.selector, 3)
         });
 
         vm.prank(owner);
@@ -286,10 +286,10 @@ contract SignatureMultisigTest is Test {
         // Sign with second signer which should trigger execution
         // Check events emitted during execution
         vm.expectEmit(true, true, true, true);
-        emit ISignatureMultisig.ProposalSigned(proposalHash, vm.addr(signer1PrivateKey));
+        emit ICrossChainMultisig.ProposalSigned(proposalHash, vm.addr(signer1PrivateKey));
 
         vm.expectEmit(true, true, true, true);
-        emit ISignatureMultisig.ProposalExecuted(proposalHash);
+        emit ICrossChainMultisig.ProposalExecuted(proposalHash);
         bytes memory sig1 = _signProposalHash(signer1PrivateKey, proposalHash);
         multisig.signProposal(proposalHash, sig1);
 
@@ -304,7 +304,7 @@ contract SignatureMultisigTest is Test {
         calls[0] = CrossChainCall({chainId: 1, target: address(0x123), callData: hex"1234"});
 
         bytes32 invalidPrevHash = keccak256("invalid");
-        vm.expectRevert(ISignatureMultisig.InvalidPrevHashException.selector);
+        vm.expectRevert(ICrossChainMultisig.InvalidPrevHashException.selector);
         multisig.exposed_verifyProposal(calls, invalidPrevHash);
     }
 
@@ -312,7 +312,7 @@ contract SignatureMultisigTest is Test {
     function test_SM_13_VerifyProposalEmptyCalls() public {
         CrossChainCall[] memory calls = new CrossChainCall[](0);
 
-        vm.expectRevert(ISignatureMultisig.NoCallsInProposalException.selector);
+        vm.expectRevert(ICrossChainMultisig.NoCallsInProposalException.selector);
         multisig.exposed_verifyProposal(calls, bytes32(0));
     }
 
@@ -326,7 +326,7 @@ contract SignatureMultisigTest is Test {
             callData: hex"1234"
         });
 
-        vm.expectRevert(ISignatureMultisig.InconsistentSelfCallOnOtherChainException.selector);
+        vm.expectRevert(ICrossChainMultisig.InconsistentSelfCallOnOtherChainException.selector);
         multisig.exposed_verifyProposal(calls, bytes32(0));
     }
 
@@ -393,7 +393,7 @@ contract SignatureMultisigTest is Test {
         signatures[0] = _signProposalHash(signer0PrivateKey, proposalHash);
         signatures[1] = _signProposalHash(signer0PrivateKey, proposalHash);
 
-        vm.expectRevert(ISignatureMultisig.AlreadySignedException.selector);
+        vm.expectRevert(ICrossChainMultisig.AlreadySignedException.selector);
         multisig.exposed_verifySignatures(signatures, proposalHash);
     }
 

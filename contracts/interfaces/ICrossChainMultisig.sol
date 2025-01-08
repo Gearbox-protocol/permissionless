@@ -6,7 +6,7 @@ pragma solidity ^0.8.23;
 import {CrossChainCall, SignedProposal} from "./Types.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
-interface ISignatureMultisig is IVersion {
+interface ICrossChainMultisig is IVersion {
     //
     // Events
     //

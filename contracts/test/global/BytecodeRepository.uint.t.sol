@@ -33,7 +33,7 @@ contract BytecodeRepositoryTest is Test {
         author = vm.addr(authorPK);
 
         vm.startPrank(owner);
-        repository = new BytecodeRepository(address(this));
+        repository = new BytecodeRepository();
         repository.addAuditor(auditor, "Test Auditor");
         vm.stopPrank();
     }

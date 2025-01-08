@@ -12,7 +12,9 @@ import {
     AP_ADDRESS_PROVIDER,
     AP_INSTANCE_MANAGER_PROXY,
     AP_CROSS_CHAIN_GOVERNANCE_PROXY,
-    AP_TREASURY_PROXY
+    AP_TREASURY_PROXY,
+    AP_GEAR_TOKEN,
+    AP_WETH_TOKEN
 } from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {ProxyCall} from "../helpers/ProxyCall.sol";
@@ -29,9 +31,6 @@ contract InstanceManager is Ownable {
     address public instanceManagerProxy;
     address public treasuryProxy;
     address public crossChainGovernanceProxy;
-
-    address public marketConfiguratorFactory;
-    address public priceFeedStore;
 
     bool public isActivated;
 
@@ -55,7 +54,7 @@ contract InstanceManager is Ownable {
     }
 
     constructor(address _owner) {
-        bytecodeRepository = address(new BytecodeRepository(address(this)));
+        bytecodeRepository = address(new BytecodeRepository());
         addressProvider = address(new AddressProvider());
 
         IAddressProvider(addressProvider).setAddress(AP_BYTECODE_REPOSITORY, address(bytecodeRepository), true);
@@ -73,12 +72,13 @@ contract InstanceManager is Ownable {
         _transferOwnership(_owner);
     }
 
-    function activate(address _instanceOwner, address _treasury) external onlyOwner {
+    function activate(address _instanceOwner, address _treasury, address _weth, address _gear) external onlyOwner {
         if (!isActivated) {
-            _verifyCoreContractsDeploy();
             _transferOwnership(_instanceOwner);
 
             IAddressProvider(addressProvider).setAddress(AP_TREASURY, _treasury, false);
+            IAddressProvider(addressProvider).setAddress(AP_WETH_TOKEN, _weth, false);
+            IAddressProvider(addressProvider).setAddress(AP_GEAR_TOKEN, _gear, false);
             isActivated = true;
         }
     }
@@ -91,19 +91,19 @@ contract InstanceManager is Ownable {
         IAddressProvider(addressProvider).setAddress(_contractName, newSystemContract, true);
     }
 
-    function setAddress(string memory key, address addr, bool saveVersion) external onlyCrossChainGovernance {
-        IAddressProvider(addressProvider).setAddress(key, addr, saveVersion);
+    function setGlobalAddress(string memory key, address addr, bool saveVersion) external onlyCrossChainGovernance {
+        _setAddressWithPrefix(key, "GLOBAL_", addr, saveVersion);
     }
 
     function setLocalAddress(string memory key, address addr, bool saveVersion) external onlyOwner {
-        if (!key.startsWith("LOCAL_")) {
+        _setAddressWithPrefix(key, "LOCAL_", addr, saveVersion);
+    }
+
+    function _setAddressWithPrefix(string memory key, string memory prefix, address addr, bool saveVersion) internal {
+        if (!key.startsWith(prefix)) {
             revert InvalidKeyException(key);
         }
         IAddressProvider(addressProvider).setAddress(key, addr, saveVersion);
-    }
-
-    function _verifyCoreContractsDeploy() internal view {
-        // verify that all core contracts are deployed
     }
 
     function configureGlobal(address target, bytes calldata data) external onlyCrossChainGovernance {

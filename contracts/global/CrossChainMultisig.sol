@@ -7,21 +7,21 @@ import {LibString} from "@solady/utils/LibString.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {SignedProposal, CrossChainCall} from "../interfaces/ISignatureMultisig.sol";
+import {SignedProposal, CrossChainCall} from "../interfaces/ICrossChainMultisig.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 import {LibString} from "@solady/utils/LibString.sol";
 import {EIP712Mainnet} from "../helpers/EIP712Mainnet.sol";
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {ISignatureMultisig} from "../interfaces/ISignatureMultisig.sol";
+import {ICrossChainMultisig} from "../interfaces/ICrossChainMultisig.sol";
 
 import {AP_CHAIN_SIGNATURE_MULTISIG} from "../libraries/ContractLiterals.sol";
 
 // set FINANCIAL_MULTISIG to 0x3434343 on Chain X
-// Onchain mainnet governance -> SignatureMultisig.submitProposal()
+// Onchain mainnet governance -> CrossChainMultisig.submitProposal()
 
-contract SignatureMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ISignatureMultisig {
+contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossChainMultisig {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
     using LibString for bytes32;

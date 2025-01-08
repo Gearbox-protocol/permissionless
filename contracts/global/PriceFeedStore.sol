@@ -3,7 +3,6 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {SanityCheckTrait} from "@gearbox-protocol/core-v3/contracts/traits/SanityCheckTrait.sol";
@@ -14,8 +13,9 @@ import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import {AP_PRICE_FEED_STORE, AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {PriceFeedInfo} from "../interfaces/Types.sol";
+import {ImmutableOwnableTrait} from "../traits/ImmutableOwnableTrait.sol";
 
-contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, IPriceFeedStore {
+contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedValidationTrait, IPriceFeedStore {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     //
@@ -42,11 +42,11 @@ contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, 
     /// @notice Mapping from price feed address to its data
     mapping(address => PriceFeedInfo) public priceFeedInfo;
 
-    constructor(address _addressProvider) {
-        address instanceManager =
-            IAddressProvider(_addressProvider).getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL);
-        _transferOwnership(instanceManager);
-    }
+    constructor(address _addressProvider)
+        ImmutableOwnableTrait(
+            IAddressProvider(_addressProvider).getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL)
+        )
+    {}
 
     /// @notice Returns the list of price feeds available for a token
     function getPriceFeeds(address token) external view returns (address[] memory) {

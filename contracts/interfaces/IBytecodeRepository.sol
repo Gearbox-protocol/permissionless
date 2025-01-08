@@ -4,8 +4,9 @@
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {IImmutableOwnable} from "./IImmutableIOwnable.sol";
 
-interface IBytecodeRepository is IVersion {
+interface IBytecodeRepository is IVersion, IImmutableOwnable {
     //
     // ERRORS
     //
@@ -116,10 +117,13 @@ interface IBytecodeRepository is IVersion {
         external
         returns (address);
 
-    function computeAddress(bytes32 type_, uint256 version_, bytes memory constructorParams, bytes32 salt)
-        external
-        view
-        returns (address);
+    function computeAddress(
+        bytes32 type_,
+        uint256 version_,
+        bytes memory constructorParams,
+        bytes32 salt,
+        address deployer
+    ) external view returns (address);
 
     function getTokenSpecificPostfix(address token) external view returns (bytes32);
 
