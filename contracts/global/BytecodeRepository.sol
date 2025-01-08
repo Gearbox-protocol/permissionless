@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: BUSL-1.1
+    // SPDX-License-Identifier: BUSL-1.1
 // Gearbox Protocol. Generalized leverage for DeFi protocols
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.17;
@@ -291,68 +291,57 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
 
         emit BytecodeSigned(bytecodeHash, signer, reportUrl, signature);
 
-        _approveContract(bytecodeHash);
+        Bytecode storage _bytecode = _bytecodeByHash[bytecodeHash];
+
+        bytes32 _contractType = _bytecode.contractType;
+        address author = _bytecode.author;
+
+        bool isSystemContract = allowedSystemContracts[bytecodeHash];
+
+        address currentOwner = contractTypeOwner[_contractType];
+
+        if (currentOwner == address(0) || isSystemContract) {
+            contractTypeOwner[_contractType] = author;
+        } else if (isContractNameInPublicDomain(_contractType) && (currentOwner != author)) {
+            revert NotDomainOwnerException();
+        }
+
+        _approveContract(_contractType, _bytecode.version, bytecodeHash, author);
     }
 
     /// @notice Allows owner to mark contracts as system contracts
     /// @param bytecodeHash Hash of the _bytecode metadata to allow
     function allowSystemContract(bytes32 bytecodeHash) external onlyOwner {
         allowedSystemContracts[bytecodeHash] = true;
-        _approveContract(bytecodeHash);
+
+        if (isBytecodeUploaded(bytecodeHash) && isBytecodeAudited(bytecodeHash)) {
+            Bytecode storage _bytecode = _bytecodeByHash[bytecodeHash];
+            contractTypeOwner[_bytecode.contractType] = _bytecode.author;
+            _approveContract(_bytecode.contractType, _bytecode.version, bytecodeHash, _bytecode.author);
+        }
     }
 
     /// @notice Internal function to approve contract _bytecode
     /// @param bytecodeHash Hash of the _bytecode metadata to approve
-    function _approveContract(bytes32 bytecodeHash) internal {
-        if (!isBytecodeUploaded(bytecodeHash)) {
-            return;
-        }
+    function _approveContract(bytes32 _contractType, uint256 _version, bytes32 bytecodeHash, address author) internal {
+        if (approvedBytecodeHash[_contractType][_version] == 0) {
+            approvedBytecodeHash[_contractType][_version] = bytecodeHash;
 
-        Bytecode storage _bytecode = _bytecodeByHash[bytecodeHash];
+            uint256 majorVersion = (_version / 100) * 100;
+            uint256 minorVersion = ((_version / 10) % 10) * 10 + majorVersion;
 
-        bytes32 _contractType = _bytecode.contractType;
-
-        if (approvedBytecodeHash[_contractType][_bytecode.version] != 0) {
-            return;
-        }
-
-        address author = _bytecode.author;
-        if (allowedSystemContracts[bytecodeHash]) {
-            // System contracts could have any author if it signed by DAO
-            contractTypeOwner[_contractType] = author;
-        } else if (isContractNameInPublicDomain(_contractType)) {
-            // public domain => (domain, postfix) ownership
-            address currentOwner = contractTypeOwner[_contractType];
-
-            if (currentOwner == address(0)) {
-                contractTypeOwner[_contractType] = author;
-            } else if (currentOwner != author) {
-                revert NotDomainOwnerException();
+            if (latestVersion[_contractType] < _version) {
+                latestVersion[_contractType] = _version;
             }
-        } else {
-            revert NotAllowedSystemContractException(bytecodeHash);
+            if (latestMinorVersion[_contractType][majorVersion] < _version) {
+                latestMinorVersion[_contractType][majorVersion] = _version;
+            }
+            if (latestPatchVersion[_contractType][minorVersion] < _version) {
+                latestPatchVersion[_contractType][minorVersion] = _version;
+            }
+
+            emit ApproveContract(bytecodeHash, _contractType, _version);
         }
-
-        uint256 bytecodeVersion = _bytecode.version;
-
-        if (approvedBytecodeHash[_bytecode.contractType][bytecodeVersion] == 0) {
-            approvedBytecodeHash[_bytecode.contractType][bytecodeVersion] = bytecodeHash;
-
-            uint256 majorVersion = (bytecodeVersion / 100) * 100;
-            uint256 minorVersion = ((bytecodeVersion / 10) % 10) * 10 + majorVersion;
-
-            if (latestVersion[_bytecode.contractType] < bytecodeVersion) {
-                latestVersion[_bytecode.contractType] = bytecodeVersion;
-            }
-            if (latestMinorVersion[_bytecode.contractType][majorVersion] < bytecodeVersion) {
-                latestMinorVersion[_bytecode.contractType][majorVersion] = bytecodeVersion;
-            }
-            if (latestPatchVersion[_bytecode.contractType][minorVersion] < bytecodeVersion) {
-                latestPatchVersion[_bytecode.contractType][minorVersion] = bytecodeVersion;
-            }
-        }
-
-        emit ApproveContract(bytecodeHash, _contractType, _bytecode.version);
     }
 
     //
@@ -403,7 +392,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
             return;
         }
 
-        if (LibString.fromSmallString(domain).contains("_")) {
+        if (LibString.fromSmallString(domain).contains("::")) {
             return;
         }
 
