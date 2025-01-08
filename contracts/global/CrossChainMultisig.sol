@@ -16,7 +16,7 @@ import {EIP712Mainnet} from "../helpers/EIP712Mainnet.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {ICrossChainMultisig} from "../interfaces/ICrossChainMultisig.sol";
 
-import {AP_CHAIN_SIGNATURE_MULTISIG} from "../libraries/ContractLiterals.sol";
+import {AP_CROSS_CHAIN_MULTISIG} from "../libraries/ContractLiterals.sol";
 
 // set FINANCIAL_MULTISIG to 0x3434343 on Chain X
 // Onchain mainnet governance -> CrossChainMultisig.submitProposal()
@@ -30,7 +30,7 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
 
     /// @notice Meta info about contract type & version
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = AP_CHAIN_SIGNATURE_MULTISIG;
+    bytes32 public constant override contractType = AP_CROSS_CHAIN_MULTISIG;
 
     // EIP-712 type hash for Proposal only
     bytes32 public constant CROSS_CHAIN_CALL_TYPEHASH =
@@ -254,13 +254,16 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
             callsHash[i] = hashCrossChainCall(calls[i]);
         }
 
-        return
-            _hashTypedDataV4(keccak256(abi.encode(PROPOSAL_TYPEHASH, keccak256(abi.encodePacked(callsHash)), prevHash)));
+        return keccak256(abi.encode(PROPOSAL_TYPEHASH, keccak256(abi.encodePacked(callsHash)), prevHash));
     }
 
     //
     // GETTERS
     //
+    function getCurrentProposalHashes() external view returns (bytes32[] memory) {
+        return _connectedProposalHashes[lastProposalHash].values();
+    }
+
     function getCurrentProposals() external view returns (SignedProposal[] memory result) {
         uint256 len = _connectedProposalHashes[lastProposalHash].length();
         result = new SignedProposal[](len);

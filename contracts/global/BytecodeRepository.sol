@@ -60,8 +60,8 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     uint256 public constant override version = 3_10;
     bytes32 public constant override contractType = AP_BYTECODE_REPOSITORY;
 
-    bytes32 public constant BYTECODE_META_TYPEHASH =
-        keccak256("BytecodeMeta(bytes32 contractType,uint256 version,bytes initCode,address author,string source)");
+    bytes32 public constant BYTECODE_TYPEHASH =
+        keccak256("Bytecode(bytes32 contractType,uint256 version,bytes initCode,address author,string source)");
 
     bytes32 public constant _SIGNATURE_TYPEHASH = keccak256("SignBytecodeHash(bytes32 bytecodeHash,string reportUrl)");
 
@@ -70,7 +70,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     //
 
     // bytecodeHash =>  Bytecode
-    mapping(bytes32 => Bytecode) public bytecodeByHash;
+    mapping(bytes32 => Bytecode) internal _bytecodeByHash;
 
     // bytecodeHash => array of AuditorSignature
     mapping(bytes32 => AuditorSignature[]) internal _auditorSignaturesByHash;
@@ -109,7 +109,10 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     mapping(bytes32 => mapping(uint256 => uint256)) public latestMinorVersion;
     mapping(bytes32 => mapping(uint256 => uint256)) public latestPatchVersion;
 
-    constructor() EIP712Mainnet(contractType.fromSmallString(), version.toString()) ImmutableOwnableTrait(msg.sender) {}
+    constructor(address _owner)
+        EIP712Mainnet(contractType.fromSmallString(), version.toString())
+        ImmutableOwnableTrait(_owner)
+    {}
 
     /// @notice Computes a unique hash for _bytecode metadata
     /// @param _bytecode Bytecode metadata including contract type, version, _bytecode, author and source
@@ -117,12 +120,12 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     function computeBytecodeHash(Bytecode calldata _bytecode) public pure returns (bytes32) {
         return keccak256(
             abi.encode(
-                BYTECODE_META_TYPEHASH,
+                BYTECODE_TYPEHASH,
                 _bytecode.contractType,
                 _bytecode.version,
                 keccak256(_bytecode.initCode),
                 _bytecode.author,
-                _bytecode.source
+                keccak256(bytes(_bytecode.source))
             )
         );
     }
@@ -155,7 +158,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
             revert ContractNameVersionAlreadyExistsException();
         }
 
-        bytecodeByHash[bytecodeHash] = _bytecode;
+        _bytecodeByHash[bytecodeHash] = _bytecode;
 
         emit UploadBytecode(
             bytecodeHash,
@@ -186,7 +189,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
             revert BytecodeIsNotAuditedException();
         }
 
-        Bytecode storage _bytecode = bytecodeByHash[bytecodeHash];
+        Bytecode storage _bytecode = _bytecodeByHash[bytecodeHash];
 
         bytes memory initCode = _bytecode.initCode;
 
@@ -241,7 +244,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         if (bytecodeHash == 0) {
             revert BytecodeIsNotApprovedException(_contractType, _version);
         }
-        Bytecode storage _bytecode = bytecodeByHash[bytecodeHash];
+        Bytecode storage _bytecode = _bytecodeByHash[bytecodeHash];
 
         // Combine code + constructor params
         bytes memory bytecodeWithParams = abi.encodePacked(_bytecode.initCode, constructorParams);
@@ -305,7 +308,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
             return;
         }
 
-        Bytecode storage _bytecode = bytecodeByHash[bytecodeHash];
+        Bytecode storage _bytecode = _bytecodeByHash[bytecodeHash];
 
         bytes32 _contractType = _bytecode.contractType;
 
@@ -518,7 +521,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     // HELPERS
     //
     function isBytecodeUploaded(bytes32 bytecodeHash) public view returns (bool) {
-        return bytecodeByHash[bytecodeHash].author != address(0);
+        return _bytecodeByHash[bytecodeHash].author != address(0);
     }
 
     function revertIfInitCodeForbidden(bytes memory initCode) public view {
@@ -539,5 +542,9 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         }
 
         return false;
+    }
+
+    function bytecodeByHash(bytes32 bytecodeHash) external view returns (Bytecode memory) {
+        return _bytecodeByHash[bytecodeHash];
     }
 }

@@ -37,7 +37,7 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
 
     ContractKey[] internal contractKeys;
 
-    constructor() ImmutableOwnableTrait(msg.sender) {
+    constructor(address _owner) ImmutableOwnableTrait(_owner) {
         // The first event is emitted for the address provider itself to aid in contract discovery
         emit SetAddress(AP_ADDRESS_PROVIDER.fromSmallString(), version, address(this));
     }

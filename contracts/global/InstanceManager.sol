@@ -22,8 +22,12 @@ import {LibString} from "@solady/utils/LibString.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {AddressProvider} from "./AddressProvider.sol";
 
-contract InstanceManager is Ownable {
+contract InstanceManager is Ownable, IVersion {
     using LibString for string;
+
+    /// @notice Meta info about contract type & version
+    uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = AP_INSTANCE_MANAGER;
 
     address public immutable addressProvider;
     address public immutable bytecodeRepository;
@@ -54,20 +58,19 @@ contract InstanceManager is Ownable {
     }
 
     constructor(address _owner) {
-        bytecodeRepository = address(new BytecodeRepository());
-        addressProvider = address(new AddressProvider());
-
-        IAddressProvider(addressProvider).setAddress(AP_BYTECODE_REPOSITORY, address(bytecodeRepository), true);
-        IAddressProvider(addressProvider).setAddress(AP_INSTANCE_MANAGER, address(this), true);
-        IAddressProvider(addressProvider).setAddress(AP_CROSS_CHAIN_GOVERNANCE, _owner, false);
-
         instanceManagerProxy = address(new ProxyCall());
         treasuryProxy = address(new ProxyCall());
         crossChainGovernanceProxy = address(new ProxyCall());
 
-        IAddressProvider(addressProvider).setAddress(AP_INSTANCE_MANAGER_PROXY, instanceManagerProxy, false);
-        IAddressProvider(addressProvider).setAddress(AP_TREASURY_PROXY, treasuryProxy, false);
-        IAddressProvider(addressProvider).setAddress(AP_CROSS_CHAIN_GOVERNANCE_PROXY, crossChainGovernanceProxy, false);
+        bytecodeRepository = address(new BytecodeRepository(crossChainGovernanceProxy));
+        addressProvider = address(new AddressProvider(crossChainGovernanceProxy));
+
+        _setAddress(AP_BYTECODE_REPOSITORY, address(bytecodeRepository), true);
+        _setAddress(AP_CROSS_CHAIN_GOVERNANCE, _owner, false);
+
+        _setAddress(AP_INSTANCE_MANAGER_PROXY, instanceManagerProxy, false);
+        _setAddress(AP_TREASURY_PROXY, treasuryProxy, false);
+        _setAddress(AP_CROSS_CHAIN_GOVERNANCE_PROXY, crossChainGovernanceProxy, false);
 
         _transferOwnership(_owner);
     }
@@ -76,9 +79,10 @@ contract InstanceManager is Ownable {
         if (!isActivated) {
             _transferOwnership(_instanceOwner);
 
-            IAddressProvider(addressProvider).setAddress(AP_TREASURY, _treasury, false);
-            IAddressProvider(addressProvider).setAddress(AP_WETH_TOKEN, _weth, false);
-            IAddressProvider(addressProvider).setAddress(AP_GEAR_TOKEN, _gear, false);
+            _setAddress(AP_INSTANCE_MANAGER, address(this), true);
+            _setAddress(AP_TREASURY, _treasury, false);
+            _setAddress(AP_WETH_TOKEN, _weth, false);
+            _setAddress(AP_GEAR_TOKEN, _gear, false);
             isActivated = true;
         }
     }
@@ -88,7 +92,7 @@ contract InstanceManager is Ownable {
         // set address in address provider
         address newSystemContract =
             BytecodeRepository(bytecodeRepository).deploy(_contractName, _version, abi.encode(addressProvider), 0);
-        IAddressProvider(addressProvider).setAddress(_contractName, newSystemContract, true);
+        _setAddress(_contractName, newSystemContract, true);
     }
 
     function setGlobalAddress(string memory key, address addr, bool saveVersion) external onlyCrossChainGovernance {
@@ -107,6 +111,10 @@ contract InstanceManager is Ownable {
     }
 
     function configureGlobal(address target, bytes calldata data) external onlyCrossChainGovernance {
+        _configureGlobal(target, data);
+    }
+
+    function _configureGlobal(address target, bytes memory data) internal {
         ProxyCall(crossChainGovernanceProxy).proxyCall(target, data);
     }
 
@@ -116,5 +124,11 @@ contract InstanceManager is Ownable {
 
     function configureTreasury(address target, bytes calldata data) external onlyTreasury {
         ProxyCall(treasuryProxy).proxyCall(target, data);
+    }
+
+    function _setAddress(bytes32 key, address value, bool saveVersion) internal {
+        _configureGlobal(
+            addressProvider, abi.encodeWithSignature("setAddress(bytes32,address,bool)", key, value, saveVersion)
+        );
     }
 }

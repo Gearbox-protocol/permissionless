@@ -5,6 +5,7 @@ pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {IImmutableOwnable} from "./IImmutableIOwnable.sol";
+import {Bytecode, AuditorSignature} from "./Types.sol";
 
 interface IBytecodeRepository is IVersion, IImmutableOwnable {
     //
@@ -132,4 +133,96 @@ interface IBytecodeRepository is IVersion, IImmutableOwnable {
     function getLatestMinorVersion(bytes32 type_, uint256 majorVersion) external view returns (uint256);
 
     function getLatestPatchVersion(bytes32 type_, uint256 minorVersion) external view returns (uint256);
+
+    /// @notice Computes a unique hash for bytecode metadata
+    function computeBytecodeHash(Bytecode calldata bytecode) external pure returns (bytes32);
+
+    /// @notice Uploads new bytecode to the repository
+    function uploadBytecode(Bytecode calldata bytecode) external;
+
+    /// @notice Allows auditors to sign bytecode metadata
+    function signBytecodeHash(bytes32 bytecodeHash, string calldata reportUrl, bytes memory signature) external;
+
+    /// @notice Allows owner to mark contracts as system contracts
+    function allowSystemContract(bytes32 bytecodeHash) external;
+
+    /// @notice Adds a new auditor
+    function addAuditor(address auditor, string memory name) external;
+
+    /// @notice Removes an auditor
+    function removeAuditor(address auditor) external;
+
+    /// @notice Checks if an address is an approved auditor
+    function isAuditor(address auditor) external view returns (bool);
+
+    /// @notice Returns list of all approved auditors
+    function getAuditors() external view returns (address[] memory);
+
+    /// @notice Adds a new public domain
+    function addPublicDomain(bytes32 domain) external;
+
+    /// @notice Removes a public domain
+    function removePublicDomain(bytes32 domain) external;
+
+    /// @notice Marks initCode as forbidden
+    function forbidInitCode(bytes32 initCodeHash) external;
+
+    /// @notice Sets token-specific postfix
+    function setTokenSpecificPostfix(address token, bytes32 postfix) external;
+
+    /// @notice Removes contract type owner
+    function removeContractTypeOwner(bytes32 contractType) external;
+
+    /// @notice Revokes approval for a specific bytecode
+    function revokeApproval(bytes32 contractType, uint256 version, bytes32 bytecodeHash) external;
+
+    /// @notice Checks if a contract name belongs to public domain
+    function isContractNameInPublicDomain(bytes32 contractType) external view returns (bool);
+
+    /// @notice Checks if a domain is public
+    function isPublicDomain(bytes32 domain) external view returns (bool);
+
+    /// @notice Returns list of all public domains
+    function listPublicDomains() external view returns (bytes32[] memory);
+
+    /// @notice Gets bytecode metadata by hash
+    function bytecodeByHash(bytes32 hash) external view returns (Bytecode memory);
+
+    /// @notice Gets approved bytecode hash for contract type and version
+    function approvedBytecodeHash(bytes32 contractType, uint256 version) external view returns (bytes32);
+
+    /// @notice Gets deployed contract's bytecode hash
+    function deployedContracts(address contractAddress) external view returns (bytes32);
+
+    /// @notice Checks if initCode is forbidden
+    function forbiddenInitCode(bytes32 initCodeHash) external view returns (bool);
+
+    /// @notice Checks if contract is allowed as system contract
+    function allowedSystemContracts(bytes32 bytecodeHash) external view returns (bool);
+
+    /// @notice Gets contract type owner
+    function contractTypeOwner(bytes32 contractType) external view returns (address);
+
+    /// @notice Gets auditor name
+    function auditorName(address auditor) external view returns (string memory);
+
+    /// @notice Gets auditor signatures for a bytecode hash
+    function auditorSignaturesByHash(bytes32 bytecodeHash) external view returns (AuditorSignature[] memory);
+
+    /// @notice Gets specific auditor signature for a bytecode hash
+    function auditorSignaturesByHash(bytes32 bytecodeHash, uint256 index)
+        external
+        view
+        returns (AuditorSignature memory);
+
+    /// @notice Checks if bytecode is uploaded
+    function isBytecodeUploaded(bytes32 bytecodeHash) external view returns (bool);
+
+    /// @notice Checks if initCode is forbidden and reverts if it is
+    function revertIfInitCodeForbidden(bytes memory initCode) external view;
+
+    /// @notice Checks if bytecode is audited
+    function isBytecodeAudited(bytes32 bytecodeHash) external view returns (bool);
+
+    function BYTECODE_TYPEHASH() external view returns (bytes32);
 }
