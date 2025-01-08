@@ -9,8 +9,26 @@ import {InstanceManager} from "../../global/InstanceManager.sol";
 import {PriceFeedStore} from "../../global/PriceFeedStore.sol";
 import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
 
-import {AP_PRICE_FEED_STORE} from "../../libraries/ContractLiterals.sol";
+import {
+    AP_PRICE_FEED_STORE,
+    AP_INTEREST_RATE_MODEL_FACTORY,
+    AP_CREDIT_FACTORY,
+    AP_POOL_FACTORY,
+    AP_PRICE_ORACLE_FACTORY,
+    AP_RATE_KEEPER_FACTORY,
+    AP_MARKET_CONFIGURATOR_FACTORY,
+    AP_GOVERNOR
+} from "../../libraries/ContractLiterals.sol";
 import {SignedProposal, Bytecode} from "../../interfaces/Types.sol";
+
+import {CreditFactory} from "../../factories/CreditFactory.sol";
+import {InterestRateModelFactory} from "../../factories/InterestRateModelFactory.sol";
+import {LossPolicyFactory} from "../../factories/LossPolicyFactory.sol";
+import {PoolFactory} from "../../factories/PoolFactory.sol";
+import {PriceOracleFactory} from "../../factories/PriceOracleFactory.sol";
+import {RateKeeperFactory} from "../../factories/RateKeeperFactory.sol";
+import {MarketConfiguratorFactory} from "../../global/MarketConfiguratorFactory.sol";
+import {Governor} from "../../governor/Governor.sol";
 
 contract NewChainDeploySuite is Test {
     // Test accounts
@@ -28,6 +46,8 @@ contract NewChainDeploySuite is Test {
     CrossChainMultisig internal multisig;
     InstanceManager internal instanceManager;
     address internal bytecodeRepository;
+
+    bytes32 prevProposalHash = 0;
 
     function setUp() public {
         // simulate chainId 1
@@ -63,9 +83,9 @@ contract NewChainDeploySuite is Test {
         // Add initial auditor\
     }
 
-    function _submitProposal(CrossChainCall[] memory calls, bytes32 prevProposal) internal {
+    function _submitProposal(CrossChainCall[] memory calls) internal {
         vm.startPrank(dao);
-        multisig.submitProposal(calls, prevProposal);
+        multisig.submitProposal(calls, prevProposalHash);
         vm.stopPrank();
     }
 
@@ -84,11 +104,24 @@ contract NewChainDeploySuite is Test {
         bytes memory signature2 =
             _sign(signer2Key, keccak256(abi.encodePacked("\x19\x01", _ccmDomainSeparator(), proposalHash)));
         multisig.signProposal(proposalHash, signature2);
+
+        prevProposalHash = proposalHash;
+    }
+
+    function _submitProposalAndSign(CrossChainCall[] memory calls) internal {
+        _submitProposal(calls);
+        _signCurrentProposal();
     }
 
     function _generateAddAuditorCall(address _auditor, string memory _name) internal returns (CrossChainCall memory) {
         return _buildCrossChainCallDAO(
             bytecodeRepository, abi.encodeCall(IBytecodeRepository.addAuditor, (_auditor, _name))
+        );
+    }
+
+    function _generateAllowSystemContractCall(bytes32 _bytecodeHash) internal returns (CrossChainCall memory) {
+        return _buildCrossChainCallDAO(
+            bytecodeRepository, abi.encodeCall(IBytecodeRepository.allowSystemContract, (_bytecodeHash))
         );
     }
 
@@ -197,12 +230,58 @@ contract NewChainDeploySuite is Test {
         return abi.encodePacked(r, s, v);
     }
 
+    struct SystemContract {
+        bytes initCode;
+        bytes32 contractType;
+        uint256 version;
+    }
+
     function test_NCD() public {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
-        _submitProposal(calls, 0);
-        _signCurrentProposal();
+        _submitProposalAndSign(calls);
 
-        _uploadByteCodeAndSign(type(PriceFeedStore).creationCode, AP_PRICE_FEED_STORE, 3_10);
+        SystemContract[8] memory systemContracts = [
+            SystemContract({initCode: type(CreditFactory).creationCode, contractType: AP_CREDIT_FACTORY, version: 3_10}),
+            SystemContract({
+                initCode: type(InterestRateModelFactory).creationCode,
+                contractType: AP_INTEREST_RATE_MODEL_FACTORY,
+                version: 3_10
+            }),
+            SystemContract({
+                initCode: type(LossPolicyFactory).creationCode,
+                contractType: AP_PRICE_FEED_STORE,
+                version: 3_10
+            }),
+            SystemContract({initCode: type(PoolFactory).creationCode, contractType: AP_POOL_FACTORY, version: 3_10}),
+            SystemContract({
+                initCode: type(PriceOracleFactory).creationCode,
+                contractType: AP_PRICE_ORACLE_FACTORY,
+                version: 3_10
+            }),
+            SystemContract({
+                initCode: type(RateKeeperFactory).creationCode,
+                contractType: AP_RATE_KEEPER_FACTORY,
+                version: 3_10
+            }),
+            SystemContract({
+                initCode: type(MarketConfiguratorFactory).creationCode,
+                contractType: AP_MARKET_CONFIGURATOR_FACTORY,
+                version: 3_10
+            }),
+            SystemContract({initCode: type(Governor).creationCode, contractType: AP_GOVERNOR, version: 3_10})
+        ];
+
+        uint256 len = systemContracts.length;
+
+        calls = new CrossChainCall[](len);
+        for (uint256 i = 0; i < len; i++) {
+            bytes32 bytecodeHash = _uploadByteCodeAndSign(
+                systemContracts[i].initCode, systemContracts[i].contractType, systemContracts[i].version
+            );
+            calls[i] = _generateAllowSystemContractCall(bytecodeHash);
+        }
+
+        _submitProposalAndSign(calls);
     }
 }

@@ -3,8 +3,10 @@
 // (c) Gearbox Foundation, 2023.
 pragma solidity ^0.8.0;
 
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+
 /// @title Governor interface
-interface IGovernor {
+interface IGovernor is IVersion {
     // ----- //
     // TYPES //
     // ----- //

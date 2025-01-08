@@ -299,14 +299,17 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         bool isSystemContract = allowedSystemContracts[bytecodeHash];
 
         address currentOwner = contractTypeOwner[_contractType];
+        bool isPublicDomain = isContractNameInPublicDomain(_contractType);
 
         if (currentOwner == address(0) || isSystemContract) {
             contractTypeOwner[_contractType] = author;
-        } else if (isContractNameInPublicDomain(_contractType) && (currentOwner != author)) {
+        } else if (isPublicDomain && (currentOwner != author)) {
             revert NotDomainOwnerException();
         }
 
-        _approveContract(_contractType, _bytecode.version, bytecodeHash, author);
+        if (isSystemContract || isPublicDomain) {
+            _approveContract(_contractType, _bytecode.version, bytecodeHash, author);
+        }
     }
 
     /// @notice Allows owner to mark contracts as system contracts
