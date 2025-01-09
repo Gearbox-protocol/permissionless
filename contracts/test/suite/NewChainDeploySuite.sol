@@ -8,6 +8,8 @@ import {CrossChainMultisig, CrossChainCall} from "../../global/CrossChainMultisi
 import {InstanceManager} from "../../global/InstanceManager.sol";
 import {PriceFeedStore} from "../../global/PriceFeedStore.sol";
 import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
+import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
+import {IInstanceManager} from "../../interfaces/IInstanceManager.sol";
 
 import {
     AP_PRICE_FEED_STORE,
@@ -17,7 +19,13 @@ import {
     AP_PRICE_ORACLE_FACTORY,
     AP_RATE_KEEPER_FACTORY,
     AP_MARKET_CONFIGURATOR_FACTORY,
-    AP_GOVERNOR
+    AP_GOVERNOR,
+    AP_POOL,
+    AP_POOL_QUOTA_KEEPER,
+    AP_PRICE_ORACLE,
+    AP_MARKET_CONFIGURATOR,
+    AP_ACL,
+    AP_CONTRACTS_REGISTER
 } from "../../libraries/ContractLiterals.sol";
 import {SignedProposal, Bytecode} from "../../interfaces/Types.sol";
 
@@ -30,6 +38,14 @@ import {RateKeeperFactory} from "../../factories/RateKeeperFactory.sol";
 import {MarketConfiguratorFactory} from "../../global/MarketConfiguratorFactory.sol";
 import {Governor} from "../../governor/Governor.sol";
 
+import {MarketConfigurator} from "../../market/MarketConfigurator.sol";
+import {ACL} from "../../market/ACL.sol";
+import {ContractsRegister} from "../../market/ContractsRegister.sol";
+
+import {PoolV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolV3.sol";
+import {PoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolQuotaKeeperV3.sol";
+import {PriceOracleV3} from "@gearbox-protocol/core-v3/contracts/core/PriceOracleV3.sol";
+
 contract NewChainDeploySuite is Test {
     // Test accounts
     uint256 internal signer1Key;
@@ -41,6 +57,8 @@ contract NewChainDeploySuite is Test {
     address internal signer2;
     address internal auditor;
     address internal dao;
+
+    address internal riskCurator;
 
     address internal instanceOwner;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -68,6 +86,7 @@ contract NewChainDeploySuite is Test {
         signer2 = vm.addr(signer2Key);
         auditor = vm.addr(auditorKey);
         author = vm.addr(authorKey);
+        riskCurator = vm.addr(_generatePrivateKey("RISK_CURATOR"));
 
         instanceOwner = vm.addr(_generatePrivateKey("INSTANCE_OWNER"));
 
@@ -132,6 +151,17 @@ contract NewChainDeploySuite is Test {
         return _buildCrossChainCallDAO(
             bytecodeRepository, abi.encodeCall(IBytecodeRepository.allowSystemContract, (_bytecodeHash))
         );
+    }
+
+    function _generateDeploySystemContractCall(bytes32 _contractName, uint256 _version)
+        internal
+        returns (CrossChainCall memory)
+    {
+        return CrossChainCall({
+            chainId: 0,
+            target: address(instanceManager),
+            callData: abi.encodeCall(InstanceManager.deploySystemContract, (_contractName, _version))
+        });
     }
 
     function _uploadByteCode(bytes memory _initCode, bytes32 _contractName, uint256 _version)
@@ -245,12 +275,17 @@ contract NewChainDeploySuite is Test {
         uint256 version;
     }
 
+    struct DeploySystemContractCall {
+        bytes32 contractType;
+        uint256 version;
+    }
+
     function test_NCD() public {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
         _submitProposalAndSign(calls);
 
-        SystemContract[8] memory systemContracts = [
+        SystemContract[14] memory systemContracts = [
             SystemContract({initCode: type(CreditFactory).creationCode, contractType: AP_CREDIT_FACTORY, version: 3_10}),
             SystemContract({
                 initCode: type(InterestRateModelFactory).creationCode,
@@ -278,12 +313,35 @@ contract NewChainDeploySuite is Test {
                 contractType: AP_MARKET_CONFIGURATOR_FACTORY,
                 version: 3_10
             }),
-            SystemContract({initCode: type(Governor).creationCode, contractType: AP_GOVERNOR, version: 3_10})
+            SystemContract({initCode: type(Governor).creationCode, contractType: AP_GOVERNOR, version: 3_10}),
+            SystemContract({initCode: type(PoolV3).creationCode, contractType: AP_POOL, version: 3_10}),
+            SystemContract({
+                initCode: type(PoolQuotaKeeperV3).creationCode,
+                contractType: AP_POOL_QUOTA_KEEPER,
+                version: 3_10
+            }),
+            SystemContract({initCode: type(PriceOracleV3).creationCode, contractType: AP_PRICE_ORACLE, version: 3_10}),
+            SystemContract({
+                initCode: type(MarketConfigurator).creationCode,
+                contractType: AP_MARKET_CONFIGURATOR,
+                version: 3_10
+            }),
+            SystemContract({initCode: type(ACL).creationCode, contractType: AP_ACL, version: 3_10}),
+            SystemContract({
+                initCode: type(ContractsRegister).creationCode,
+                contractType: AP_CONTRACTS_REGISTER,
+                version: 3_10
+            })
         ];
 
         uint256 len = systemContracts.length;
 
-        calls = new CrossChainCall[](len);
+        DeploySystemContractCall[1] memory deployCalls =
+            [DeploySystemContractCall({contractType: AP_MARKET_CONFIGURATOR_FACTORY, version: 3_10})];
+
+        uint256 deployCallsLen = deployCalls.length;
+
+        calls = new CrossChainCall[](len + deployCallsLen);
         for (uint256 i = 0; i < len; i++) {
             bytes32 bytecodeHash = _uploadByteCodeAndSign(
                 systemContracts[i].initCode, systemContracts[i].contractType, systemContracts[i].version
@@ -291,6 +349,17 @@ contract NewChainDeploySuite is Test {
             calls[i] = _generateAllowSystemContractCall(bytecodeHash);
         }
 
+        for (uint256 i = 0; i < deployCallsLen; i++) {
+            calls[len + i] = _generateDeploySystemContractCall(deployCalls[i].contractType, deployCalls[i].version);
+        }
+
         _submitProposalAndSign(calls);
+        address ap = instanceManager.addressProvider();
+
+        address mcf = IAddressProvider(ap).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, 3_10);
+
+        vm.startPrank(riskCurator);
+        MarketConfiguratorFactory(mcf).createMarketConfigurator("Test Market Configurator");
+        vm.stopPrank();
     }
 }

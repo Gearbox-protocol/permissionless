@@ -44,7 +44,7 @@ contract InstanceManager is Ownable, IVersion {
         require(
             msg.sender
                 == IAddressProvider(addressProvider).getAddressOrRevert(AP_CROSS_CHAIN_GOVERNANCE, NO_VERSION_CONTROL),
-            "Only financial multisig can call this function"
+            "Only cross chain governance can call this function"
         );
         _;
     }
@@ -65,7 +65,7 @@ contract InstanceManager is Ownable, IVersion {
         bytecodeRepository = address(new BytecodeRepository(crossChainGovernanceProxy));
         addressProvider = address(new AddressProvider(address(this)));
 
-        _setAddress(AP_BYTECODE_REPOSITORY, address(bytecodeRepository), true);
+        _setAddress(AP_BYTECODE_REPOSITORY, address(bytecodeRepository), false);
         _setAddress(AP_CROSS_CHAIN_GOVERNANCE, _owner, false);
 
         _setAddress(AP_INSTANCE_MANAGER_PROXY, instanceManagerProxy, false);
@@ -90,9 +90,21 @@ contract InstanceManager is Ownable, IVersion {
     function deploySystemContract(bytes32 _contractName, uint256 _version) external onlyCrossChainGovernance {
         // deploy contract
         // set address in address provider
-        address newSystemContract =
-            BytecodeRepository(bytecodeRepository).deploy(_contractName, _version, abi.encode(addressProvider), 0);
+
+        address newSystemContract = _deploySystemContract(_contractName, _version);
         _setAddress(_contractName, newSystemContract, true);
+    }
+
+    function _deploySystemContract(bytes32 _contractName, uint256 _version) internal returns (address) {
+        // TODO: Check that code is not forbidden and audited - otherwise skip
+        try ProxyCall(crossChainGovernanceProxy).proxyCall(
+            address(bytecodeRepository),
+            abi.encodeCall(BytecodeRepository.deploy, (_contractName, _version, abi.encode(addressProvider), 0))
+        ) returns (bool success, bytes memory result) {
+            return abi.decode(result, (address));
+        } catch {
+            return address(0);
+        }
     }
 
     function setGlobalAddress(string memory key, address addr, bool saveVersion) external onlyCrossChainGovernance {
