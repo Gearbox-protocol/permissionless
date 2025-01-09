@@ -63,7 +63,7 @@ contract InstanceManager is Ownable, IVersion {
         crossChainGovernanceProxy = address(new ProxyCall());
 
         bytecodeRepository = address(new BytecodeRepository(crossChainGovernanceProxy));
-        addressProvider = address(new AddressProvider(crossChainGovernanceProxy));
+        addressProvider = address(new AddressProvider(address(this)));
 
         _setAddress(AP_BYTECODE_REPOSITORY, address(bytecodeRepository), true);
         _setAddress(AP_CROSS_CHAIN_GOVERNANCE, _owner, false);
@@ -127,8 +127,6 @@ contract InstanceManager is Ownable, IVersion {
     }
 
     function _setAddress(bytes32 key, address value, bool saveVersion) internal {
-        _configureGlobal(
-            addressProvider, abi.encodeWithSignature("setAddress(bytes32,address,bool)", key, value, saveVersion)
-        );
+        IAddressProvider(addressProvider).setAddress(key, value, saveVersion);
     }
 }

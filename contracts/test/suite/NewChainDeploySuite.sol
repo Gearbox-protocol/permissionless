@@ -42,6 +42,10 @@ contract NewChainDeploySuite is Test {
     address internal auditor;
     address internal dao;
 
+    address internal instanceOwner;
+    address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address constant GEAR = 0xBa3335588D9403515223F109EdC4eB7269a9Ab5D;
+
     // Core contracts
     CrossChainMultisig internal multisig;
     InstanceManager internal instanceManager;
@@ -51,7 +55,9 @@ contract NewChainDeploySuite is Test {
 
     function setUp() public {
         // simulate chainId 1
-        vm.chainId(1);
+        if (block.chainid != 1) {
+            vm.chainId(1);
+        }
 
         // Generate random private keys and derive addresses
         signer1Key = _generatePrivateKey("SIGNER_1");
@@ -62,6 +68,9 @@ contract NewChainDeploySuite is Test {
         signer2 = vm.addr(signer2Key);
         auditor = vm.addr(auditorKey);
         author = vm.addr(authorKey);
+
+        instanceOwner = vm.addr(_generatePrivateKey("INSTANCE_OWNER"));
+
         // Deploy initial contracts
         address[] memory initialSigners = new address[](2);
         initialSigners[0] = signer1;
