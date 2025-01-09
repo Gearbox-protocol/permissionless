@@ -6,13 +6,19 @@ pragma solidity ^0.8.17;
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IGovernor} from "../interfaces/IGovernor.sol";
 import {ITimeLock} from "../interfaces/ITimeLock.sol";
+import {AP_GOVERNOR} from "../libraries/ContractLiterals.sol";
 
 /// @title Governor
 /// @notice Extends Uniswap's timelock contract with batch queueing/execution and reworked permissions model where,
 ///         instead of a single admin to perform all actions, there are multiple queue admins, a single veto admin,
 ///         and permissionless execution (which can optionally be restricted to non-contract accounts to prevent
 ///         unintended execution of governance proposals inside protocol functions)
+
 contract Governor is IGovernor {
+    /// @notice Contract version
+    uint256 public constant override version = 3_10;
+    bytes32 public constant override contractType = AP_GOVERNOR;
+
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @inheritdoc IGovernor

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.23;
 
-import {SignatureMultisig} from "../../global/SignatureMultisig.sol";
-import {CrossChainCall} from "../../interfaces/ISignatureMultisig.sol";
+import {CrossChainMultisig} from "../../global/CrossChainMultisig.sol";
+import {CrossChainCall} from "../../interfaces/ICrossChainMultisig.sol";
 
-contract SignatureMultisigHarness is SignatureMultisig {
+contract CrossChainMultisigHarness is CrossChainMultisig {
     constructor(address[] memory initialSigners, uint8 _confirmationThreshold, address _owner)
-        SignatureMultisig(initialSigners, _confirmationThreshold, _owner)
+        CrossChainMultisig(initialSigners, _confirmationThreshold, _owner)
     {}
 
     // Expose internal functions for testing

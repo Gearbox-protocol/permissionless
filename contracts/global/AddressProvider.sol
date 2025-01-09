@@ -3,7 +3,6 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {LibString} from "@solady/utils/LibString.sol";
@@ -13,6 +12,7 @@ import {AddressNotFoundException} from "@gearbox-protocol/core-v3/contracts/inte
 
 import {IAddressProvider, ContractValue} from "../interfaces/IAddressProvider.sol";
 import {AP_ADDRESS_PROVIDER, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
+import {ImmutableOwnableTrait} from "../traits/ImmutableOwnableTrait.sol";
 
 struct ContractKey {
     string key;
@@ -21,7 +21,7 @@ struct ContractKey {
 
 /// @title Address provider V3
 /// @notice Stores addresses of important contracts
-contract AddressProvider is Ownable2Step, IAddressProvider {
+contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
     using EnumerableSet for EnumerableSet.AddressSet;
     // using LibString for string;
     using LibString for bytes32;
@@ -37,13 +37,9 @@ contract AddressProvider is Ownable2Step, IAddressProvider {
 
     ContractKey[] internal contractKeys;
 
-    constructor() {
+    constructor(address _owner) ImmutableOwnableTrait(_owner) {
         // The first event is emitted for the address provider itself to aid in contract discovery
         emit SetAddress(AP_ADDRESS_PROVIDER.fromSmallString(), version, address(this));
-    }
-
-    function owner() public view override(Ownable, IAddressProvider) returns (address) {
-        return Ownable.owner();
     }
 
     /// @notice Returns the address of a contract with a given key and version
