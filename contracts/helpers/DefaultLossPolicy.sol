@@ -7,7 +7,7 @@ import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol"
 
 contract DefaultLossPolicy is ACLTrait {
     uint256 public constant version = 3_10;
-    bytes32 public constant contractType = "LOSS_POLICY_DEFAULT";
+    bytes32 public constant contractType = "LOSS_POLICY::DEFAULT";
 
     bool public enabled;
 

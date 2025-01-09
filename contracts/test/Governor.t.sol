@@ -5,7 +5,7 @@ pragma solidity ^0.8.22;
 
 import {Test} from "forge-std/Test.sol";
 
-import {Governor} from "../governor/Governor.sol";
+import {Governor} from "../market/Governor.sol";
 
 import {IGovernor} from "../interfaces/IGovernor.sol";
 import {ITimeLock} from "../interfaces/ITimeLock.sol";

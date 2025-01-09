@@ -41,7 +41,6 @@ interface IMarketConfigurator is IVersion {
     function emergencyAdmin() external view returns (address);
 
     function addressProvider() external view returns (address);
-    function marketConfiguratorFactory() external view returns (address);
     function acl() external view returns (address);
     function contractsRegister() external view returns (address);
     function treasury() external view returns (address);

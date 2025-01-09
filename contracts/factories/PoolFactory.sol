@@ -29,7 +29,6 @@ import {AbstractFactory} from "./AbstractFactory.sol";
 import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
 interface IConfigureActions {
-    function setWithdrawFee(uint256 fee) external;
     function setTotalDebtLimit(uint256 limit) external;
     function setCreditManagerDebtLimit(address creditManager, uint256 limit) external;
     function setTokenLimit(address token, uint96 limit) external;
@@ -110,9 +109,9 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         external
         view
         override(AbstractMarketFactory, IMarketFactory)
-        returns (Call[] memory calls)
+        returns (Call[] memory)
     {
-        calls = CallBuilder.build(
+        return CallBuilder.build(
             _setInterestRateModel(pool, interestRateModel), _setRateKeeper(_quotaKeeper(pool), rateKeeper)
         );
     }
@@ -121,13 +120,13 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         external
         view
         override(AbstractMarketFactory, IMarketFactory)
-        returns (Call[] memory calls)
+        returns (Call[] memory)
     {
         if (IPoolV3(pool).totalBorrowed() != 0) {
             revert CantShutdownMarketWithNonZeroDebtException(pool);
         }
 
-        calls = CallBuilder.build(_setTotalDebtLimit(pool, 0), _setWithdrawFee(pool, 0));
+        return CallBuilder.build(_setTotalDebtLimit(pool, 0));
     }
 
     function onCreateCreditSuite(address creditManager)
@@ -188,8 +187,7 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     {
         bytes4 selector = bytes4(callData);
         if (
-            selector == IConfigureActions.setWithdrawFee.selector
-                || selector == IConfigureActions.setTotalDebtLimit.selector
+            selector == IConfigureActions.setTotalDebtLimit.selector
                 || selector == IConfigureActions.setCreditManagerDebtLimit.selector
                 || selector == IConfigureActions.pause.selector || selector == IConfigureActions.unpause.selector
         ) {
@@ -279,10 +277,6 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         returns (Call memory)
     {
         return Call(pool, abi.encodeCall(IPoolV3.setCreditManagerDebtLimit, (creditManager, limit)));
-    }
-
-    function _setWithdrawFee(address pool, uint256 fee) internal pure returns (Call memory) {
-        return Call(pool, abi.encodeCall(IPoolV3.setWithdrawFee, (fee)));
     }
 
     function _setRateKeeper(address quotaKeeper, address rateKeeper) internal pure returns (Call memory) {

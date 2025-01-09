@@ -7,7 +7,7 @@ import {IInterestRateModel} from "@gearbox-protocol/core-v3/contracts/interfaces
 
 contract DefaultIRM is IInterestRateModel {
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = "IRM_DEFAULT";
+    bytes32 public constant override contractType = "IRM::DEFAULT";
 
     function calcBorrowRate(uint256, uint256, bool) external pure override returns (uint256) {
         return 0;

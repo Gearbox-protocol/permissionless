@@ -15,8 +15,6 @@ import {AbstractFactory} from "./AbstractFactory.sol";
 import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
 contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFactory {
-    using CallBuilder for Call[];
-
     /// @notice Contract version
     uint256 public constant override version = 3_10;
 
@@ -58,20 +56,13 @@ contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFa
     // MARKET HOOKS //
     // ------------ //
 
-    function onUpdateInterestRateModel(address pool, address newInterestRateModel, address oldInterestRateModel)
+    function onUpdateInterestRateModel(address pool, address, address oldInterestRateModel)
         external
         view
         override(AbstractMarketFactory, IMarketFactory)
-        returns (Call[] memory calls)
+        returns (Call[] memory)
     {
-        if (_isVotingContract(oldInterestRateModel)) {
-            calls = calls.append(_setVotingContractStatus(oldInterestRateModel, false));
-        }
-        if (_isVotingContract(newInterestRateModel)) {
-            calls = calls.append(_setVotingContractStatus(newInterestRateModel, true));
-        }
-
-        calls = calls.append(_unauthorizeFactory(msg.sender, pool, oldInterestRateModel));
+        return CallBuilder.build(_unauthorizeFactory(msg.sender, pool, oldInterestRateModel));
     }
 
     // ------------- //
@@ -82,7 +73,7 @@ contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFa
         external
         view
         override(AbstractFactory, IFactory)
-        returns (Call[] memory calls)
+        returns (Call[] memory)
     {
         return CallBuilder.build(Call(_interestRateModel(pool), callData));
     }

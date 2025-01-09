@@ -16,12 +16,6 @@ interface IFactory is IVersion {
     error ForbiddenEmergencyConfigurationCallException(bytes4 selector);
     error InvalidConstructorParamsException();
 
-    // --------------- //
-    // STATE VARIABLES //
-    // --------------- //
-
-    function marketConfiguratorFactory() external view returns (address);
-
     // ------------- //
     // CONFIGURATION //
     // ------------- //

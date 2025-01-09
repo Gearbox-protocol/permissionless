@@ -13,7 +13,6 @@ import {AP_GOVERNOR} from "../libraries/ContractLiterals.sol";
 ///         instead of a single admin to perform all actions, there are multiple queue admins, a single veto admin,
 ///         and permissionless execution (which can optionally be restricted to non-contract accounts to prevent
 ///         unintended execution of governance proposals inside protocol functions)
-
 contract Governor is IGovernor {
     /// @notice Contract version
     uint256 public constant override version = 3_10;

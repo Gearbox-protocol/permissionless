@@ -20,6 +20,8 @@ import {Call, MarketFactories} from "../../interfaces/Types.sol";
 
 import {
     AP_MARKET_CONFIGURATOR_LEGACY,
+    AP_CROSS_CHAIN_GOVERNANCE_PROXY,
+    NO_VERSION_CONTROL,
     ROLE_EMERGENCY_LIQUIDATOR,
     ROLE_PAUSABLE_ADMIN,
     ROLE_UNPAUSABLE_ADMIN
@@ -58,36 +60,40 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     /// @notice Contract type
     bytes32 public constant override contractType = AP_MARKET_CONFIGURATOR_LEGACY;
 
+    address public immutable crossChainGovernanceProxy;
+
     address public immutable aclLegacy;
     address public immutable contractsRegisterLegacy;
     address public immutable gearStakingLegacy;
 
     error AddressIsNotPausableAdminException(address admin);
     error AddressIsNotUnpausableAdminException(address admin);
-    error CallerIsNotMarketConfiguratorFactoryException(address caller);
+    error CallerIsNotCrossChainGovernanceProxyException(address caller);
     error CallsToLegacyContractsAreForbiddenException();
     error CollateralTokenIsNotQuotedException(address creditManager, address token);
     error CreditManagerIsMisconfiguredException(address creditManager);
 
-    modifier onlyMarketConfiguratorFactory() {
-        if (msg.sender != marketConfiguratorFactory) revert CallerIsNotMarketConfiguratorFactoryException(msg.sender);
+    modifier onlyCrossChainGovernanceProxy() {
+        if (msg.sender != crossChainGovernanceProxy) revert CallerIsNotCrossChainGovernanceProxyException(msg.sender);
         _;
     }
 
     /// @dev There's no way to validate that `pausableAdmins_` and `unpausableAdmins_` are exhaustive
     ///      because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
     constructor(
-        string memory curatorName_,
+        address addressProvider_,
         address admin_,
         address emergencyAdmin_,
-        address addressProvider_,
+        string memory curatorName_,
         address aclLegacy_,
         address contractsRegisterLegacy_,
         address gearStakingLegacy_,
         address[] memory pausableAdmins_,
         address[] memory unpausableAdmins_,
         address[] memory emergencyLiquidators_
-    ) MarketConfigurator(curatorName_, admin_, emergencyAdmin_, addressProvider_) {
+    ) MarketConfigurator(addressProvider_, admin_, emergencyAdmin_, curatorName_) {
+        crossChainGovernanceProxy = _getAddressOrRevert(AP_CROSS_CHAIN_GOVERNANCE_PROXY, NO_VERSION_CONTROL);
+
         aclLegacy = aclLegacy_;
         contractsRegisterLegacy = contractsRegisterLegacy_;
         gearStakingLegacy = gearStakingLegacy_;
@@ -174,7 +180,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     // CONFIGURATION //
     // ------------- //
 
-    function finalizeMigration() external onlyAdmin {
+    function finalizeMigration() external onlyCrossChainGovernanceProxy {
         // NOTE: on some chains, legacy ACL implements a 2-step ownership transfer
         try IACLLegacy(aclLegacy).pendingOwner() {
             IACLLegacy(aclLegacy).claimOwnership();
@@ -184,8 +190,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         IACLLegacy(aclLegacy).addUnpausableAdmin(address(this));
     }
 
-    // TODO: change to `onlyInstanceManager` once ready
-    function configureGearStaking(bytes calldata data) external onlyMarketConfiguratorFactory {
+    function configureGearStaking(bytes calldata data) external onlyCrossChainGovernanceProxy {
         gearStakingLegacy.functionCall(data);
     }
 
