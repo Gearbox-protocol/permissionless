@@ -63,7 +63,8 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     bytes32 public constant BYTECODE_TYPEHASH =
         keccak256("Bytecode(bytes32 contractType,uint256 version,bytes initCode,address author,string source)");
 
-    bytes32 public constant _SIGNATURE_TYPEHASH = keccak256("SignBytecodeHash(bytes32 bytecodeHash,string reportUrl)");
+    bytes32 public constant AUDITOR_SIGNATURE_TYPEHASH =
+        keccak256("SignBytecodeHash(bytes32 bytecodeHash,string reportUrl)");
 
     //
     // STORAGE
@@ -269,7 +270,8 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         }
 
         // Re-create typed data
-        bytes32 structHash = keccak256(abi.encode(_SIGNATURE_TYPEHASH, bytecodeHash, keccak256(bytes(reportUrl))));
+        bytes32 structHash =
+            keccak256(abi.encode(AUDITOR_SIGNATURE_TYPEHASH, bytecodeHash, keccak256(bytes(reportUrl))));
         // Hash with our pinned domain
         address signer = ECDSA.recover(_hashTypedDataV4(structHash), signature);
 
@@ -538,5 +540,9 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
 
     function bytecodeByHash(bytes32 bytecodeHash) external view returns (Bytecode memory) {
         return _bytecodeByHash[bytecodeHash];
+    }
+
+    function domainSeparatorV4() external view returns (bytes32) {
+        return _domainSeparatorV4();
     }
 }

@@ -138,5 +138,5 @@ interface ICrossChainMultisig is IVersion {
     function isSigner(address account) external view returns (bool);
 
     /// @notice Returns the domain separator used for EIP-712 signing
-    function domainSeparator() external view returns (bytes32);
+    function domainSeparatorV4() external view returns (bytes32);
 }

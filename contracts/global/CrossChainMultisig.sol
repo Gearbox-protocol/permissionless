@@ -149,10 +149,6 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
         _executeProposal({calls: signedProposal.calls, proposalHash: proposalHash});
     }
 
-    function domainSeparator() external view returns (bytes32) {
-        return _domainSeparatorV4();
-    }
-
     function _verifyProposal(CrossChainCall[] memory calls, bytes32 prevHash) internal view {
         if (prevHash != lastProposalHash) revert InvalidPrevHashException();
         if (calls.length == 0) revert NoCallsInProposalException();
@@ -311,5 +307,9 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
 
     function signedProposals(bytes32 proposalHash) external view returns (SignedProposal memory) {
         return _signedProposals[proposalHash];
+    }
+
+    function domainSeparatorV4() external view returns (bytes32) {
+        return _domainSeparatorV4();
     }
 }

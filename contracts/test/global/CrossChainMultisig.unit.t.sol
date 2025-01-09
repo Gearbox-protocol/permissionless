@@ -37,7 +37,7 @@ contract CrossChainMultisigTest is Test {
     }
 
     function _getDigest(bytes32 structHash) internal view returns (bytes32) {
-        bytes32 domainSeparator = multisig.domainSeparator();
+        bytes32 domainSeparator = multisig.domainSeparatorV4();
         return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
     }
 
@@ -173,7 +173,7 @@ contract CrossChainMultisigTest is Test {
         bytes32 proposalHash = multisig.hashProposal(calls, bytes32(0));
 
         // Generate EIP-712 signature
-        bytes32 domainSeparator = multisig.domainSeparator();
+        bytes32 domainSeparator = multisig.domainSeparatorV4();
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, proposalHash));
 
         bytes memory signature = _signProposalHash(signer0PrivateKey, proposalHash);
