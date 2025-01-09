@@ -40,7 +40,7 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
     mapping(address => EnumerableSet.AddressSet) internal _allowedPriceFeeds;
 
     /// @notice Mapping from price feed address to its data
-    mapping(address => PriceFeedInfo) public priceFeedInfo;
+    mapping(address => PriceFeedInfo) internal _priceFeedInfo;
 
     constructor(address _addressProvider)
         ImmutableOwnableTrait(
@@ -60,11 +60,15 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
 
     /// @notice Returns the staleness period for a price feed
     function getStalenessPeriod(address priceFeed) external view returns (uint32) {
-        return priceFeedInfo[priceFeed].stalenessPeriod;
+        return _priceFeedInfo[priceFeed].stalenessPeriod;
     }
 
     function getKnownTokens() external view returns (address[] memory) {
         return _knownTokens.values();
+    }
+
+    function getKnownPriceFeeds() external view returns (address[] memory) {
+        return _knownPriceFeeds.values();
     }
 
     /**
@@ -90,10 +94,10 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
         }
 
         _knownPriceFeeds.add(priceFeed);
-        priceFeedInfo[priceFeed].author = msg.sender;
-        priceFeedInfo[priceFeed].priceFeedType = priceFeedType;
-        priceFeedInfo[priceFeed].stalenessPeriod = stalenessPeriod;
-        priceFeedInfo[priceFeed].version = priceFeedVersion;
+        _priceFeedInfo[priceFeed].author = msg.sender;
+        _priceFeedInfo[priceFeed].priceFeedType = priceFeedType;
+        _priceFeedInfo[priceFeed].stalenessPeriod = stalenessPeriod;
+        _priceFeedInfo[priceFeed].version = priceFeedVersion;
 
         emit AddPriceFeed(priceFeed, stalenessPeriod);
     }
@@ -110,11 +114,11 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
         nonZeroAddress(priceFeed)
     {
         if (!_knownPriceFeeds.contains(priceFeed)) revert PriceFeedNotKnownException(priceFeed);
-        uint32 oldStalenessPeriod = priceFeedInfo[priceFeed].stalenessPeriod;
+        uint32 oldStalenessPeriod = _priceFeedInfo[priceFeed].stalenessPeriod;
 
         if (stalenessPeriod != oldStalenessPeriod) {
             _validatePriceFeed(priceFeed, stalenessPeriod);
-            priceFeedInfo[priceFeed].stalenessPeriod = stalenessPeriod;
+            _priceFeedInfo[priceFeed].stalenessPeriod = stalenessPeriod;
             emit SetStalenessPeriod(priceFeed, stalenessPeriod);
         }
     }
@@ -129,6 +133,7 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
         if (!_knownPriceFeeds.contains(priceFeed)) revert PriceFeedNotKnownException(priceFeed);
 
         _allowedPriceFeeds[token].add(priceFeed);
+        _knownTokens.add(token);
 
         emit AllowPriceFeed(token, priceFeed);
     }
@@ -146,5 +151,9 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
         _allowedPriceFeeds[token].remove(priceFeed);
 
         emit ForbidPriceFeed(token, priceFeed);
+    }
+
+    function priceFeedInfo(address priceFeed) external view returns (PriceFeedInfo memory) {
+        return _priceFeedInfo[priceFeed];
     }
 }
