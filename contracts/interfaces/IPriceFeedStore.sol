@@ -4,8 +4,9 @@
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {IImmutableOwnable} from "./IImmutableIOwnable.sol";
 
-interface IPriceFeedStore is IVersion {
+interface IPriceFeedStore is IVersion, IImmutableOwnable {
     //
     // ERRORS
     //

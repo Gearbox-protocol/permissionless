@@ -63,9 +63,9 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
         _;
     }
 
-    constructor(address addressProvider_, address owner_) AbstractDeployer(addressProvider_) {
+    constructor(address addressProvider_) AbstractDeployer(addressProvider_) {
         // QUESTION: read owner_ from AP? use AP's owner? who's the owner?
-        _transferOwnership(owner_);
+        _transferOwnership(msg.sender);
     }
 
     function isMarketConfigurator(address account) external view override returns (bool) {

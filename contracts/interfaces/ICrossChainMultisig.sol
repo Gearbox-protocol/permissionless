@@ -6,7 +6,7 @@ pragma solidity ^0.8.23;
 import {CrossChainCall, SignedProposal} from "./Types.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
-interface ISignatureMultisig is IVersion {
+interface ICrossChainMultisig is IVersion {
     //
     // Events
     //
@@ -138,5 +138,5 @@ interface ISignatureMultisig is IVersion {
     function isSigner(address account) external view returns (bool);
 
     /// @notice Returns the domain separator used for EIP-712 signing
-    function domainSeparator() external view returns (bytes32);
+    function domainSeparatorV4() external view returns (bytes32);
 }

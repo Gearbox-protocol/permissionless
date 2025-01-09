@@ -3,7 +3,6 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {SanityCheckTrait} from "@gearbox-protocol/core-v3/contracts/traits/SanityCheckTrait.sol";
@@ -14,8 +13,9 @@ import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import {AP_PRICE_FEED_STORE, AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {PriceFeedInfo} from "../interfaces/Types.sol";
+import {ImmutableOwnableTrait} from "../traits/ImmutableOwnableTrait.sol";
 
-contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, IPriceFeedStore {
+contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedValidationTrait, IPriceFeedStore {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     //
@@ -40,13 +40,13 @@ contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, 
     mapping(address => EnumerableSet.AddressSet) internal _allowedPriceFeeds;
 
     /// @notice Mapping from price feed address to its data
-    mapping(address => PriceFeedInfo) public priceFeedInfo;
+    mapping(address => PriceFeedInfo) internal _priceFeedInfo;
 
-    constructor(address _addressProvider) {
-        address instanceManager =
-            IAddressProvider(_addressProvider).getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL);
-        _transferOwnership(instanceManager);
-    }
+    constructor(address _addressProvider)
+        ImmutableOwnableTrait(
+            IAddressProvider(_addressProvider).getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL)
+        )
+    {}
 
     /// @notice Returns the list of price feeds available for a token
     function getPriceFeeds(address token) external view returns (address[] memory) {
@@ -60,11 +60,15 @@ contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, 
 
     /// @notice Returns the staleness period for a price feed
     function getStalenessPeriod(address priceFeed) external view returns (uint32) {
-        return priceFeedInfo[priceFeed].stalenessPeriod;
+        return _priceFeedInfo[priceFeed].stalenessPeriod;
     }
 
     function getKnownTokens() external view returns (address[] memory) {
         return _knownTokens.values();
+    }
+
+    function getKnownPriceFeeds() external view returns (address[] memory) {
+        return _knownPriceFeeds.values();
     }
 
     /**
@@ -90,10 +94,10 @@ contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, 
         }
 
         _knownPriceFeeds.add(priceFeed);
-        priceFeedInfo[priceFeed].author = msg.sender;
-        priceFeedInfo[priceFeed].priceFeedType = priceFeedType;
-        priceFeedInfo[priceFeed].stalenessPeriod = stalenessPeriod;
-        priceFeedInfo[priceFeed].version = priceFeedVersion;
+        _priceFeedInfo[priceFeed].author = msg.sender;
+        _priceFeedInfo[priceFeed].priceFeedType = priceFeedType;
+        _priceFeedInfo[priceFeed].stalenessPeriod = stalenessPeriod;
+        _priceFeedInfo[priceFeed].version = priceFeedVersion;
 
         emit AddPriceFeed(priceFeed, stalenessPeriod);
     }
@@ -110,11 +114,11 @@ contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, 
         nonZeroAddress(priceFeed)
     {
         if (!_knownPriceFeeds.contains(priceFeed)) revert PriceFeedNotKnownException(priceFeed);
-        uint32 oldStalenessPeriod = priceFeedInfo[priceFeed].stalenessPeriod;
+        uint32 oldStalenessPeriod = _priceFeedInfo[priceFeed].stalenessPeriod;
 
         if (stalenessPeriod != oldStalenessPeriod) {
             _validatePriceFeed(priceFeed, stalenessPeriod);
-            priceFeedInfo[priceFeed].stalenessPeriod = stalenessPeriod;
+            _priceFeedInfo[priceFeed].stalenessPeriod = stalenessPeriod;
             emit SetStalenessPeriod(priceFeed, stalenessPeriod);
         }
     }
@@ -129,6 +133,7 @@ contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, 
         if (!_knownPriceFeeds.contains(priceFeed)) revert PriceFeedNotKnownException(priceFeed);
 
         _allowedPriceFeeds[token].add(priceFeed);
+        _knownTokens.add(token);
 
         emit AllowPriceFeed(token, priceFeed);
     }
@@ -146,5 +151,9 @@ contract PriceFeedStore is Ownable, SanityCheckTrait, PriceFeedValidationTrait, 
         _allowedPriceFeeds[token].remove(priceFeed);
 
         emit ForbidPriceFeed(token, priceFeed);
+    }
+
+    function priceFeedInfo(address priceFeed) external view returns (PriceFeedInfo memory) {
+        return _priceFeedInfo[priceFeed];
     }
 }
