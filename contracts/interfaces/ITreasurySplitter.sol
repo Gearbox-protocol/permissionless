@@ -9,6 +9,12 @@ struct Split {
     uint16[] proportions;
 }
 
+struct TwoAdminProposal {
+    bytes callData;
+    bool confirmedByAdmin;
+    bool confirmedByTreasuryProxy;
+}
+
 /// @title Treasury splitter
 interface ITreasurySplitter {
     /// @notice Thrown when attempting to set a split with different-sized receiver and proportion arrays
@@ -19,6 +25,18 @@ interface ITreasurySplitter {
 
     /// @notice Thrown when attempting to distribute a token for which a split is not defined
     error UndefinedSplitException();
+
+    /// @notice Thrown when a restricted function is called by non-multisig address
+    error OnlySelfException();
+
+    /// @notice Thrown when a restricted function is called not by admin or treasury proxy
+    error OnlyAdminOrTreasuryProxyException();
+
+    /// @notice Thrown when attempting to call a configure function with an incorrect selector
+    error IncorrectConfigureSelectorException();
+
+    /// @notice Thrown when attempting the add the splitter itself as split receiver
+    error TreasurySplitterAsReceiverException();
 
     /// @notice Emitted when a new default split is set
     event SetDefaultSplit(address[] receivers, uint16[] proportions);
@@ -32,6 +50,9 @@ interface ITreasurySplitter {
     /// @notice Emitted when tokens are distributed
     event DistributeToken(address indexed token, uint256 distributedAmount);
 
+    /// @notice Emitted when setting a new token insurance amount
+    event SetTokenInsuranceAmount(address indexed token, uint256 amount);
+
     function distribute(address token) external;
 
     function tokenSplits(address token) external view returns (Split memory);
@@ -41,6 +62,14 @@ interface ITreasurySplitter {
     // ------------- //
     // CONFIGURATION //
     // ------------- //
+
+    function configure(bytes memory callData) external;
+
+    // ------------- //
+    // SELF-CALLABLE //
+    // ------------- //
+
+    function setTokenInsuranceAmount(address token, uint256 amount) external;
 
     function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions) external;
 
