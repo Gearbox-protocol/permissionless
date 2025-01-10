@@ -10,4 +10,9 @@ interface IPoolFactory is IMarketFactory {
     function deployPool(address underlying, string calldata name, string calldata symbol)
         external
         returns (DeployResult memory);
+
+    function previewPoolAddress(address underlying, string calldata name, string calldata symbol)
+        external
+        view
+        returns (address);
 }

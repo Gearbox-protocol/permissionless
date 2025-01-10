@@ -14,7 +14,8 @@ import {
     AP_CROSS_CHAIN_GOVERNANCE_PROXY,
     AP_TREASURY_PROXY,
     AP_GEAR_TOKEN,
-    AP_WETH_TOKEN
+    AP_WETH_TOKEN,
+    AP_MARKET_CONFIGURATOR_FACTORY
 } from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {ProxyCall} from "../helpers/ProxyCall.sol";
@@ -92,7 +93,12 @@ contract InstanceManager is Ownable, IVersion {
         // set address in address provider
 
         address newSystemContract = _deploySystemContract(_contractName, _version);
-        _setAddress(_contractName, newSystemContract, true);
+        if (_contractName == AP_MARKET_CONFIGURATOR_FACTORY) {
+            _setAddress(_contractName, newSystemContract, false);
+            _setAddress(_contractName, newSystemContract, true);
+        } else {
+            _setAddress(_contractName, newSystemContract, true);
+        }
     }
 
     function _deploySystemContract(bytes32 _contractName, uint256 _version) internal returns (address) {

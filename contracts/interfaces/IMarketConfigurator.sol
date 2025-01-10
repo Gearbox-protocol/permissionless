@@ -159,4 +159,9 @@ interface IMarketConfigurator is IVersion {
     function upgradeLossPolicyFactory(address pool) external;
 
     function upgradeCreditFactory(address creditManager) external;
+
+    function previewPoolAddress(uint256 minorVersion, address underlying, string calldata name, string calldata symbol)
+        external
+        view
+        returns (address);
 }
