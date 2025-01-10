@@ -35,12 +35,12 @@ import {LossPolicyFactory} from "../../factories/LossPolicyFactory.sol";
 import {PoolFactory} from "../../factories/PoolFactory.sol";
 import {PriceOracleFactory} from "../../factories/PriceOracleFactory.sol";
 import {RateKeeperFactory} from "../../factories/RateKeeperFactory.sol";
-import {MarketConfiguratorFactory} from "../../global/MarketConfiguratorFactory.sol";
-import {Governor} from "../../governor/Governor.sol";
 
 import {MarketConfigurator} from "../../market/MarketConfigurator.sol";
+import {MarketConfiguratorFactory} from "../../market/MarketConfiguratorFactory.sol";
 import {ACL} from "../../market/ACL.sol";
 import {ContractsRegister} from "../../market/ContractsRegister.sol";
+import {Governor} from "../../market/Governor.sol";
 
 import {PoolV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolV3.sol";
 import {PoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolQuotaKeeperV3.sol";
@@ -359,7 +359,7 @@ contract NewChainDeploySuite is Test {
         address mcf = IAddressProvider(ap).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, 3_10);
 
         vm.startPrank(riskCurator);
-        MarketConfiguratorFactory(mcf).createMarketConfigurator("Test Market Configurator");
+        MarketConfiguratorFactory(mcf).createMarketConfigurator(riskCurator, riskCurator, "Test Risk Curator", false);
         vm.stopPrank();
     }
 }

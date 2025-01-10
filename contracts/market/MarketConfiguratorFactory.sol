@@ -3,19 +3,17 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-
-import {IVotingContract} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVotingContract.sol";
-import {IGearStakingV3, VotingContractStatus} from "@gearbox-protocol/core-v3/contracts/interfaces/IGearStakingV3.sol";
 
 import {AbstractDeployer} from "../helpers/AbstractDeployer.sol";
 
 import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
+import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
 
 import {
+    AP_CROSS_CHAIN_GOVERNANCE,
     AP_GEAR_STAKING,
     AP_MARKET_CONFIGURATOR,
     AP_MARKET_CONFIGURATOR_FACTORY,
@@ -28,7 +26,7 @@ import {MarketConfigurator} from "../market/MarketConfigurator.sol";
 
 // TODO: somehow need to add MC Legacy to MC Factory. maybe we can deploy it from here?
 
-contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketConfiguratorFactory {
+contract MarketConfiguratorFactory is AbstractDeployer, IMarketConfiguratorFactory {
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -44,6 +42,14 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
     /// @dev Set of shutdown market configurators
     EnumerableSet.AddressSet internal _shutdownMarketConfiguratorsSet;
 
+    /// @dev Reverts if caller is not cross-chain governance
+    modifier onlyCrossChainGovernance() {
+        if (msg.sender != _getAddressOrRevert(AP_CROSS_CHAIN_GOVERNANCE, NO_VERSION_CONTROL)) {
+            revert CallerIsNotCrossChainGovernanceException(msg.sender);
+        }
+        _;
+    }
+
     /// @dev Reverts if caller is not one of market configurators
     modifier onlyMarketConfigurators() {
         if (!_registeredMarketConfiguratorsSet.contains(msg.sender)) {
@@ -53,9 +59,8 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
     }
 
     modifier onlyMarketConfiguratorAdmin(address marketConfigurator) {
-        // QUESTION: should shutdown configurators be able to perform some actions?
         if (!_registeredMarketConfiguratorsSet.contains(marketConfigurator)) {
-            revert AddressIsNotMarketConfiguratorException();
+            revert AddressIsNotMarketConfiguratorException(marketConfigurator);
         }
         if (msg.sender != MarketConfigurator(marketConfigurator).admin()) {
             revert CallerIsNotMarketConfiguratorAdminException(msg.sender);
@@ -63,10 +68,7 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
         _;
     }
 
-    constructor(address addressProvider_) AbstractDeployer(addressProvider_) {
-        // QUESTION: read owner_ from AP? use AP's owner? who's the owner?
-        _transferOwnership(msg.sender);
-    }
+    constructor(address addressProvider_) AbstractDeployer(addressProvider_) {}
 
     function isMarketConfigurator(address account) external view override returns (bool) {
         return _registeredMarketConfiguratorsSet.contains(account);
@@ -88,17 +90,26 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
         return _shutdownMarketConfiguratorsSet.values();
     }
 
-    function createMarketConfigurator(string calldata name) external override returns (address marketConfigurator) {
-        // TODO: deploy timelocks
+    function createMarketConfigurator(
+        address admin,
+        address emergencyAdmin,
+        string calldata curatorName,
+        bool deployGovernor
+    ) external override returns (address marketConfigurator) {
+        if (deployGovernor) {
+            // TODO: deploy governor and timelock (maybe can do it inside MC for consistency?)
+            admin = admin;
+        }
+
         marketConfigurator = _deployLatestPatch({
             contractType: AP_MARKET_CONFIGURATOR,
             minorVersion: version,
-            constructorParams: abi.encode(name, msg.sender, msg.sender, addressProvider),
-            salt: bytes32(bytes20(msg.sender))
+            constructorParams: abi.encode(addressProvider, admin, emergencyAdmin, curatorName),
+            salt: bytes32(bytes20(msg.sender)) // QUESTION: whose address?
         });
 
         _registeredMarketConfiguratorsSet.add(marketConfigurator);
-        emit CreateMarketConfigurator(marketConfigurator, name);
+        emit CreateMarketConfigurator(marketConfigurator, curatorName);
     }
 
     function shutdownMarketConfigurator(address marketConfigurator)
@@ -106,37 +117,25 @@ contract MarketConfiguratorFactory is Ownable2Step, AbstractDeployer, IMarketCon
         override
         onlyMarketConfiguratorAdmin(marketConfigurator)
     {
+        if (_shutdownMarketConfiguratorsSet.add(marketConfigurator)) {
+            revert MarketConfiguratorIsAlreadyShutdownException(marketConfigurator);
+        }
         address contractsRegister = MarketConfigurator(marketConfigurator).contractsRegister();
         if (IContractsRegister(contractsRegister).getPools().length != 0) {
             revert CantShutdownMarketConfiguratorException();
         }
         _registeredMarketConfiguratorsSet.remove(marketConfigurator);
-        _shutdownMarketConfiguratorsSet.add(marketConfigurator);
         emit ShutdownMarketConfigurator(marketConfigurator);
     }
 
-    // TODO: probably move these two to the instance manager, don't forget to change it in the MC
-
-    function setVotingContractStatus(address votingContract, VotingContractStatus status)
-        external
-        override
-        onlyMarketConfigurators
-    {
-        _configureGearStaking(abi.encodeCall(IGearStakingV3.setVotingContractStatus, (votingContract, status)));
-    }
-
-    function configureGearStaking(bytes calldata data) external override onlyOwner {
-        _configureGearStaking(data);
-    }
-
-    function _configureGearStaking(bytes memory data) internal {
-        address gearStaking = _getAddressOrRevert(AP_GEAR_STAKING, NO_VERSION_CONTROL);
-        if (IGearStakingV3(gearStaking).version() < 3_10) {
-            // QUESTION: what if we deply multiple legacy MCs?
-            address marketConfiguratorLegacy = _getAddressOrRevert(AP_MARKET_CONFIGURATOR_LEGACY, NO_VERSION_CONTROL);
-            MarketConfiguratorLegacy(marketConfiguratorLegacy).configureGearStaking(data);
-        } else {
-            gearStaking.functionCall(data);
+    function addMarketConfigurator(address marketConfigurator) external override onlyCrossChainGovernance {
+        if (_registeredMarketConfiguratorsSet.contains(marketConfigurator)) {
+            revert MarketConfiguratorIsAlreadyAddedException(marketConfigurator);
         }
+        if (_shutdownMarketConfiguratorsSet.contains(marketConfigurator)) {
+            revert MarketConfiguratorIsAlreadyShutdownException(marketConfigurator);
+        }
+        _registeredMarketConfiguratorsSet.add(marketConfigurator);
+        emit CreateMarketConfigurator(marketConfigurator, IMarketConfigurator(marketConfigurator).curatorName());
     }
 }

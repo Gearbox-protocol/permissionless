@@ -39,7 +39,7 @@ abstract contract AbstractDeployer {
 
     function _getContractType(bytes32 domain, bytes32 postfix) internal pure returns (bytes32) {
         if (postfix == 0) return domain;
-        return string.concat(domain.fromSmallString(), "_", postfix.fromSmallString()).toSmallString();
+        return string.concat(domain.fromSmallString(), "::", postfix.fromSmallString()).toSmallString();
     }
 
     function _deploy(bytes32 contractType, uint256 version, bytes memory constructorParams, bytes32 salt)

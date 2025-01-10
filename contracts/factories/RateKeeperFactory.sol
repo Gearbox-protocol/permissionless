@@ -82,7 +82,10 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
         override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory)
     {
-        return _installRateKeeper(rateKeeper, _getRateKeeperType(rateKeeper));
+        if (_getRateKeeperType(rateKeeper) == "RATE_KEEPER::GAUGE") {
+            return CallBuilder.build(_setFrozenEpoch(rateKeeper, false));
+        }
+        return CallBuilder.build();
     }
 
     function onShutdownMarket(address pool)
@@ -92,7 +95,10 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
         returns (Call[] memory)
     {
         address rateKeeper = _rateKeeper(_quotaKeeper(pool));
-        return _uninstallRateKeeper(rateKeeper, _getRateKeeperType(rateKeeper));
+        if (_getRateKeeperType(rateKeeper) == "RATE_KEEPER::GAUGE") {
+            return CallBuilder.build(_setFrozenEpoch(rateKeeper, true));
+        }
+        return CallBuilder.build();
     }
 
     function onUpdateRateKeeper(address pool, address newRateKeeper, address oldRateKeeper)
@@ -108,11 +114,13 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
         for (uint256 i; i < numTokens; ++i) {
             calls[i] = _addToken(newRateKeeper, tokens[i], type_);
         }
-        calls = calls.extend(
-            _uninstallRateKeeper(oldRateKeeper, _getRateKeeperType(oldRateKeeper)).extend(
-                _installRateKeeper(newRateKeeper, type_)
-            ).append(_unauthorizeFactory(msg.sender, pool, oldRateKeeper))
-        );
+        if (_getRateKeeperType(oldRateKeeper) == "RATE_KEEPER::GAUGE") {
+            calls = calls.append(_setFrozenEpoch(oldRateKeeper, true));
+        }
+        if (type_ == "RATE_KEEPER::GAUGE") {
+            calls = calls.append(_setFrozenEpoch(oldRateKeeper, false));
+        }
+        calls = calls.append(_unauthorizeFactory(msg.sender, pool, oldRateKeeper));
     }
 
     function onAddToken(address pool, address token, address)
@@ -149,44 +157,28 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
         try IRateKeeper(rateKeeper).contractType() returns (bytes32 type_) {
             return type_;
         } catch {
-            return "RK_GAUGE";
+            return "RATE_KEEPER::GAUGE";
         }
     }
 
     function _isForbiddenConfigurationCall(address rateKeeper, bytes4 selector) internal view returns (bool) {
-        if (_getRateKeeperType(rateKeeper) == "RK_GAUGE") {
+        if (_getRateKeeperType(rateKeeper) == "RATE_KEEPER::GAUGE") {
             return selector == IRateKeeper.addToken.selector || selector == IGaugeV3.addQuotaToken.selector
                 || selector == IGaugeV3.setFrozenEpoch.selector || selector == bytes4(keccak256("setController(address)"));
         }
         return selector == IRateKeeper.addToken.selector;
     }
 
-    function _installRateKeeper(address rateKeeper, bytes32 type_) internal view returns (Call[] memory calls) {
-        if (type_ == "RK_GAUGE") {
-            calls = CallBuilder.build(Call(rateKeeper, abi.encodeCall(IGaugeV3.setFrozenEpoch, false)));
-        }
-
-        if (_isVotingContract(rateKeeper)) {
-            calls = calls.append(_setVotingContractStatus(rateKeeper, true));
-        }
-    }
-
-    function _uninstallRateKeeper(address rateKeeper, bytes32 type_) internal view returns (Call[] memory calls) {
-        if (type_ == "RK_GAUGE") {
-            calls = CallBuilder.build(Call(rateKeeper, abi.encodeCall(IGaugeV3.setFrozenEpoch, true)));
-        }
-
-        if (_isVotingContract(rateKeeper)) {
-            calls = calls.append(_setVotingContractStatus(rateKeeper, false));
-        }
-    }
-
     function _addToken(address rateKeeper, address token, bytes32 type_) internal pure returns (Call memory) {
         return Call(
             rateKeeper,
-            type_ == "RK_GAUGE"
+            type_ == "RATE_KEEPER::GAUGE"
                 ? abi.encodeCall(IGaugeV3.addQuotaToken, (token, 1, 1))
                 : abi.encodeCall(IRateKeeper.addToken, token)
         );
+    }
+
+    function _setFrozenEpoch(address gauge, bool status) internal pure returns (Call memory) {
+        return Call(gauge, abi.encodeCall(IGaugeV3.setFrozenEpoch, status));
     }
 }

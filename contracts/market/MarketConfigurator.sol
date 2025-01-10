@@ -30,7 +30,6 @@ import {
     AP_INTEREST_RATE_MODEL_FACTORY,
     AP_LOSS_POLICY_FACTORY,
     AP_MARKET_CONFIGURATOR,
-    AP_MARKET_CONFIGURATOR_FACTORY,
     AP_POOL_FACTORY,
     AP_PRICE_ORACLE_FACTORY,
     AP_RATE_KEEPER_FACTORY,
@@ -54,13 +53,11 @@ contract MarketConfigurator is IMarketConfigurator {
     // STATE VARIABLES //
     // --------------- //
 
-    bytes32 internal immutable _curatorName;
-
+    address public immutable override addressProvider;
     address public immutable override admin;
     address public immutable override emergencyAdmin;
+    bytes32 internal immutable _curatorName;
 
-    address public immutable override addressProvider;
-    address public immutable override marketConfiguratorFactory;
     address public immutable override acl;
     address public immutable override contractsRegister;
     address public immutable override treasury;
@@ -104,13 +101,11 @@ contract MarketConfigurator is IMarketConfigurator {
     // CONSTRUCTOR //
     // ----------- //
 
-    constructor(string memory curatorName_, address admin_, address emergencyAdmin_, address addressProvider_) {
-        _curatorName = curatorName_.toSmallString();
+    constructor(address addressProvider_, address admin_, address emergencyAdmin_, string memory curatorName_) {
+        addressProvider = addressProvider_;
         admin = admin_;
         emergencyAdmin = emergencyAdmin_;
-
-        addressProvider = addressProvider_;
-        marketConfiguratorFactory = _getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
+        _curatorName = curatorName_.toSmallString();
 
         acl = address(new ACL());
         contractsRegister = address(new ContractsRegister(acl));
@@ -613,7 +608,7 @@ contract MarketConfigurator is IMarketConfigurator {
 
     /// @dev `MarketConfiguratorLegacy` performs additional checks, hence the `virtual` modifier
     function _validateCallTarget(address target, address factory) internal virtual {
-        if (target != address(this) && target != marketConfiguratorFactory && _authorizedFactories[target] != factory) {
+        if (target != address(this) && _authorizedFactories[target] != factory) {
             revert UnauthorizedFactoryException(factory, target);
         }
     }
