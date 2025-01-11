@@ -58,21 +58,25 @@ import {GaugeV3} from "@gearbox-protocol/core-v3/contracts/pool/GaugeV3.sol";
 import {DefaultLossPolicy} from "../../helpers/DefaultLossPolicy.sol";
 
 import {DeployParams} from "../../interfaces/Types.sol";
+import {InstanceManagerHelper} from "../../test/helpers/InstanceManagerHelper.sol";
 
-import {BCRHelpers} from "../../test/helpers/BCRHelpers.sol";
-import {CCGHelper} from "../../test/helpers/CCGHelper.sol";
+struct SystemContract {
+    bytes initCode;
+    bytes32 contractType;
+    uint256 version;
+}
 
-contract NewChainDeploySuite is Test, BCRHelpers, CCGHelper {
-    // Test accounts
+struct DeploySystemContractCall {
+    bytes32 contractType;
+    uint256 version;
+}
 
+contract NewChainDeploySuite is Test, InstanceManagerHelper {
     address internal riskCurator;
 
-    address internal instanceOwner;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant GEAR = 0xBa3335588D9403515223F109EdC4eB7269a9Ab5D;
     address constant CHAINLINK_ETH_USD = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
-
-    InstanceManager internal instanceManager;
 
     function setUp() public {
         // simulate chainId 1
@@ -80,80 +84,16 @@ contract NewChainDeploySuite is Test, BCRHelpers, CCGHelper {
             vm.chainId(1);
         }
 
-        _setUpCCG();
-        _setUpBCR();
+        _setUpInstanceManager();
 
-        // Generate random private keys and derive addresses
+        _setupInitialSystemContracts();
 
+        // Configure instance
+        _setupPriceFeedStore();
         riskCurator = vm.addr(_generatePrivateKey("RISK_CURATOR"));
-
-        instanceOwner = vm.addr(_generatePrivateKey("INSTANCE_OWNER"));
-
-        // Deploy InstanceManager owned by multisig
-        instanceManager = new InstanceManager(address(multisig));
-        bytecodeRepository = instanceManager.bytecodeRepository();
-
-        // Add initial auditor\
     }
 
-    function _generateAddAuditorCall(address _auditor, string memory _name) internal returns (CrossChainCall memory) {
-        return _buildCrossChainCallDAO(
-            bytecodeRepository, abi.encodeCall(IBytecodeRepository.addAuditor, (_auditor, _name))
-        );
-    }
-
-    function _generateAllowSystemContractCall(bytes32 _bytecodeHash) internal returns (CrossChainCall memory) {
-        return _buildCrossChainCallDAO(
-            bytecodeRepository, abi.encodeCall(IBytecodeRepository.allowSystemContract, (_bytecodeHash))
-        );
-    }
-
-    function _generateDeploySystemContractCall(bytes32 _contractName, uint256 _version)
-        internal
-        returns (CrossChainCall memory)
-    {
-        return CrossChainCall({
-            chainId: 0,
-            target: address(instanceManager),
-            callData: abi.encodeCall(InstanceManager.deploySystemContract, (_contractName, _version))
-        });
-    }
-
-    function _generateActivateCall(address _instanceOwner, address _treasury, address _weth, address _gear)
-        internal
-        returns (CrossChainCall memory)
-    {
-        return CrossChainCall({
-            chainId: 1,
-            target: address(instanceManager),
-            callData: abi.encodeCall(InstanceManager.activate, (_instanceOwner, _treasury, _weth, _gear))
-        });
-    }
-
-    function _buildCrossChainCallDAO(address _target, bytes memory _callData)
-        internal
-        view
-        returns (CrossChainCall memory)
-    {
-        return CrossChainCall({
-            chainId: 0,
-            target: address(instanceManager),
-            callData: abi.encodeCall(InstanceManager.configureGlobal, (_target, _callData))
-        });
-    }
-
-    struct SystemContract {
-        bytes initCode;
-        bytes32 contractType;
-        uint256 version;
-    }
-
-    struct DeploySystemContractCall {
-        bytes32 contractType;
-        uint256 version;
-    }
-
-    function test_NCD() public {
+    function _setupInitialSystemContracts() internal {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
         _submitProposalAndSign(calls);
@@ -249,15 +189,19 @@ contract NewChainDeploySuite is Test, BCRHelpers, CCGHelper {
         calls[len + deployCallsLen] = _generateActivateCall(instanceOwner, address(0), WETH, GEAR);
 
         _submitProposalAndSign(calls);
+    }
+
+    function _setupPriceFeedStore() internal {
+        _addPriceFeed(CHAINLINK_ETH_USD, 3600);
+        _allowPriceFeed(WETH, CHAINLINK_ETH_USD);
+    }
+
+    function test_NCD_01_createMarket() public {
         address ap = instanceManager.addressProvider();
 
         address mcf = IAddressProvider(ap).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, 3_10);
 
         address poolFactory = IAddressProvider(ap).getAddressOrRevert(AP_POOL_FACTORY, 3_10);
-
-        // PRICE_FEED_STORE
-        _addPriceFeed(CHAINLINK_ETH_USD, 3600);
-        _allowPriceFeed(WETH, CHAINLINK_ETH_USD);
 
         IWETH(WETH).deposit{value: 1e18}();
         IERC20(WETH).transfer(poolFactory, 1e18);
@@ -269,7 +213,7 @@ contract NewChainDeploySuite is Test, BCRHelpers, CCGHelper {
 
         address pool = MarketConfigurator(mc).previewPoolAddress(3_10, WETH, "Test Market", "TM");
 
-        MarketConfigurator(mc).createMarket({
+        address poolFromMarket = MarketConfigurator(mc).createMarket({
             minorVersion: 3_10,
             underlying: WETH,
             name: "Test Market",
@@ -282,23 +226,7 @@ contract NewChainDeploySuite is Test, BCRHelpers, CCGHelper {
             underlyingPriceFeed: CHAINLINK_ETH_USD
         });
         vm.stopPrank();
-    }
 
-    function _allowPriceFeed(address token, address _priceFeed) internal {
-        address ap = instanceManager.addressProvider();
-        address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, 3_10);
-        vm.prank(instanceOwner);
-        instanceManager.configureLocal(
-            priceFeedStore, abi.encodeCall(PriceFeedStore.allowPriceFeed, (token, _priceFeed))
-        );
-    }
-
-    function _addPriceFeed(address _priceFeed, uint32 _stalenessPeriod) internal {
-        address ap = instanceManager.addressProvider();
-        address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, 3_10);
-        vm.prank(instanceOwner);
-        instanceManager.configureLocal(
-            priceFeedStore, abi.encodeCall(PriceFeedStore.addPriceFeed, (_priceFeed, _stalenessPeriod))
-        );
+        assertEq(pool, poolFromMarket);
     }
 }
