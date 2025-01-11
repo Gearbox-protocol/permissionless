@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.23;
 
-import {BytecodeRepository} from "./BytecodeRepository.sol";
+import {BytecodeRepository} from "../global/BytecodeRepository.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {
     AP_INSTANCE_MANAGER,
