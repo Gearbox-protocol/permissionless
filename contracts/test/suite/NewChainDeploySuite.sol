@@ -32,7 +32,10 @@ import {
     AP_INTEREST_RATE_MODEL_LINEAR,
     AP_RATE_KEEPER_TUMBLER,
     AP_RATE_KEEPER_GAUGE,
-    AP_LOSS_POLICY_DEFAULT
+    AP_LOSS_POLICY_DEFAULT,
+    AP_CREDIT_MANAGER,
+    AP_CREDIT_FACADE,
+    AP_CREDIT_CONFIGURATOR
 } from "../../libraries/ContractLiterals.sol";
 import {SignedProposal, Bytecode} from "../../interfaces/Types.sol";
 
@@ -56,9 +59,13 @@ import {LinearInterestRateModelV3} from "@gearbox-protocol/core-v3/contracts/poo
 import {TumblerV3} from "@gearbox-protocol/core-v3/contracts/pool/TumblerV3.sol";
 import {GaugeV3} from "@gearbox-protocol/core-v3/contracts/pool/GaugeV3.sol";
 import {DefaultLossPolicy} from "../../helpers/DefaultLossPolicy.sol";
+import {CreditManagerV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditManagerV3.sol";
+import {CreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditFacadeV3.sol";
+import {CreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditConfiguratorV3.sol";
 
 import {DeployParams} from "../../interfaces/Types.sol";
 import {InstanceManagerHelper} from "../../test/helpers/InstanceManagerHelper.sol";
+import {CreditFacadeParams, CreditManagerParams} from "../../factories/CreditFactory.sol";
 
 struct SystemContract {
     bytes initCode;
@@ -76,7 +83,9 @@ contract NewChainDeploySuite is Test, InstanceManagerHelper {
 
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant GEAR = 0xBa3335588D9403515223F109EdC4eB7269a9Ab5D;
+    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address constant CHAINLINK_ETH_USD = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
+    address constant CHAINLINK_USDC_USD = 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6;
 
     function setUp() public {
         // simulate chainId 1
@@ -98,7 +107,7 @@ contract NewChainDeploySuite is Test, InstanceManagerHelper {
         calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
         _submitProposalAndSign(calls);
 
-        SystemContract[19] memory systemContracts = [
+        SystemContract[22] memory systemContracts = [
             SystemContract({initCode: type(PoolFactory).creationCode, contractType: AP_POOL_FACTORY, version: 3_10}),
             SystemContract({initCode: type(CreditFactory).creationCode, contractType: AP_CREDIT_FACTORY, version: 3_10}),
             SystemContract({
@@ -157,14 +166,23 @@ contract NewChainDeploySuite is Test, InstanceManagerHelper {
                 initCode: type(LossPolicyFactory).creationCode,
                 contractType: AP_LOSS_POLICY_FACTORY,
                 version: 3_10
+            }),
+            /// CREDIT
+            SystemContract({initCode: type(CreditManagerV3).creationCode, contractType: AP_CREDIT_MANAGER, version: 3_10}),
+            SystemContract({initCode: type(CreditFacadeV3).creationCode, contractType: AP_CREDIT_FACADE, version: 3_10}),
+            SystemContract({
+                initCode: type(CreditConfiguratorV3).creationCode,
+                contractType: AP_CREDIT_CONFIGURATOR,
+                version: 3_10
             })
         ];
 
         uint256 len = systemContracts.length;
 
-        DeploySystemContractCall[7] memory deployCalls = [
+        DeploySystemContractCall[8] memory deployCalls = [
             DeploySystemContractCall({contractType: AP_PRICE_FEED_STORE, version: 3_10}),
             DeploySystemContractCall({contractType: AP_POOL_FACTORY, version: 3_10}),
+            DeploySystemContractCall({contractType: AP_CREDIT_FACTORY, version: 3_10}),
             DeploySystemContractCall({contractType: AP_PRICE_ORACLE_FACTORY, version: 3_10}),
             DeploySystemContractCall({contractType: AP_INTEREST_RATE_MODEL_FACTORY, version: 3_10}),
             DeploySystemContractCall({contractType: AP_RATE_KEEPER_FACTORY, version: 3_10}),
@@ -192,8 +210,11 @@ contract NewChainDeploySuite is Test, InstanceManagerHelper {
     }
 
     function _setupPriceFeedStore() internal {
-        _addPriceFeed(CHAINLINK_ETH_USD, 3600);
+        _addPriceFeed(CHAINLINK_ETH_USD, 1 days);
+        _addPriceFeed(CHAINLINK_USDC_USD, 1 days);
+
         _allowPriceFeed(WETH, CHAINLINK_ETH_USD);
+        _allowPriceFeed(USDC, CHAINLINK_USDC_USD);
     }
 
     function test_NCD_01_createMarket() public {
@@ -211,22 +232,52 @@ contract NewChainDeploySuite is Test, InstanceManagerHelper {
             riskCurator, riskCurator, "Test Risk Curator", false
         );
 
-        address pool = MarketConfigurator(mc).previewPoolAddress(3_10, WETH, "Test Market", "TM");
+        string memory name = "Test Market ETH";
+        string memory symbol = "dETH";
+
+        address pool = MarketConfigurator(mc).previewPoolAddress(3_10, WETH, name, symbol);
+
+        bytes memory interestRateModelParams =
+            abi.encode(uint16(100), uint16(200), uint16(100), uint16(100), uint16(200), uint16(300), false);
+        bytes memory rateKeeperParams = abi.encode(pool, 7 days);
+        bytes memory lossPolicyParams = abi.encode(pool, ap);
 
         address poolFromMarket = MarketConfigurator(mc).createMarket({
             minorVersion: 3_10,
             underlying: WETH,
-            name: "Test Market",
-            symbol: "TM",
-            interestRateModelParams: DeployParams(
-                "LINEAR", abi.encode(uint16(100), uint16(200), uint16(100), uint16(100), uint16(200), uint16(300), false)
-            ),
-            rateKeeperParams: DeployParams("TUMBLER", abi.encode(pool, 7 days)),
-            lossPolicyParams: DeployParams("DEFAULT", abi.encode(pool, ap)),
+            name: name,
+            symbol: symbol,
+            interestRateModelParams: DeployParams("LINEAR", interestRateModelParams),
+            rateKeeperParams: DeployParams("TUMBLER", rateKeeperParams),
+            lossPolicyParams: DeployParams("DEFAULT", lossPolicyParams),
             underlyingPriceFeed: CHAINLINK_ETH_USD
         });
-        vm.stopPrank();
 
         assertEq(pool, poolFromMarket);
+
+        address mainnetAF = 0x444CD42BaEdDEB707eeD823f7177b9ABcC779C04;
+        address botList = 0x6B24183313074ABb6E3B30Ea206F20c12205053a;
+
+        CreditManagerParams memory creditManagerParams = CreditManagerParams({
+            accountFactory: mainnetAF,
+            maxEnabledTokens: 4,
+            feeInterest: 10_00,
+            feeLiquidation: 1_50,
+            liquidationPremium: 1_50,
+            feeLiquidationExpired: 1_50,
+            liquidationPremiumExpired: 1_50,
+            minDebt: 1e18,
+            maxDebt: 20e18,
+            name: "Credit Manager ETH"
+        });
+
+        CreditFacadeParams memory facadeParams =
+            CreditFacadeParams({botList: botList, degenNFT: address(0), expirable: false});
+
+        bytes memory creditSuiteParams = abi.encode(creditManagerParams, facadeParams);
+
+        MarketConfigurator(mc).createCreditSuite(3_10, pool, creditSuiteParams);
+
+        vm.stopPrank();
     }
 }
