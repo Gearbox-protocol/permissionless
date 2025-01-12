@@ -96,6 +96,22 @@ import {VelodromeV2RouterAdapter} from
 import {DaiUsdsAdapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/sky/DaiUsdsAdapter.sol";
 import {StakingRewardsAdapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/sky/StakingRewardsAdapter.sol";
 
+import {BPTWeightedPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/balancer/BPTWeightedPriceFeed.sol";
+import {BPTStablePriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/balancer/BPTStablePriceFeed.sol";
+import {ZeroPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/ZeroPriceFeed.sol";
+import {YearnPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/yearn/YearnPriceFeed.sol";
+import {BoundedPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/BoundedPriceFeed.sol";
+import {PythPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/updatable/PythPriceFeed.sol";
+import {RedstonePriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/updatable/RedstonePriceFeed.sol";
+import {WstETHPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/lido/WstETHPriceFeed.sol";
+import {CompositePriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/CompositePriceFeed.sol";
+import {MellowLRTPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/mellow/MellowLRTPriceFeed.sol";
+import {PendleTWAPPTPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/pendle/PendleTWAPPTPriceFeed.sol";
+import {CurveUSDPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveUSDPriceFeed.sol";
+import {CurveCryptoLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveCryptoLPPriceFeed.sol";
+import {CurveStableLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveStableLPPriceFeed.sol";
+import {ERC4626PriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/erc4626/ERC4626PriceFeed.sol";
+
 struct UploadableContract {
     bytes initCode;
     bytes32 contractType;
@@ -114,6 +130,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
     constructor() {
         _setCoreContracts();
         _setAdapters();
+        _setPriceFeeds();
     }
 
     function _setUpGlobalContracts() internal {
@@ -502,6 +519,129 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             UploadableContract({
                 initCode: type(StakingRewardsAdapter).creationCode,
                 contractType: "ADAPTER::STAKING_REWARDS",
+                version: 3_10
+            })
+        );
+    }
+
+    function _setPriceFeeds() internal {
+        // TODO: set price feeds
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(BPTWeightedPriceFeed).creationCode,
+                contractType: "PRICE_FEED::BALANCER_WEIGHTED",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(BPTStablePriceFeed).creationCode,
+                contractType: "PRICE_FEED::BALANCER_STABLE",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(ZeroPriceFeed).creationCode,
+                contractType: "PRICE_FEED::ZERO",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(YearnPriceFeed).creationCode,
+                contractType: "PRICE_FEED::YEARN",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(BoundedPriceFeed).creationCode,
+                contractType: "PRICE_FEED::BOUNDED",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(PythPriceFeed).creationCode,
+                contractType: "PRICE_FEED::PYTH",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(RedstonePriceFeed).creationCode,
+                contractType: "PRICE_FEED::REDSTONE",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(WstETHPriceFeed).creationCode,
+                contractType: "PRICE_FEED::WSTETH",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(CompositePriceFeed).creationCode,
+                contractType: "PRICE_FEED::COMPOSITE",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(MellowLRTPriceFeed).creationCode,
+                contractType: "PRICE_FEED::MELLOW_LRT",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(PendleTWAPPTPriceFeed).creationCode,
+                contractType: "PRICE_FEED::PENDLE_PT_TWAP",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(CurveUSDPriceFeed).creationCode,
+                contractType: "PRICE_FEED::CURVE_USD",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(CurveCryptoLPPriceFeed).creationCode,
+                contractType: "PRICE_FEED::CURVE_CRYPTO",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(CurveStableLPPriceFeed).creationCode,
+                contractType: "PRICE_FEED::CURVE_STABLE",
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(ERC4626PriceFeed).creationCode,
+                contractType: "PRICE_FEED::ERC4626",
                 version: 3_10
             })
         );
