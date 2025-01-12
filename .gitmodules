@@ -10,3 +10,7 @@
 [submodule "lib/@solady"]
 	path = lib/@solady
 	url = https://github.com/Vectorized/solady
+[submodule "lib/@gearbox-protocol/oracles-v3"]
+	path = lib/@gearbox-protocol/oracles-v3
+	url = https://github.com/Gearbox-protocol/oracles-v3
+	branch = next
