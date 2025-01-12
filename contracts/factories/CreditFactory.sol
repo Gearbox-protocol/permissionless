@@ -301,11 +301,13 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         internal
         returns (address)
     {
-        address decodedCreditManager = address(bytes20(bytes32(params.constructorParams)));
+        address decodedCreditManager = abi.decode(params.constructorParams, (address));
+
         if (decodedCreditManager != creditManager) revert InvalidConstructorParamsException();
 
         // FIXME: unlike other contracts, this might be deployed multiple times, so using the same salt
         // can be an issue. Same thing can happen to rate keepers, IRMs, etc.
+
         return _deployLatestPatch({
             contractType: _getContractType(DOMAIN_ADAPTER, params.postfix),
             minorVersion: version,

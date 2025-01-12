@@ -58,12 +58,15 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
         });
     }
 
-    function _generateActivateCall(address _instanceOwner, address _treasury, address _weth, address _gear)
-        internal
-        returns (CrossChainCall memory)
-    {
+    function _generateActivateCall(
+        uint256 _chainId,
+        address _instanceOwner,
+        address _treasury,
+        address _weth,
+        address _gear
+    ) internal returns (CrossChainCall memory) {
         return CrossChainCall({
-            chainId: 1,
+            chainId: _chainId,
             target: address(instanceManager),
             callData: abi.encodeCall(InstanceManager.activate, (_instanceOwner, _treasury, _weth, _gear))
         });

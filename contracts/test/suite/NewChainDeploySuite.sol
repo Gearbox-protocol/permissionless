@@ -10,6 +10,7 @@ import {PriceFeedStore} from "../../instance/PriceFeedStore.sol";
 import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
 import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
 import {IInstanceManager} from "../../interfaces/IInstanceManager.sol";
+import {IConfigureActions} from "../../factories/CreditFactory.sol";
 
 import {IWETH} from "@gearbox-protocol/core-v3/contracts/interfaces/external/IWETH.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
@@ -64,21 +65,11 @@ import {CreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditF
 import {CreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditConfiguratorV3.sol";
 
 import {DeployParams} from "../../interfaces/Types.sol";
-import {InstanceManagerHelper} from "../../test/helpers/InstanceManagerHelper.sol";
 import {CreditFacadeParams, CreditManagerParams} from "../../factories/CreditFactory.sol";
 
-struct SystemContract {
-    bytes initCode;
-    bytes32 contractType;
-    uint256 version;
-}
+import {GlobalSetup} from "../../test/helpers/GlobalSetup.sol";
 
-struct DeploySystemContractCall {
-    bytes32 contractType;
-    uint256 version;
-}
-
-contract NewChainDeploySuite is Test, InstanceManagerHelper {
+contract NewChainDeploySuite is Test, GlobalSetup {
     address internal riskCurator;
 
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -93,120 +84,16 @@ contract NewChainDeploySuite is Test, InstanceManagerHelper {
             vm.chainId(1);
         }
 
-        _setUpInstanceManager();
+        _setUpGlobalContracts();
 
-        _setupInitialSystemContracts();
+        // activate instance
+        CrossChainCall[] memory calls = new CrossChainCall[](1);
+        calls[0] = _generateActivateCall(1, instanceOwner, address(0), WETH, GEAR);
+        _submitProposalAndSign(calls);
 
         // Configure instance
         _setupPriceFeedStore();
         riskCurator = vm.addr(_generatePrivateKey("RISK_CURATOR"));
-    }
-
-    function _setupInitialSystemContracts() internal {
-        CrossChainCall[] memory calls = new CrossChainCall[](1);
-        calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
-        _submitProposalAndSign(calls);
-
-        SystemContract[22] memory systemContracts = [
-            SystemContract({initCode: type(PoolFactory).creationCode, contractType: AP_POOL_FACTORY, version: 3_10}),
-            SystemContract({initCode: type(CreditFactory).creationCode, contractType: AP_CREDIT_FACTORY, version: 3_10}),
-            SystemContract({
-                initCode: type(InterestRateModelFactory).creationCode,
-                contractType: AP_INTEREST_RATE_MODEL_FACTORY,
-                version: 3_10
-            }),
-            SystemContract({initCode: type(PriceFeedStore).creationCode, contractType: AP_PRICE_FEED_STORE, version: 3_10}),
-            SystemContract({
-                initCode: type(PriceOracleFactory).creationCode,
-                contractType: AP_PRICE_ORACLE_FACTORY,
-                version: 3_10
-            }),
-            SystemContract({
-                initCode: type(RateKeeperFactory).creationCode,
-                contractType: AP_RATE_KEEPER_FACTORY,
-                version: 3_10
-            }),
-            SystemContract({
-                initCode: type(MarketConfiguratorFactory).creationCode,
-                contractType: AP_MARKET_CONFIGURATOR_FACTORY,
-                version: 3_10
-            }),
-            SystemContract({initCode: type(Governor).creationCode, contractType: AP_GOVERNOR, version: 3_10}),
-            SystemContract({initCode: type(PoolV3).creationCode, contractType: AP_POOL, version: 3_10}),
-            SystemContract({
-                initCode: type(PoolQuotaKeeperV3).creationCode,
-                contractType: AP_POOL_QUOTA_KEEPER,
-                version: 3_10
-            }),
-            SystemContract({
-                initCode: type(LinearInterestRateModelV3).creationCode,
-                contractType: AP_INTEREST_RATE_MODEL_LINEAR,
-                version: 3_10
-            }),
-            SystemContract({initCode: type(TumblerV3).creationCode, contractType: AP_RATE_KEEPER_TUMBLER, version: 3_10}),
-            SystemContract({initCode: type(GaugeV3).creationCode, contractType: AP_RATE_KEEPER_GAUGE, version: 3_10}),
-            SystemContract({initCode: type(PriceOracleV3).creationCode, contractType: AP_PRICE_ORACLE, version: 3_10}),
-            SystemContract({
-                initCode: type(DefaultLossPolicy).creationCode,
-                contractType: AP_LOSS_POLICY_DEFAULT,
-                version: 3_10
-            }),
-            SystemContract({
-                initCode: type(MarketConfigurator).creationCode,
-                contractType: AP_MARKET_CONFIGURATOR,
-                version: 3_10
-            }),
-            SystemContract({initCode: type(ACL).creationCode, contractType: AP_ACL, version: 3_10}),
-            SystemContract({
-                initCode: type(ContractsRegister).creationCode,
-                contractType: AP_CONTRACTS_REGISTER,
-                version: 3_10
-            }),
-            SystemContract({
-                initCode: type(LossPolicyFactory).creationCode,
-                contractType: AP_LOSS_POLICY_FACTORY,
-                version: 3_10
-            }),
-            /// CREDIT
-            SystemContract({initCode: type(CreditManagerV3).creationCode, contractType: AP_CREDIT_MANAGER, version: 3_10}),
-            SystemContract({initCode: type(CreditFacadeV3).creationCode, contractType: AP_CREDIT_FACADE, version: 3_10}),
-            SystemContract({
-                initCode: type(CreditConfiguratorV3).creationCode,
-                contractType: AP_CREDIT_CONFIGURATOR,
-                version: 3_10
-            })
-        ];
-
-        uint256 len = systemContracts.length;
-
-        DeploySystemContractCall[8] memory deployCalls = [
-            DeploySystemContractCall({contractType: AP_PRICE_FEED_STORE, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_POOL_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_CREDIT_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_PRICE_ORACLE_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_INTEREST_RATE_MODEL_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_RATE_KEEPER_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_LOSS_POLICY_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_MARKET_CONFIGURATOR_FACTORY, version: 3_10})
-        ];
-
-        uint256 deployCallsLen = deployCalls.length;
-
-        calls = new CrossChainCall[](len + deployCallsLen + 1);
-        for (uint256 i = 0; i < len; i++) {
-            bytes32 bytecodeHash = _uploadByteCodeAndSign(
-                systemContracts[i].initCode, systemContracts[i].contractType, systemContracts[i].version
-            );
-            calls[i] = _generateAllowSystemContractCall(bytecodeHash);
-        }
-
-        for (uint256 i = 0; i < deployCallsLen; i++) {
-            calls[len + i] = _generateDeploySystemContractCall(deployCalls[i].contractType, deployCalls[i].version);
-        }
-
-        calls[len + deployCallsLen] = _generateActivateCall(instanceOwner, address(0), WETH, GEAR);
-
-        _submitProposalAndSign(calls);
     }
 
     function _setupPriceFeedStore() internal {
@@ -276,7 +163,16 @@ contract NewChainDeploySuite is Test, InstanceManagerHelper {
 
         bytes memory creditSuiteParams = abi.encode(creditManagerParams, facadeParams);
 
-        MarketConfigurator(mc).createCreditSuite(3_10, pool, creditSuiteParams);
+        address cm = MarketConfigurator(mc).createCreditSuite(3_10, pool, creditSuiteParams);
+
+        address balancerVault = 0xBA12222222228d8Ba445958a75a0704d566BF2C8;
+
+        MarketConfigurator(mc).configureCreditSuite(
+            cm,
+            abi.encodeCall(
+                IConfigureActions.allowAdapter, (DeployParams("BALANCER_VAULT", abi.encode(cm, balancerVault)))
+            )
+        );
 
         vm.stopPrank();
     }

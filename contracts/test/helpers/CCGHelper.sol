@@ -37,7 +37,7 @@ contract CCGHelper is SignatureHelper {
         // EACH NETWORK SETUP
 
         // Deploy CrossChainMultisig with 2 signers and threshold of 2
-        multisig = new CrossChainMultisig(
+        multisig = new CrossChainMultisig{salt: "SALT"}(
             initialSigners,
             2, // threshold
             dao
