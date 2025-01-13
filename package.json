@@ -14,6 +14,6 @@
         "@gearbox-protocol/sdk-gov": "^2.1.0"
     },
     "dependencies": {
-        "@redstone-finance/evm-connector": "^0.7.3"
+        "@redstone-finance/evm-connector": "^0.2.5"
     }
 }

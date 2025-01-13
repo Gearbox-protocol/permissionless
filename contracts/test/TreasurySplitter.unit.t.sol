@@ -1,111 +1,86 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.23;
 
-import "@gearbox-protocol/core-v3/contracts/test/lib/constants.sol";
+import {Test} from "forge-std/Test.sol";
 import {TreasurySplitter} from "../market/TreasurySplitter.sol";
-import {ITreasurySplitter, Split} from "../interfaces/ITreasurySplitter.sol";
+import {ITreasurySplitter, Split, TwoAdminProposal} from "../interfaces/ITreasurySplitter.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
+import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
+
+contract MockAddressProvider {
+    address public treasury;
+    address public treasuryProxy;
+
+    constructor(address _treasury, address _treasuryProxy) {
+        treasury = _treasury;
+        treasuryProxy = _treasuryProxy;
+    }
+
+    function getAddressOrRevert(bytes32 key, uint256) external view returns (address) {
+        if (key == "TREASURY") return treasury;
+        if (key == "TREASURY_PROXY") return treasuryProxy;
+        revert();
+    }
+}
 
 contract TreasurySplitterTest is Test {
     TreasurySplitter splitter;
     ERC20Mock token1;
     ERC20Mock token2;
+    MockAddressProvider addressProvider;
 
+    address admin;
+    address treasury;
+    address treasuryProxy;
     address receiver1;
     address receiver2;
     address receiver3;
 
-    function assertEq(uint16[] memory a, uint16[] memory b) internal pure {
-        assertEq(a.length, b.length, "Uint16 array length mismatch");
-        for (uint256 i = 0; i < a.length; i++) {
-            assertEq(a[i], b[i], string(abi.encodePacked("Uint16 mismatch at index ", vm.toString(i))));
-        }
-    }
-
     function setUp() public {
-        vm.prank(CONFIGURATOR);
-        splitter = new TreasurySplitter();
-        token1 = new ERC20Mock();
-        token2 = new ERC20Mock();
+        admin = makeAddr("admin");
+        treasury = makeAddr("treasury");
+        treasuryProxy = makeAddr("treasuryProxy");
         receiver1 = makeAddr("receiver1");
         receiver2 = makeAddr("receiver2");
         receiver3 = makeAddr("receiver3");
+
+        addressProvider = new MockAddressProvider(treasury, treasuryProxy);
+        splitter = new TreasurySplitter(address(addressProvider), admin);
+
+        token1 = new ERC20Mock();
+        token2 = new ERC20Mock();
     }
 
     /// @dev U:[TRS-1]: distribute works correctly
     function test_TRS_01_distribute() public {
-        ERC20Mock token3 = new ERC20Mock();
-        token3.mint(address(splitter), 5000 * 10 ** 18);
-
-        vm.expectRevert(ITreasurySplitter.UndefinedSplitException.selector);
-        splitter.distribute(address(token3));
-
-        address[] memory defaultReceivers = new address[](3);
-        defaultReceivers[0] = receiver1;
-        defaultReceivers[1] = receiver2;
-        defaultReceivers[2] = address(splitter);
-
-        uint16[] memory defaultProportions = new uint16[](3);
-        defaultProportions[0] = 5000;
-        defaultProportions[1] = 3000;
-        defaultProportions[2] = 2000;
-
-        vm.prank(CONFIGURATOR);
-        splitter.setDefaultSplit(defaultReceivers, defaultProportions);
-
         uint256 amount1 = 1000 * 1e18;
         token1.mint(address(splitter), amount1);
 
-        vm.expectEmit(true, false, false, true);
-        emit ITreasurySplitter.DistributeToken(address(token1), amount1);
+        vm.prank(admin);
         splitter.distribute(address(token1));
 
-        assertEq(token1.balanceOf(receiver1), 500 * 1e18);
-        assertEq(token1.balanceOf(receiver2), 300 * 1e18);
-        assertEq(token1.balanceOf(address(splitter)), 200 * 1e18);
-        assertEq(splitter.lastBalance(address(token1)), 200 * 1e18);
+        assertEq(token1.balanceOf(admin), 500 * 1e18);
+        assertEq(token1.balanceOf(treasury), 500 * 1e18);
 
-        address[] memory tokenReceivers = new address[](3);
-        tokenReceivers[0] = receiver1;
-        tokenReceivers[1] = address(splitter);
-        tokenReceivers[2] = receiver2;
-
-        uint16[] memory tokenProportions = new uint16[](3);
-        tokenProportions[0] = 4000;
-        tokenProportions[1] = 4000;
-        tokenProportions[2] = 2000;
-
-        vm.prank(CONFIGURATOR);
-        splitter.setTokenSplit(address(token2), tokenReceivers, tokenProportions);
+        vm.prank(address(splitter));
+        splitter.setTokenInsuranceAmount(address(token2), 300 * 1e18);
 
         uint256 amount2 = 1000 * 1e18;
         token2.mint(address(splitter), amount2);
 
-        vm.expectEmit(true, false, false, true);
-        emit ITreasurySplitter.DistributeToken(address(token2), amount2);
+        vm.prank(treasuryProxy);
         splitter.distribute(address(token2));
 
-        assertEq(token2.balanceOf(receiver1), 400 * 1e18);
-        assertEq(token2.balanceOf(receiver2), 200 * 1e18);
-        assertEq(token2.balanceOf(address(splitter)), 400 * 1e18);
-        assertEq(splitter.lastBalance(address(token2)), 400 * 1e18);
-
-        uint256 amount3 = 500 * 1e18;
-        token2.mint(address(splitter), amount3);
-
-        vm.expectEmit(true, false, false, true);
-        emit ITreasurySplitter.DistributeToken(address(token2), amount3);
-        splitter.distribute(address(token2));
-
-        assertEq(token2.balanceOf(receiver1), 600 * 1e18);
-        assertEq(token2.balanceOf(receiver2), 300 * 1e18);
-        assertEq(token2.balanceOf(address(splitter)), 600 * 1e18);
-        assertEq(splitter.lastBalance(address(token2)), 600 * 1e18);
+        uint256 distributableAmount = amount2 - 300 * 1e18;
+        assertEq(token2.balanceOf(admin), distributableAmount / 2);
+        assertEq(token2.balanceOf(treasury), distributableAmount / 2);
+        assertEq(token2.balanceOf(address(splitter)), 300 * 1e18);
     }
 
-    /// @dev U:[TRS-2]: setTokenSplit works correctly
-    function test_TRS_02_setTokenSplit() public {
+    /// @dev U:[TRS-2]: configure and proposal management work correctly
+    function test_TRS_02_configure() public {
+        // Setup test data
         address[] memory receivers = new address[](2);
         receivers[0] = receiver1;
         receivers[1] = receiver2;
@@ -114,89 +89,176 @@ contract TreasurySplitterTest is Test {
         proportions[0] = 6000;
         proportions[1] = 4000;
 
-        vm.expectEmit(true, false, false, true);
-        emit ITreasurySplitter.SetTokenSplit(address(token1), receivers, proportions);
+        bytes memory setTokenSplitData =
+            abi.encodeWithSelector(ITreasurySplitter.setTokenSplit.selector, address(token1), receivers, proportions);
 
-        vm.prank(CONFIGURATOR);
-        splitter.setTokenSplit(address(token1), receivers, proportions);
+        vm.prank(admin);
+        splitter.configure(setTokenSplitData);
+
+        TwoAdminProposal[] memory activeProposals = splitter.activeProposals();
+        assertEq(activeProposals.length, 1);
+        assertEq(activeProposals[0].callData, setTokenSplitData);
+        assertTrue(activeProposals[0].confirmedByAdmin);
+        assertFalse(activeProposals[0].confirmedByTreasuryProxy);
+
+        vm.prank(treasuryProxy);
+        splitter.configure(setTokenSplitData);
+
+        activeProposals = splitter.activeProposals();
+        assertEq(activeProposals.length, 0);
 
         Split memory split = splitter.tokenSplits(address(token1));
-
         assertTrue(split.initialized);
-        assertEq(split.receivers.length, receivers.length, "Incorrect receivers array set");
-        assertEq(split.proportions.length, proportions.length);
 
-        proportions[1] = 3000;
-        vm.expectRevert(ITreasurySplitter.PropotionSumIncorrectException.selector);
-        vm.prank(CONFIGURATOR);
-        splitter.setTokenSplit(address(token1), receivers, proportions);
+        bytes memory setDefaultSplitData =
+            abi.encodeWithSelector(ITreasurySplitter.setDefaultSplit.selector, receivers, proportions);
 
-        uint16[] memory shortProportions = new uint16[](1);
-        shortProportions[0] = 10000;
-        vm.expectRevert(ITreasurySplitter.SplitArraysDifferentLengthException.selector);
-        vm.prank(CONFIGURATOR);
-        splitter.setTokenSplit(address(token1), receivers, shortProportions);
+        vm.prank(admin);
+        splitter.configure(setDefaultSplitData);
 
-        vm.prank(receiver1);
-        vm.expectRevert("Ownable: caller is not the owner");
-        splitter.setTokenSplit(address(token1), receivers, proportions);
+        activeProposals = splitter.activeProposals();
+        assertEq(activeProposals.length, 1);
+
+        vm.prank(admin);
+        splitter.cancelConfigure(setDefaultSplitData);
+
+        activeProposals = splitter.activeProposals();
+        assertEq(activeProposals.length, 0);
+
+        bytes memory invalidData = abi.encodeWithSelector(bytes4(keccak256("invalidFunction()")), address(token1));
+
+        vm.expectRevert(ITreasurySplitter.IncorrectConfigureSelectorException.selector);
+        vm.prank(admin);
+        splitter.configure(invalidData);
     }
 
-    /// @dev U:[TRS-3]: setDefaultSplit works correctly
-    function test_TRS_03_setDefaultSplit() public {
-        address[] memory receivers = new address[](3);
-        receivers[0] = receiver1;
-        receivers[1] = receiver2;
-        receivers[2] = receiver3;
-
-        uint16[] memory proportions = new uint16[](3);
-        proportions[0] = 5000;
-        proportions[1] = 3000;
-        proportions[2] = 2000;
-
-        vm.expectEmit(false, false, false, true);
-        emit ITreasurySplitter.SetDefaultSplit(receivers, proportions);
-        vm.prank(CONFIGURATOR);
-        splitter.setDefaultSplit(receivers, proportions);
-
-        Split memory split = splitter.defaultSplit();
-        assertTrue(split.initialized);
-        assertEq(split.receivers, receivers);
-        assertEq(split.proportions, proportions);
-
-        proportions[2] = 1000;
-        vm.expectRevert(ITreasurySplitter.PropotionSumIncorrectException.selector);
-        vm.prank(CONFIGURATOR);
-        splitter.setDefaultSplit(receivers, proportions);
-
-        uint16[] memory shortProportions = new uint16[](2);
-        shortProportions[0] = 5000;
-        shortProportions[1] = 5000;
-        vm.expectRevert(ITreasurySplitter.SplitArraysDifferentLengthException.selector);
-        vm.prank(CONFIGURATOR);
-        splitter.setDefaultSplit(receivers, shortProportions);
-
-        vm.prank(receiver1);
-        vm.expectRevert("Ownable: caller is not the owner");
-        splitter.setDefaultSplit(receivers, proportions);
-    }
-
-    /// @dev U:[TRS-4]: withdrawToken works correctly
-    function test_TRS_04_withdrawToken() public {
-        uint256 amount = 1000 * 10 ** 18;
+    /// @dev U:[TRS-3]: setTokenInsuranceAmount works correctly
+    function test_TRS_03_setTokenInsuranceAmount() public {
+        // Mint initial tokens
+        uint256 amount = 1000 * 1e18;
         token1.mint(address(splitter), amount);
 
-        vm.expectEmit(true, false, false, true);
-        emit ITreasurySplitter.WithdrawToken(address(token1), receiver1, 300 * 10 ** 18);
-        vm.prank(CONFIGURATOR);
-        splitter.withdrawToken(address(token1), receiver1, 300 * 10 ** 18);
+        // Set insurance amount and verify
+        vm.prank(address(splitter));
+        splitter.setTokenInsuranceAmount(address(token1), 300 * 1e18);
 
-        assertEq(token1.balanceOf(receiver1), 300 * 10 ** 18);
-        assertEq(token1.balanceOf(address(splitter)), 700 * 10 ** 18);
-        assertEq(splitter.lastBalance(address(token1)), 700 * 10 ** 18);
+        assertEq(splitter.tokenInsuranceAmount(address(token1)), 300 * 1e18);
 
-        vm.prank(receiver1);
-        vm.expectRevert("Ownable: caller is not the owner");
-        splitter.withdrawToken(address(token1), receiver1, 300 * 10 ** 18);
+        // Verify distribution with insurance amount
+        uint256 distributableAmount = amount - 300 * 1e18;
+        assertEq(token1.balanceOf(admin), distributableAmount / 2);
+        assertEq(token1.balanceOf(treasury), distributableAmount / 2);
+        assertEq(token1.balanceOf(address(splitter)), 300 * 1e18);
+
+        // Test setting insurance amount higher than balance
+        vm.prank(address(splitter));
+        splitter.setTokenInsuranceAmount(address(token1), 400 * 1e18);
+
+        // No additional distribution should occur
+        assertEq(token1.balanceOf(admin), distributableAmount / 2);
+        assertEq(token1.balanceOf(treasury), distributableAmount / 2);
+        assertEq(token1.balanceOf(address(splitter)), 300 * 1e18);
+    }
+
+    /// @dev U:[TRS-4]: setTokenSplit works correctly
+    function test_TRS_04_setTokenSplit() public {
+        address[] memory receivers = new address[](2);
+        receivers[0] = receiver1;
+        receivers[1] = receiver2;
+
+        uint16[] memory proportions = new uint16[](2);
+        proportions[0] = 6000;
+        proportions[1] = 4000;
+
+        // Test normal split setup
+        vm.prank(address(splitter));
+        splitter.setTokenSplit(address(token1), receivers, proportions);
+
+        Split memory tokenSplit = splitter.tokenSplits(address(token1));
+        assertTrue(tokenSplit.initialized);
+        assertEq(tokenSplit.receivers[0], receiver1);
+        assertEq(tokenSplit.receivers[1], receiver2);
+        assertEq(tokenSplit.proportions[0], 6000);
+        assertEq(tokenSplit.proportions[1], 4000);
+
+        // Test invalid split with wrong proportions sum
+        proportions[1] = 3000;
+        vm.expectRevert(ITreasurySplitter.PropotionSumIncorrectException.selector);
+        vm.prank(address(splitter));
+        splitter.setTokenSplit(address(token1), receivers, proportions);
+
+        // Test invalid split with splitter as receiver
+        receivers[0] = address(splitter);
+        proportions[1] = 4000;
+        vm.expectRevert(ITreasurySplitter.TreasurySplitterAsReceiverException.selector);
+        vm.prank(address(splitter));
+        splitter.setTokenSplit(address(token1), receivers, proportions);
+
+        // Test access control
+        vm.expectRevert(ITreasurySplitter.OnlySelfException.selector);
+        splitter.setTokenSplit(address(token1), receivers, proportions);
+    }
+
+    /// @dev U:[TRS-5]: setDefaultSplit works correctly
+    function test_TRS_05_setDefaultSplit() public {
+        address[] memory receivers = new address[](2);
+        receivers[0] = receiver1;
+        receivers[1] = receiver2;
+
+        uint16[] memory proportions = new uint16[](2);
+        proportions[0] = 6000;
+        proportions[1] = 4000;
+
+        // Test normal split setup
+        vm.prank(address(splitter));
+        splitter.setDefaultSplit(receivers, proportions);
+
+        Split memory defaultSplit = splitter.defaultSplit();
+        assertTrue(defaultSplit.initialized);
+        assertEq(defaultSplit.receivers[0], receiver1);
+        assertEq(defaultSplit.receivers[1], receiver2);
+        assertEq(defaultSplit.proportions[0], 6000);
+        assertEq(defaultSplit.proportions[1], 4000);
+
+        // Test invalid split with wrong proportions sum
+        proportions[1] = 3000;
+        vm.expectRevert(ITreasurySplitter.PropotionSumIncorrectException.selector);
+        vm.prank(address(splitter));
+        splitter.setDefaultSplit(receivers, proportions);
+
+        // Test invalid split with splitter as receiver
+        receivers[0] = address(splitter);
+        proportions[1] = 4000;
+        vm.expectRevert(ITreasurySplitter.TreasurySplitterAsReceiverException.selector);
+        vm.prank(address(splitter));
+        splitter.setDefaultSplit(receivers, proportions);
+
+        // Test access control
+        vm.expectRevert(ITreasurySplitter.OnlySelfException.selector);
+        splitter.setDefaultSplit(receivers, proportions);
+    }
+
+    /// @dev U:[TRS-6]: withdrawToken works correctly
+    function test_TRS_06_withdrawToken() public {
+        uint256 amount = 1000 * 1e18;
+        token1.mint(address(splitter), amount);
+
+        // Test partial withdrawal
+        vm.prank(address(splitter));
+        splitter.withdrawToken(address(token1), receiver1, 500 * 1e18);
+
+        assertEq(token1.balanceOf(receiver1), 500 * 1e18);
+        assertEq(token1.balanceOf(address(splitter)), 500 * 1e18);
+
+        // Test full withdrawal
+        vm.prank(address(splitter));
+        splitter.withdrawToken(address(token1), receiver2, 500 * 1e18);
+
+        assertEq(token1.balanceOf(receiver2), 500 * 1e18);
+        assertEq(token1.balanceOf(address(splitter)), 0);
+
+        // Test access control
+        vm.expectRevert(ITreasurySplitter.OnlySelfException.selector);
+        splitter.withdrawToken(address(token1), receiver1, 100 * 1e18);
     }
 }

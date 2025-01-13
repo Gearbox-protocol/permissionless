@@ -131,7 +131,7 @@ contract MarketConfigurator is IMarketConfigurator {
 
         acl = address(new ACL());
         contractsRegister = address(new ContractsRegister(acl));
-        treasury = address(new TreasurySplitter());
+        treasury = address(new TreasurySplitter(addressProvider, admin));
 
         ACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, address(this));
         ACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, address(this));
