@@ -6,8 +6,6 @@ pragma solidity ^0.8.23;
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import {AbstractDeployer} from "../helpers/AbstractDeployer.sol";
-
 import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
@@ -24,9 +22,9 @@ import {
 import {MarketConfiguratorLegacy} from "../market/legacy/MarketConfiguratorLegacy.sol";
 import {MarketConfigurator} from "../market/MarketConfigurator.sol";
 
-// TODO: somehow need to add MC Legacy to MC Factory. maybe we can deploy it from here?
+import {DeployerTrait} from "../traits/DeployerTrait.sol";
 
-contract MarketConfiguratorFactory is AbstractDeployer, IMarketConfiguratorFactory {
+contract MarketConfiguratorFactory is DeployerTrait, IMarketConfiguratorFactory {
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -68,7 +66,7 @@ contract MarketConfiguratorFactory is AbstractDeployer, IMarketConfiguratorFacto
         _;
     }
 
-    constructor(address addressProvider_) AbstractDeployer(addressProvider_) {}
+    constructor(address addressProvider_) DeployerTrait(addressProvider_) {}
 
     function isMarketConfigurator(address account) external view override returns (bool) {
         return _registeredMarketConfiguratorsSet.contains(account);
@@ -96,15 +94,10 @@ contract MarketConfiguratorFactory is AbstractDeployer, IMarketConfiguratorFacto
         string calldata curatorName,
         bool deployGovernor
     ) external override returns (address marketConfigurator) {
-        if (deployGovernor) {
-            // TODO: deploy governor and timelock (maybe can do it inside MC for consistency?)
-            admin = admin;
-        }
-
         marketConfigurator = _deployLatestPatch({
             contractType: AP_MARKET_CONFIGURATOR,
             minorVersion: version,
-            constructorParams: abi.encode(addressProvider, admin, emergencyAdmin, curatorName),
+            constructorParams: abi.encode(addressProvider, admin, emergencyAdmin, curatorName, deployGovernor),
             salt: bytes32(bytes20(msg.sender)) // QUESTION: whose address?
         });
 

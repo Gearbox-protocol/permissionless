@@ -4,10 +4,10 @@
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
-import {IImmutableOwnable} from "./IImmutableIOwnable.sol";
+import {IImmutableOwnableTrait} from "./base/IImmutableOwnableTrait.sol";
 import {Bytecode, AuditorSignature} from "./Types.sol";
 
-interface IBytecodeRepository is IVersion, IImmutableOwnable {
+interface IBytecodeRepository is IVersion, IImmutableOwnableTrait {
     //
     // ERRORS
     //

@@ -9,6 +9,11 @@ import {IFactory} from "./IFactory.sol";
 interface ICreditFactory is IFactory {
     function deployCreditSuite(address pool, bytes calldata encodedParams) external returns (DeployResult memory);
 
+    function computeCreditManagerAddress(address marketConfigurator, address pool, bytes calldata encodedParams)
+        external
+        view
+        returns (address);
+
     // ------------ //
     // CREDIT HOOKS //
     // ------------ //

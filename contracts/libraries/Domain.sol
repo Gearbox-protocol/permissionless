@@ -9,15 +9,20 @@ import {LibString} from "@solady/utils/LibString.sol";
 
 library Domain {
     using LibString for string;
+    using LibString for bytes32;
 
     function extractDomain(string memory str) internal pure returns (string memory) {
-        uint256 underscoreIndex = str.indexOf("::");
+        uint256 separatorIndex = str.indexOf("::");
 
-        // If no underscore found, treat the whole name as domain
-        if (underscoreIndex == LibString.NOT_FOUND) {
-            return "";
+        // If no separator found, treat the whole name as domain
+        if (separatorIndex == LibString.NOT_FOUND) {
+            return str;
         }
 
-        return str.slice(0, underscoreIndex);
+        return str.slice(0, separatorIndex);
+    }
+
+    function extractDomain(bytes32 contractType) internal pure returns (bytes32) {
+        return extractDomain(contractType.fromSmallString()).toSmallString();
     }
 }

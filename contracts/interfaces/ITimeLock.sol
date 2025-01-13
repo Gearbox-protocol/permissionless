@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Gearbox Protocol. Generalized leverage for DeFi protocols
-// (c) Gearbox Foundation, 2023.
-pragma solidity ^0.8.0;
+// (c) Gearbox Foundation, 2024.
+pragma solidity ^0.8.23;
 
 /// @title Timelock interface
 interface ITimeLock {
     // ------ //
     // EVENTS //
     // ------ //
-
-    event NewAdmin(address indexed newAdmin);
-
-    event NewPendingAdmin(address indexed newPendingAdmin);
 
     event NewDelay(uint256 indexed newDelay);
 
@@ -32,8 +28,6 @@ interface ITimeLock {
     // ------ //
 
     error CallerIsNotAdminException(address caller);
-
-    error CallerIsNotPendingAdminException(address caller);
 
     error CallerIsNotSelfException(address caller);
 
@@ -61,8 +55,6 @@ interface ITimeLock {
 
     function admin() external view returns (address);
 
-    function pendingAdmin() external view returns (address);
-
     function delay() external view returns (uint256);
 
     // ------------ //
@@ -87,7 +79,5 @@ interface ITimeLock {
     // CONFIGURATION //
     // ------------- //
 
-    function setPendingAdmin(address newPendingAdmin) external;
-
-    function acceptAdmin() external;
+    function setDelay(uint256 newDelay) external;
 }

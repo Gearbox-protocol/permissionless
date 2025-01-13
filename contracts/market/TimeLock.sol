@@ -10,11 +10,10 @@ contract TimeLock is ITimeLock {
     uint256 public constant override MINIMUM_DELAY = 1 days;
     uint256 public constant override MAXIMUM_DELAY = 30 days;
 
-    address public override admin;
-    address public override pendingAdmin;
+    address public immutable override admin;
     uint256 public override delay;
 
-    mapping(bytes32 => bool) public override queuedTransactions;
+    mapping(bytes32 txHash => bool) public override queuedTransactions;
 
     modifier onlySelf() {
         if (msg.sender != address(this)) revert CallerIsNotSelfException(msg.sender);
@@ -23,11 +22,6 @@ contract TimeLock is ITimeLock {
 
     modifier onlyAdmin() {
         if (msg.sender != admin) revert CallerIsNotAdminException(msg.sender);
-        _;
-    }
-
-    modifier onlyPendingAdmin() {
-        if (msg.sender != pendingAdmin) revert CallerIsNotPendingAdminException(msg.sender);
         _;
     }
 
@@ -40,28 +34,15 @@ contract TimeLock is ITimeLock {
 
     receive() external payable {}
 
-    function setDelay(uint256 delay_) public onlySelf {
-        if (delay_ < MINIMUM_DELAY || delay_ > MAXIMUM_DELAY) revert IncorrectDelayException();
-        delay = delay_;
+    function setDelay(uint256 newDelay) external override onlySelf {
+        if (newDelay < MINIMUM_DELAY || newDelay > MAXIMUM_DELAY) revert IncorrectDelayException();
+        delay = newDelay;
 
-        emit NewDelay(delay);
-    }
-
-    function acceptAdmin() public onlyPendingAdmin {
-        admin = msg.sender;
-        pendingAdmin = address(0);
-
-        emit NewAdmin(admin);
-    }
-
-    function setPendingAdmin(address pendingAdmin_) public onlySelf {
-        pendingAdmin = pendingAdmin_;
-
-        emit NewPendingAdmin(pendingAdmin);
+        emit NewDelay(newDelay);
     }
 
     function queueTransaction(address target, uint256 value, string memory signature, bytes memory data, uint256 eta)
-        public
+        external
         onlyAdmin
         returns (bytes32)
     {
@@ -75,7 +56,7 @@ contract TimeLock is ITimeLock {
     }
 
     function cancelTransaction(address target, uint256 value, string memory signature, bytes memory data, uint256 eta)
-        public
+        external
         onlyAdmin
     {
         bytes32 txHash = keccak256(abi.encode(target, value, signature, data, eta));
@@ -85,7 +66,7 @@ contract TimeLock is ITimeLock {
     }
 
     function executeTransaction(address target, uint256 value, string memory signature, bytes memory data, uint256 eta)
-        public
+        external
         payable
         onlyAdmin
         returns (bytes memory)

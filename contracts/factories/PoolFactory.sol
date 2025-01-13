@@ -101,6 +101,15 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         });
     }
 
+    function computePoolAddress(
+        address marketConfigurator,
+        address underlying,
+        string calldata name,
+        string calldata symbol
+    ) external view override returns (address) {
+        return _computePoolAddress(marketConfigurator, underlying, name, symbol);
+    }
+
     // ------------ //
     // MARKET HOOKS //
     // ------------ //
@@ -233,14 +242,8 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         internal
         returns (address)
     {
-        address acl = IMarketConfigurator(marketConfigurator).acl();
-        address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
-        address treasury = IMarketConfigurator(marketConfigurator).treasury();
-
+        bytes memory constructorParams = _buildPoolConstructorParams(marketConfigurator, underlying, name, symbol);
         bytes32 postfix = _getTokenSpecificPostfix(underlying);
-        bytes memory constructorParams = abi.encode(
-            acl, contractsRegister, underlying, treasury, defaultInterestRateModel, type(uint256).max, name, symbol
-        );
         bytes32 salt = bytes32(bytes20(marketConfigurator));
         return _deployLatestPatch({
             contractType: _getContractType(DOMAIN_POOL, postfix),
@@ -248,6 +251,39 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
             constructorParams: constructorParams,
             salt: salt
         });
+    }
+
+    function _computePoolAddress(
+        address marketConfigurator,
+        address underlying,
+        string calldata name,
+        string calldata symbol
+    ) internal view returns (address) {
+        bytes memory constructorParams = _buildPoolConstructorParams(marketConfigurator, underlying, name, symbol);
+        bytes32 postfix = _getTokenSpecificPostfix(underlying);
+        bytes32 salt = bytes32(bytes20(marketConfigurator));
+        return _computeAddressLatestPatch({
+            contractType: _getContractType(DOMAIN_POOL, postfix),
+            minorVersion: version,
+            constructorParams: constructorParams,
+            salt: salt,
+            deployer: address(this)
+        });
+    }
+
+    function _buildPoolConstructorParams(
+        address marketConfigurator,
+        address underlying,
+        string calldata name,
+        string calldata symbol
+    ) internal view returns (bytes memory) {
+        address acl = IMarketConfigurator(marketConfigurator).acl();
+        address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
+        address treasury = IMarketConfigurator(marketConfigurator).treasury();
+
+        return abi.encode(
+            acl, contractsRegister, underlying, treasury, defaultInterestRateModel, type(uint256).max, name, symbol
+        );
     }
 
     function _deployQuotaKeeper(address marketConfigurator, address pool) internal returns (address) {

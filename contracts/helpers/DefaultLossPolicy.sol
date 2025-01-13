@@ -4,10 +4,11 @@
 pragma solidity ^0.8.23;
 
 import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
+import {AP_LOSS_POLICY_DEFAULT} from "../libraries/ContractLiterals.sol";
 
 contract DefaultLossPolicy is ACLTrait {
     uint256 public constant version = 3_10;
-    bytes32 public constant contractType = "LOSS_POLICY::DEFAULT";
+    bytes32 public constant contractType = AP_LOSS_POLICY_DEFAULT;
 
     bool public enabled;
 

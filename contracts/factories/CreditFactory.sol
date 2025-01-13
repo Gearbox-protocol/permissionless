@@ -17,6 +17,7 @@ import {CallBuilder} from "../libraries/CallBuilder.sol";
 import {
     DOMAIN_ADAPTER,
     DOMAIN_CREDIT_MANAGER,
+    DOMAIN_DEGEN_NFT,
     AP_CREDIT_CONFIGURATOR,
     AP_CREDIT_FACADE,
     AP_CREDIT_FACTORY,
@@ -50,6 +51,7 @@ interface IConfigureActions {
     function upgradeCreditFacade(CreditFacadeParams calldata params) external;
     function allowAdapter(DeployParams calldata params) external;
     function forbidAdapter(address adapter) external;
+    function configureAdapterFor(address targetContract, bytes calldata data) external;
     function setFees(
         uint16 feeLiquidation,
         uint16 liquidationPremium,
@@ -88,10 +90,13 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     /// @notice Address of the WETH token
     address public immutable weth;
 
+    error DegenNFTIsNotRegisteredException(address degenNFT);
+
+    error TargetContractIsNotAllowedException(address targetCotnract);
+
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
-        // TODO: introduce some kind of `StuffRegister` for account factories, bot lists and degen NFTs
         weth = _tryGetAddress(AP_WETH_TOKEN, NO_VERSION_CONTROL);
     }
 
@@ -123,6 +128,16 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
                 _setDebtLimits(creditConfigurator, params.minDebt, params.maxDebt)
             )
         });
+    }
+
+    function computeCreditManagerAddress(address marketConfigurator, address pool, bytes calldata encodedParams)
+        external
+        view
+        override
+        returns (address)
+    {
+        (CreditManagerParams memory params,) = abi.decode(encodedParams, (CreditManagerParams, CreditFacadeParams));
+        return _computeCreditManagerAddress(marketConfigurator, pool, params);
     }
 
     // ------------ //
@@ -188,6 +203,11 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
                 _authorizeFactory(msg.sender, creditManager, adapter),
                 _forbidAdapter(_creditConfigurator(creditManager), adapter)
             );
+        } else if (selector == IConfigureActions.configureAdapterFor.selector) {
+            (address targetContract, bytes memory data) = abi.decode(callData[4:], (address, bytes));
+            address adapter = ICreditManagerV3(creditManager).contractToAdapter(targetContract);
+            if (adapter == address(0)) revert TargetContractIsNotAllowedException(targetContract);
+            return CallBuilder.build(Call(adapter, data));
         } else if (
             selector == IConfigureActions.setFees.selector
                 || selector == IConfigureActions.setMaxDebtPerBlockMultiplier.selector
@@ -237,13 +257,42 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         internal
         returns (address)
     {
+        bytes32 postfix = _getTokenSpecificPostfix(IPoolV3(pool).asset());
+        bytes memory constructorParams = _buildCreditManagerConstructorParams(marketConfigurator, pool, params);
+        return _deployLatestPatch({
+            contractType: _getContractType(DOMAIN_CREDIT_MANAGER, postfix),
+            minorVersion: version,
+            constructorParams: constructorParams,
+            salt: bytes32(bytes20(marketConfigurator))
+        });
+    }
+
+    function _computeCreditManagerAddress(address marketConfigurator, address pool, CreditManagerParams memory params)
+        internal
+        view
+        returns (address)
+    {
+        bytes32 postfix = _getTokenSpecificPostfix(IPoolV3(pool).asset());
+        bytes memory constructorParams = _buildCreditManagerConstructorParams(marketConfigurator, pool, params);
+        return _computeAddressLatestPatch({
+            contractType: _getContractType(DOMAIN_CREDIT_MANAGER, postfix),
+            minorVersion: version,
+            constructorParams: constructorParams,
+            salt: bytes32(bytes20(marketConfigurator)),
+            deployer: address(this)
+        });
+    }
+
+    function _buildCreditManagerConstructorParams(
+        address marketConfigurator,
+        address pool,
+        CreditManagerParams memory params
+    ) internal view returns (bytes memory) {
         address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
         address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
 
-        bytes32 postfix = _getTokenSpecificPostfix(IPoolV3(pool).asset());
-
         // TODO: ensure that account factory is registered, add manager to it
-        bytes memory constructorParams = abi.encode(
+        return abi.encode(
             pool,
             params.accountFactory,
             priceOracle,
@@ -255,13 +304,6 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
             params.liquidationPremiumExpired,
             params.name
         );
-
-        return _deployLatestPatch({
-            contractType: _getContractType(DOMAIN_CREDIT_MANAGER, postfix),
-            minorVersion: version,
-            constructorParams: constructorParams,
-            salt: bytes32(bytes20(marketConfigurator))
-        });
     }
 
     function _deployCreditConfigurator(address marketConfigurator, address creditManager) internal returns (address) {
@@ -284,8 +326,14 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
         address lossPolicy = IContractsRegister(contractsRegister).getLossPolicy(ICreditManagerV3(creditManager).pool());
 
+        if (
+            params.degenNFT != address(0)
+                && !IMarketConfigurator(marketConfigurator).isPeripheryContract(DOMAIN_DEGEN_NFT, params.degenNFT)
+        ) {
+            revert DegenNFTIsNotRegisteredException(params.degenNFT);
+        }
+
         // TODO: ensure that botList is registered, coincides with the previous one, add manager to it
-        // TODO: ensure that degenNFT is registered, add facade to it
         bytes memory constructorParams =
             abi.encode(acl, creditManager, lossPolicy, params.botList, weth, params.degenNFT, params.expirable);
 
@@ -301,11 +349,13 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         internal
         returns (address)
     {
-        address decodedCreditManager = address(bytes20(bytes32(params.constructorParams)));
+        address decodedCreditManager = abi.decode(params.constructorParams, (address));
+
         if (decodedCreditManager != creditManager) revert InvalidConstructorParamsException();
 
         // FIXME: unlike other contracts, this might be deployed multiple times, so using the same salt
         // can be an issue. Same thing can happen to rate keepers, IRMs, etc.
+
         return _deployLatestPatch({
             contractType: _getContractType(DOMAIN_ADAPTER, params.postfix),
             minorVersion: version,

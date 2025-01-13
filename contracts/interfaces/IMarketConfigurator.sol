@@ -11,9 +11,84 @@ interface IMarketConfigurator is IVersion {
     // EVENTS //
     // ------ //
 
+    event SetEmergencyAdmin(address indexed newEmergencyAdmin);
+
+    event GrantRole(bytes32 indexed role, address indexed account);
+
+    event RevokeRole(bytes32 indexed role, address indexed account);
+
+    event EmergencyRevokeRole(bytes32 indexed role, address indexed account);
+
+    event CreateMarket(
+        address indexed pool,
+        address priceOracle,
+        address interestRateModel,
+        address rateKeeper,
+        address lossPolicy,
+        MarketFactories factories
+    );
+
+    event ShutdownMarket(address indexed pool);
+
+    event AddToken(address indexed pool, address indexed token);
+
+    event ConfigurePool(address indexed pool, bytes data);
+
+    event EmergencyConfigurePool(address indexed pool, bytes data);
+
+    event CreateCreditSuite(address indexed creditManager, address factory);
+
+    event ShutdownCreditSuite(address indexed creditManager);
+
+    event ConfigureCreditSuite(address indexed creditManager, bytes data);
+
+    event EmergencyConfigureCreditSuite(address indexed creditManager, bytes data);
+
+    event UpdatePriceOracle(address indexed pool, address priceOracle);
+
+    event ConfigurePriceOracle(address indexed pool, bytes data);
+
+    event EmergencyConfigurePriceOracle(address indexed pool, bytes data);
+
+    event UpdateInterestRateModel(address indexed pool, address interestRateModel);
+
+    event ConfigureInterestRateModel(address indexed pool, bytes data);
+
+    event EmergencyConfigureInterestRateModel(address indexed pool, bytes data);
+
+    event UpdateRateKeeper(address indexed pool, address rateKeeper);
+
+    event ConfigureRateKeeper(address indexed pool, bytes data);
+
+    event EmergencyConfigureRateKeeper(address indexed pool, bytes data);
+
+    event UpdateLossPolicy(address indexed pool, address lossPolicy);
+
+    event ConfigureLossPolicy(address indexed pool, bytes data);
+
+    event EmergencyConfigureLossPolicy(address indexed pool, bytes data);
+
+    event AddPeripheryContract(bytes32 indexed domain, address indexed peripheryContract);
+
+    event RemovePeripheryContract(bytes32 indexed domain, address indexed peripheryContract);
+
     event AuthorizeFactory(address indexed factory, address indexed suite, address indexed target);
 
     event UnauthorizeFactory(address indexed factory, address indexed suite, address indexed target);
+
+    event UpgradePoolFactory(address indexed pool, address factory);
+
+    event UpgradePriceOracleFactory(address indexed pool, address factory);
+
+    event UpgradeInterestRateModelFactory(address indexed pool, address factory);
+
+    event UpgradeRateKeeperFactory(address indexed pool, address factory);
+
+    event UpgradeLossPolicyFactory(address indexed pool, address factory);
+
+    event UpgradeCreditFactory(address indexed creditManager, address factory);
+
+    event ExecuteHook(address indexed target, bytes callData);
 
     // ------ //
     // ERRORS //
@@ -27,6 +102,8 @@ interface IMarketConfigurator is IVersion {
 
     error CreditSuiteNotRegisteredException(address creditManager);
 
+    error IncorrectPeripheryContractException(address peripheryContract);
+
     error MarketNotRegisteredException(address pool);
 
     error UnauthorizedFactoryException(address factory, address target);
@@ -35,12 +112,13 @@ interface IMarketConfigurator is IVersion {
     // STATE VARIABLES //
     // --------------- //
 
-    function curatorName() external view returns (string memory);
+    function addressProvider() external view returns (address);
+    function bytecodeRepository() external view returns (address);
 
     function admin() external view returns (address);
     function emergencyAdmin() external view returns (address);
+    function curatorName() external view returns (string memory);
 
-    function addressProvider() external view returns (address);
     function acl() external view returns (address);
     function contractsRegister() external view returns (address);
     function treasury() external view returns (address);
@@ -48,6 +126,8 @@ interface IMarketConfigurator is IVersion {
     // ---------------- //
     // ROLES MANAGEMENT //
     // ---------------- //
+
+    function setEmergencyAdmin(address newEmergencyAdmin) external;
 
     function grantRole(bytes32 role, address account) external;
 
@@ -58,6 +138,11 @@ interface IMarketConfigurator is IVersion {
     // ----------------- //
     // MARKET MANAGEMENT //
     // ----------------- //
+
+    function previewCreateMarket(uint256 minorVersion, address underlying, string calldata name, string calldata symbol)
+        external
+        view
+        returns (address pool);
 
     function createMarket(
         uint256 minorVersion,
@@ -81,6 +166,11 @@ interface IMarketConfigurator is IVersion {
     // ----------------------- //
     // CREDIT SUITE MANAGEMENT //
     // ----------------------- //
+
+    function previewCreateCreditSuite(uint256 minorVersion, address pool, bytes calldata encodedParams)
+        external
+        view
+        returns (address creditManager);
 
     function createCreditSuite(uint256 minorVersion, address pool, bytes calldata encdodedParams)
         external
@@ -131,6 +221,18 @@ interface IMarketConfigurator is IVersion {
     function configureLossPolicy(address pool, bytes calldata data) external;
 
     function emergencyConfigureLossPolicy(address pool, bytes calldata data) external;
+
+    // --------- //
+    // PERIPHERY //
+    // --------- //
+
+    function getPeripheryContracts(bytes32 domain) external view returns (address[] memory);
+
+    function isPeripheryContract(bytes32 domain, address peripheryContract) external view returns (bool);
+
+    function addPeripheryContract(address peripheryContract) external;
+
+    function removePeripheryContract(address peripheryContract) external;
 
     // --------- //
     // FACTORIES //

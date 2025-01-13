@@ -4,3 +4,4 @@ forge-std/=lib/forge-std/src/
 @openzeppelin/=lib/@openzeppelin/
 @gearbox-protocol=lib/@gearbox-protocol/
 @solady=lib/@solady/src/
+@redstone-finance=node_modules/@redstone-finance/

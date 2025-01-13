@@ -3,25 +3,23 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {IImmutableOwnable} from "../interfaces/IImmutableIOwnable.sol";
+import {IImmutableOwnableTrait} from "../interfaces/base/IImmutableOwnableTrait.sol";
 
-/// @title ImmutableOwnableTrait
+/// @title Immutable ownable trait
 /// @notice Contract that adds immutable owner functionality when inherited
-abstract contract ImmutableOwnableTrait is IImmutableOwnable {
-    /// @notice Custom errors
-    error NotOwnerException();
-
+abstract contract ImmutableOwnableTrait is IImmutableOwnableTrait {
     /// @notice The immutable owner address
     address public immutable override owner;
 
-    /// @notice Sets the immutable owner address
-    constructor(address _owner) {
-        owner = _owner;
-    }
-
     /// @notice Modifier to restrict access to owner only
     modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwnerException();
+        if (msg.sender != owner) revert CallerIsNotOwnerException(msg.sender);
         _;
+    }
+
+    /// @notice Constructor
+    /// @param owner_ Immutable owner address
+    constructor(address owner_) {
+        owner = owner_;
     }
 }

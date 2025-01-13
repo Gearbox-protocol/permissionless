@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import {PriceFeedInfo} from "../../interfaces/Types.sol";
 
 import {Test} from "forge-std/Test.sol";
-import {PriceFeedStore} from "../../global/PriceFeedStore.sol";
+import {PriceFeedStore} from "../../instance/PriceFeedStore.sol";
 import {IPriceFeedStore} from "../../interfaces/IPriceFeedStore.sol";
 import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
 import {MockPriceFeed} from "../mocks/MockPriceFeed.sol";
@@ -70,7 +70,7 @@ contract PriceFeedStoreTest is Test {
     function test_PFS_02_addPriceFeed_reverts_if_not_owner() public {
         address notOwner = makeAddr("notOwner");
         vm.prank(notOwner);
-        vm.expectRevert(ImmutableOwnableTrait.NotOwnerException.selector);
+        vm.expectRevert(abi.encodeWithSignature("CallerIsNotOwnerException(address)", notOwner));
         store.addPriceFeed(address(priceFeed), 3600);
     }
 
@@ -122,7 +122,7 @@ contract PriceFeedStoreTest is Test {
 
         address notOwner = makeAddr("notOwner");
         vm.prank(notOwner);
-        vm.expectRevert(ImmutableOwnableTrait.NotOwnerException.selector);
+        vm.expectRevert(abi.encodeWithSignature("CallerIsNotOwnerException(address)", notOwner));
         store.allowPriceFeed(token, address(priceFeed));
     }
 
@@ -153,7 +153,7 @@ contract PriceFeedStoreTest is Test {
 
         address notOwner = makeAddr("notOwner");
         vm.prank(notOwner);
-        vm.expectRevert(ImmutableOwnableTrait.NotOwnerException.selector);
+        vm.expectRevert(abi.encodeWithSignature("CallerIsNotOwnerException(address)", notOwner));
         store.forbidPriceFeed(token, address(priceFeed));
     }
 

@@ -7,18 +7,19 @@ import {LibString} from "@solady/utils/LibString.sol";
 
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
+import {IDeployerTrait} from "../interfaces/base/IDeployerTrait.sol";
 
 import {AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
 
-abstract contract AbstractDeployer {
+abstract contract DeployerTrait is IDeployerTrait {
     using LibString for string;
     using LibString for bytes32;
 
     /// @notice Address of the address provider
-    address public immutable addressProvider;
+    address public immutable override addressProvider;
 
     /// @notice Address of the bytecode repository
-    address public immutable bytecodeRepository;
+    address public immutable override bytecodeRepository;
 
     constructor(address addressProvider_) {
         addressProvider = addressProvider_;
@@ -49,6 +50,18 @@ abstract contract AbstractDeployer {
         return IBytecodeRepository(bytecodeRepository).deploy(contractType, version, constructorParams, salt);
     }
 
+    function _computeAddress(
+        bytes32 contractType,
+        uint256 version,
+        bytes memory constructorParams,
+        bytes32 salt,
+        address deployer
+    ) internal view returns (address) {
+        return IBytecodeRepository(bytecodeRepository).computeAddress(
+            contractType, version, constructorParams, salt, deployer
+        );
+    }
+
     function _deployLatestPatch(
         bytes32 contractType,
         uint256 minorVersion,
@@ -56,12 +69,23 @@ abstract contract AbstractDeployer {
         bytes32 salt
     ) internal returns (address) {
         // NOTE: it's best to add a check that deployed contract's version matches the expected one in the governor
-        return _deploy(
-            contractType,
-            IBytecodeRepository(bytecodeRepository).getLatestPatchVersion(contractType, minorVersion),
-            constructorParams,
-            salt
+        return _deploy(contractType, _getLatestPatchVersion(contractType, minorVersion), constructorParams, salt);
+    }
+
+    function _computeAddressLatestPatch(
+        bytes32 contractType,
+        uint256 minorVersion,
+        bytes memory constructorParams,
+        bytes32 salt,
+        address deployer
+    ) internal view returns (address) {
+        return _computeAddress(
+            contractType, _getLatestPatchVersion(contractType, minorVersion), constructorParams, salt, deployer
         );
+    }
+
+    function _getLatestPatchVersion(bytes32 contractType, uint256 minorVersion) internal view returns (uint256) {
+        return IBytecodeRepository(bytecodeRepository).getLatestPatchVersion(contractType, minorVersion);
     }
 
     function _getTokenSpecificPostfix(address token) internal view returns (bytes32) {

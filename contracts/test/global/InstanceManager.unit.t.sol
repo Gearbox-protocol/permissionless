@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
-import {InstanceManager} from "../../global/InstanceManager.sol";
+import {InstanceManager} from "../../instance/InstanceManager.sol";
 import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
 import {BytecodeRepository} from "../../global/BytecodeRepository.sol";
 import {ProxyCall} from "../../helpers/ProxyCall.sol";
