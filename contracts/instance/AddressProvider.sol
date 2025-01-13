@@ -34,8 +34,12 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
     mapping(string => mapping(uint256 => address)) public override addresses;
 
     mapping(string => uint256) public latestVersions;
+    mapping(string => mapping(uint256 => uint256)) public latestMinorVersions;
+    mapping(string => mapping(uint256 => uint256)) public latestPatchVersions;
 
     ContractKey[] internal contractKeys;
+
+    error VersionNotFoundException();
 
     constructor(address _owner) ImmutableOwnableTrait(_owner) {
         // The first event is emitted for the address provider itself to aid in contract discovery
@@ -60,15 +64,21 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
     }
 
     function getLatestVersion(string memory key) external view override returns (uint256) {
-        // TODO: implement
+        uint256 latestVersion = latestVersions[key];
+        if (latestVersion == 0) revert VersionNotFoundException();
+        return latestVersion;
     }
 
     function getLatestMinorVersion(string memory key, uint256 majorVersion) external view override returns (uint256) {
-        // TODO: implement
+        uint256 latestMinorVersion = latestMinorVersions[key][majorVersion];
+        if (latestMinorVersion == 0) revert VersionNotFoundException();
+        return latestMinorVersion;
     }
 
     function getLatestPatchVersion(string memory key, uint256 minorVersion) external view override returns (uint256) {
-        // TODO: implement
+        uint256 latestPatchVersion = latestPatchVersions[key][minorVersion];
+        if (latestPatchVersion == 0) revert VersionNotFoundException();
+        return latestPatchVersion;
     }
 
     /// @notice Sets the address for the passed contract key
@@ -101,6 +111,10 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
 
         if (_version > latestVersion) {
             latestVersions[key] = _version;
+            uint256 minorVersion = version / 100 * 100;
+            uint256 patchVersion = version / 10 * 10;
+            latestMinorVersions[key][minorVersion] = _version;
+            latestPatchVersions[key][patchVersion] = _version;
         }
         contractKeys.push(ContractKey(key, _version));
 

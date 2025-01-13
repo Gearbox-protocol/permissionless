@@ -58,7 +58,8 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
-        priceFeedStore = _getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
+        // TODO: Dima check the version problem
+        priceFeedStore = _getAddressOrRevert(AP_PRICE_FEED_STORE, 3_10);
     }
 
     // ---------- //

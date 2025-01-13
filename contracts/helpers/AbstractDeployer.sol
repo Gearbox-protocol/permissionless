@@ -64,6 +64,21 @@ abstract contract AbstractDeployer {
         );
     }
 
+    function _computeAddressLatestPatch(
+        bytes32 contractType,
+        uint256 minorVersion,
+        bytes memory constructorParams,
+        bytes32 salt
+    ) internal view returns (address) {
+        return IBytecodeRepository(bytecodeRepository).computeAddress(
+            contractType,
+            IBytecodeRepository(bytecodeRepository).getLatestPatchVersion(contractType, minorVersion),
+            constructorParams,
+            salt,
+            address(this)
+        );
+    }
+
     function _getTokenSpecificPostfix(address token) internal view returns (bytes32) {
         return IBytecodeRepository(bytecodeRepository).getTokenSpecificPostfix(token);
     }

@@ -183,6 +183,17 @@ contract MarketConfigurator is IMarketConfigurator {
                 (pool, priceOracle, interestRateModel, rateKeeper, lossPolicy, underlyingPriceFeed)
             )
         );
+
+        // TODO: add event!
+    }
+
+    function previewPoolAddress(uint256 minorVersion, address underlying, string calldata name, string calldata symbol)
+        external
+        view
+        returns (address)
+    {
+        MarketFactories memory factories = _getLatestMarketFactories(minorVersion);
+        return IPoolFactory(factories.poolFactory).previewPoolAddress(underlying, name, symbol);
     }
 
     function shutdownMarket(address pool) external override onlyAdmin onlyRegisteredMarket(pool) {

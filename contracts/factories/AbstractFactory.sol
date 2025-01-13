@@ -39,7 +39,7 @@ abstract contract AbstractFactory is AbstractDeployer, IFactory {
     function _ensureCallerIsMarketConfigurator() internal view {
         // QUESTION: can MCF be upgraded?
         address marketConfiguratorFactory = _getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
-        if (IMarketConfiguratorFactory(marketConfiguratorFactory).isMarketConfigurator(msg.sender)) {
+        if (!IMarketConfiguratorFactory(marketConfiguratorFactory).isMarketConfigurator(msg.sender)) {
             revert CallerIsNotMarketConfiguratorException(msg.sender);
         }
     }
