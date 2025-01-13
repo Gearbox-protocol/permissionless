@@ -121,6 +121,7 @@ struct UploadableContract {
 struct DeploySystemContractCall {
     bytes32 contractType;
     uint256 version;
+    bool saveVersion;
 }
 
 // It deploys all the system contracts and related ones
@@ -141,14 +142,14 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         _submitProposalAndSign(calls);
 
         DeploySystemContractCall[8] memory deployCalls = [
-            DeploySystemContractCall({contractType: AP_PRICE_FEED_STORE, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_POOL_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_CREDIT_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_PRICE_ORACLE_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_INTEREST_RATE_MODEL_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_RATE_KEEPER_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_LOSS_POLICY_FACTORY, version: 3_10}),
-            DeploySystemContractCall({contractType: AP_MARKET_CONFIGURATOR_FACTORY, version: 3_10})
+            DeploySystemContractCall({contractType: AP_PRICE_FEED_STORE, version: 3_10, saveVersion: false}),
+            DeploySystemContractCall({contractType: AP_MARKET_CONFIGURATOR_FACTORY, version: 3_10, saveVersion: false}),
+            DeploySystemContractCall({contractType: AP_POOL_FACTORY, version: 3_10, saveVersion: true}),
+            DeploySystemContractCall({contractType: AP_CREDIT_FACTORY, version: 3_10, saveVersion: true}),
+            DeploySystemContractCall({contractType: AP_PRICE_ORACLE_FACTORY, version: 3_10, saveVersion: true}),
+            DeploySystemContractCall({contractType: AP_INTEREST_RATE_MODEL_FACTORY, version: 3_10, saveVersion: true}),
+            DeploySystemContractCall({contractType: AP_RATE_KEEPER_FACTORY, version: 3_10, saveVersion: true}),
+            DeploySystemContractCall({contractType: AP_LOSS_POLICY_FACTORY, version: 3_10, saveVersion: true})
         ];
 
         uint256 uploadContractsLen = contractsToUpload.length;
@@ -164,8 +165,9 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         }
 
         for (uint256 i = 0; i < deploySystemContractsLen; ++i) {
-            calls[uploadContractsLen + i] =
-                _generateDeploySystemContractCall(deployCalls[i].contractType, deployCalls[i].version);
+            calls[uploadContractsLen + i] = _generateDeploySystemContractCall(
+                deployCalls[i].contractType, deployCalls[i].version, deployCalls[i].saveVersion
+            );
         }
 
         _submitProposalAndSign(calls);

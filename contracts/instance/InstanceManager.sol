@@ -88,17 +88,15 @@ contract InstanceManager is Ownable, IVersion {
         }
     }
 
-    function deploySystemContract(bytes32 _contractName, uint256 _version) external onlyCrossChainGovernance {
+    function deploySystemContract(bytes32 _contractName, uint256 _version, bool _saveVersion)
+        external
+        onlyCrossChainGovernance
+    {
         // deploy contract
         // set address in address provider
 
         address newSystemContract = _deploySystemContract(_contractName, _version);
-        if (_contractName == AP_MARKET_CONFIGURATOR_FACTORY) {
-            _setAddress(_contractName, newSystemContract, false);
-            _setAddress(_contractName, newSystemContract, true);
-        } else {
-            _setAddress(_contractName, newSystemContract, true);
-        }
+        _setAddress(_contractName, newSystemContract, _saveVersion);
     }
 
     function _deploySystemContract(bytes32 _contractName, uint256 _version) internal returns (address) {

@@ -43,7 +43,7 @@ contract InterestRateModelFactory is AbstractMarketFactory, IInterestRateModelFa
             contractType: _getContractType(DOMAIN_IRM, params.postfix),
             minorVersion: version,
             constructorParams: params.constructorParams,
-            salt: bytes32(bytes20(msg.sender))
+            salt: bytes32(bytes20(pool))
         });
 
         return DeployResult({

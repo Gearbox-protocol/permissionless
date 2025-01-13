@@ -36,7 +36,8 @@ import {
     AP_LOSS_POLICY_DEFAULT,
     AP_CREDIT_MANAGER,
     AP_CREDIT_FACADE,
-    AP_CREDIT_CONFIGURATOR
+    AP_CREDIT_CONFIGURATOR,
+    NO_VERSION_CONTROL
 } from "../../libraries/ContractLiterals.sol";
 import {SignedProposal, Bytecode} from "../../interfaces/Types.sol";
 
@@ -72,6 +73,7 @@ import {GlobalSetup} from "../../test/helpers/GlobalSetup.sol";
 contract NewChainDeploySuite is Test, GlobalSetup {
     address internal riskCurator;
 
+    address constant TREASURY = 0x3E965117A51186e41c2BB58b729A1e518A715e5F;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant GEAR = 0xBa3335588D9403515223F109EdC4eB7269a9Ab5D;
     address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -88,7 +90,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         // activate instance
         CrossChainCall[] memory calls = new CrossChainCall[](1);
-        calls[0] = _generateActivateCall(1, instanceOwner, address(0), WETH, GEAR);
+        calls[0] = _generateActivateCall(1, instanceOwner, TREASURY, WETH, GEAR);
         _submitProposalAndSign(calls);
 
         // Configure instance
@@ -107,7 +109,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
     function test_NCD_01_createMarket() public {
         address ap = instanceManager.addressProvider();
 
-        address mcf = IAddressProvider(ap).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, 3_10);
+        address mcf = IAddressProvider(ap).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
 
         address poolFactory = IAddressProvider(ap).getAddressOrRevert(AP_POOL_FACTORY, 3_10);
 

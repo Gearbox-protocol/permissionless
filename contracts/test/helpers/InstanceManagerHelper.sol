@@ -11,7 +11,8 @@ import {BytecodeRepository} from "../../../contracts/global/BytecodeRepository.s
 import {
     AP_INSTANCE_MANAGER,
     AP_BYTECODE_REPOSITORY,
-    AP_PRICE_FEED_STORE
+    AP_PRICE_FEED_STORE,
+    NO_VERSION_CONTROL
 } from "../../../contracts/libraries/ContractLiterals.sol";
 import {CrossChainCall} from "../../../contracts/interfaces/ICrossChainMultisig.sol";
 import {IBytecodeRepository} from "../../../contracts/interfaces/IBytecodeRepository.sol";
@@ -47,14 +48,14 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
         );
     }
 
-    function _generateDeploySystemContractCall(bytes32 _contractName, uint256 _version)
+    function _generateDeploySystemContractCall(bytes32 _contractName, uint256 _version, bool _saveVersion)
         internal
         returns (CrossChainCall memory)
     {
         return CrossChainCall({
             chainId: 0,
             target: address(instanceManager),
-            callData: abi.encodeCall(InstanceManager.deploySystemContract, (_contractName, _version))
+            callData: abi.encodeCall(InstanceManager.deploySystemContract, (_contractName, _version, _saveVersion))
         });
     }
 
@@ -86,7 +87,7 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
 
     function _allowPriceFeed(address token, address _priceFeed) internal {
         address ap = instanceManager.addressProvider();
-        address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, 3_10);
+        address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
         vm.prank(instanceOwner);
         instanceManager.configureLocal(
             priceFeedStore, abi.encodeCall(IPriceFeedStore.allowPriceFeed, (token, _priceFeed))
@@ -95,7 +96,7 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
 
     function _addPriceFeed(address _priceFeed, uint32 _stalenessPeriod) internal {
         address ap = instanceManager.addressProvider();
-        address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, 3_10);
+        address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
         vm.prank(instanceOwner);
         instanceManager.configureLocal(
             priceFeedStore, abi.encodeCall(IPriceFeedStore.addPriceFeed, (_priceFeed, _stalenessPeriod))

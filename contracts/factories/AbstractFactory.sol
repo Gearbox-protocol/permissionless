@@ -13,12 +13,16 @@ import {AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL} from "../libraries/C
 import {DeployerTrait} from "../traits/DeployerTrait.sol";
 
 abstract contract AbstractFactory is DeployerTrait, IFactory {
+    address public immutable override marketConfiguratorFactory;
+
     modifier onlyMarketConfigurators() {
         _ensureCallerIsMarketConfigurator();
         _;
     }
 
-    constructor(address addressProvider_) DeployerTrait(addressProvider_) {}
+    constructor(address addressProvider_) DeployerTrait(addressProvider_) {
+        marketConfiguratorFactory = _getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
+    }
 
     // ------------- //
     // CONFIGURATION //
@@ -37,8 +41,6 @@ abstract contract AbstractFactory is DeployerTrait, IFactory {
     // --------- //
 
     function _ensureCallerIsMarketConfigurator() internal view {
-        // QUESTION: can MCF be upgraded?
-        address marketConfiguratorFactory = _getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
         if (!IMarketConfiguratorFactory(marketConfiguratorFactory).isMarketConfigurator(msg.sender)) {
             revert CallerIsNotMarketConfiguratorException(msg.sender);
         }

@@ -353,8 +353,16 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
 
         if (decodedCreditManager != creditManager) revert InvalidConstructorParamsException();
 
-        // FIXME: unlike other contracts, this might be deployed multiple times, so using the same salt
-        // can be an issue. Same thing can happen to rate keepers, IRMs, etc.
+        // NOTE: allowing a previously forbidden adapter is considered a valid operation,
+        // so we just return the contract address if it's already deployed
+        address adapter = _computeAddressLatestPatch({
+            contractType: _getContractType(DOMAIN_ADAPTER, params.postfix),
+            minorVersion: version,
+            constructorParams: params.constructorParams,
+            salt: bytes32(bytes20(marketConfigurator)),
+            deployer: address(this)
+        });
+        if (adapter.code.length != 0) return adapter;
 
         return _deployLatestPatch({
             contractType: _getContractType(DOMAIN_ADAPTER, params.postfix),

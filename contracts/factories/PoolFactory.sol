@@ -21,9 +21,7 @@ import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {Call, DeployResult} from "../interfaces/Types.sol";
 
 import {CallBuilder} from "../libraries/CallBuilder.sol";
-import {
-    AP_POOL_FACTORY, AP_POOL_QUOTA_KEEPER, DOMAIN_POOL, NO_VERSION_CONTROL
-} from "../libraries/ContractLiterals.sol";
+import {AP_POOL_FACTORY, AP_POOL_QUOTA_KEEPER, DOMAIN_POOL} from "../libraries/ContractLiterals.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
 import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
