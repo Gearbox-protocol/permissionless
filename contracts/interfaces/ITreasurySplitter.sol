@@ -17,6 +17,10 @@ struct TwoAdminProposal {
 
 /// @title Treasury splitter
 interface ITreasurySplitter {
+    // ------ //
+    // ERRORS //
+    // ------ //
+
     /// @notice Thrown when attempting to set a split with different-sized receiver and proportion arrays
     error SplitArraysDifferentLengthException();
 
@@ -38,6 +42,10 @@ interface ITreasurySplitter {
     /// @notice Thrown when attempting the add the splitter itself as split receiver
     error TreasurySplitterAsReceiverException();
 
+    // ------ //
+    // EVENTS //
+    // ------ //
+
     /// @notice Emitted when a new default split is set
     event SetDefaultSplit(address[] receivers, uint16[] proportions);
 
@@ -53,17 +61,35 @@ interface ITreasurySplitter {
     /// @notice Emitted when setting a new token insurance amount
     event SetTokenInsuranceAmount(address indexed token, uint256 amount);
 
-    function distribute(address token) external;
+    // --------------- //
+    // STATE VARIABLES //
+    // --------------- //
+
+    function admin() external view returns (address);
+
+    function treasury() external view returns (address);
+
+    function treasuryProxy() external view returns (address);
 
     function tokenSplits(address token) external view returns (Split memory);
 
     function defaultSplit() external view returns (Split memory);
 
+    function tokenInsuranceAmount(address token) external view returns (uint256);
+
+    function getProposal(bytes32 callDataHash) external view returns (TwoAdminProposal memory);
+
+    function activeProposals() external view returns (TwoAdminProposal[] memory);
+
     // ------------- //
     // CONFIGURATION //
     // ------------- //
 
+    function distribute(address token) external;
+
     function configure(bytes memory callData) external;
+
+    function cancelConfigure(bytes memory callData) external;
 
     // ------------- //
     // SELF-CALLABLE //

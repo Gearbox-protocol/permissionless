@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Gearbox Protocol. Generalized leverage for DeFi protocols
-// (c) Gearbox Foundation, 2023.
+// (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -20,27 +20,27 @@ contract TreasurySplitter is ITreasurySplitter {
     using SafeERC20 for IERC20;
 
     /// @notice Address of the market admin
-    address public immutable admin;
+    address public immutable override admin;
 
     /// @notice Address of the Gearbox treasury
-    address public immutable treasury;
+    address public immutable override treasury;
 
     /// @notice Address of the Treasury proxy
-    address public immutable treasuryProxy;
+    address public immutable override treasuryProxy;
 
-    /// @notice Default split for this splitter. Used when no specific split is set for the distributed token.
+    /// @dev Default split for this splitter. Used when no specific split is set for the distributed token.
     Split internal _defaultSplit;
 
-    /// @notice Mapping from token address to the associated split. Used to set specific splits for certain tokens.
-    mapping(address => Split) internal _tokenSplits;
+    /// @dev Mapping from token address to the associated split. Used to set specific splits for certain tokens.
+    mapping(address token => Split) internal _tokenSplits;
 
     /// @notice Mapping from token address to the minimal amount kept on the splitter for insurance, before distribution starts
-    mapping(address => uint256) public tokenInsuranceAmount;
+    mapping(address token => uint256) public override tokenInsuranceAmount;
 
-    /// @notice Mapping from proposal calldata hash to whether either of the admins confirmed it
-    mapping(bytes32 => TwoAdminProposal) public proposals;
+    /// @dev Mapping from proposal calldata hash to whether either of the admins confirmed it
+    mapping(bytes32 callDataHash => TwoAdminProposal) internal _proposals;
 
-    /// @notice Set of all active proposals
+    /// @dev Set of all active proposals
     EnumerableSet.Bytes32Set internal _activeProposals;
 
     modifier onlySelf() {
@@ -63,8 +63,8 @@ contract TreasurySplitter is ITreasurySplitter {
         receivers[1] = treasury;
 
         uint16[] memory proportions = new uint16[](2);
-        proportions[0] = 5000;
-        proportions[1] = 5000;
+        proportions[0] = PERCENTAGE_FACTOR / 2;
+        proportions[1] = PERCENTAGE_FACTOR / 2;
 
         _setSplit(_defaultSplit, receivers, proportions);
 
@@ -72,31 +72,36 @@ contract TreasurySplitter is ITreasurySplitter {
     }
 
     /// @notice Returns a Split struct for a particular token
-    function tokenSplits(address token) external view returns (Split memory split) {
+    function tokenSplits(address token) external view override returns (Split memory split) {
         return _tokenSplits[token];
     }
 
     /// @notice Returns the default Split struct
-    function defaultSplit() external view returns (Split memory) {
+    function defaultSplit() external view override returns (Split memory) {
         return _defaultSplit;
     }
 
+    /// @notice Returns proposal info by hash of its call data
+    function getProposal(bytes32 callDataHash) external view override returns (TwoAdminProposal memory) {
+        return _proposals[callDataHash];
+    }
+
     /// @notice Returns active proposals
-    function activeProposals() external view returns (TwoAdminProposal[] memory _proposals) {
+    function activeProposals() external view override returns (TwoAdminProposal[] memory proposals) {
         bytes32[] memory _activeHashes = _activeProposals.values();
 
         uint256 len = _activeHashes.length;
 
-        _proposals = new TwoAdminProposal[](len);
+        proposals = new TwoAdminProposal[](len);
 
         for (uint256 i = 0; i < len; ++i) {
-            _proposals[i] = proposals[_activeHashes[i]];
+            proposals[i] = _proposals[_activeHashes[i]];
         }
     }
 
     /// @notice Distributes any new amount sent to the contract according to either the token-specific or default split.
     /// @param token Token to distribute
-    function distribute(address token) external onlyTreasuryProxyOrAdmin {
+    function distribute(address token) external override onlyTreasuryProxyOrAdmin {
         _distribute(token);
     }
 
@@ -131,7 +136,7 @@ contract TreasurySplitter is ITreasurySplitter {
     }
 
     /// @notice Configures parameters for this splitter. Calldata must have a selector for one of the configuration functions.
-    function configure(bytes memory callData) external onlyTreasuryProxyOrAdmin {
+    function configure(bytes memory callData) external override onlyTreasuryProxyOrAdmin {
         bytes4 selector = bytes4(callData);
 
         if (
@@ -145,7 +150,7 @@ contract TreasurySplitter is ITreasurySplitter {
 
         bytes32 callDataHash = keccak256(callData);
 
-        TwoAdminProposal storage _proposal = proposals[callDataHash];
+        TwoAdminProposal storage _proposal = _proposals[callDataHash];
 
         if (!_activeProposals.contains(callDataHash)) {
             _activeProposals.add(callDataHash);
@@ -167,10 +172,10 @@ contract TreasurySplitter is ITreasurySplitter {
     }
 
     /// @notice Cancels an active proposal
-    function cancelConfigure(bytes memory callData) external onlyTreasuryProxyOrAdmin {
+    function cancelConfigure(bytes memory callData) external override onlyTreasuryProxyOrAdmin {
         bytes32 callDataHash = keccak256(callData);
 
-        TwoAdminProposal storage _proposal = proposals[callDataHash];
+        TwoAdminProposal storage _proposal = _proposals[callDataHash];
 
         _proposal.confirmedByAdmin = false;
         _proposal.confirmedByTreasuryProxy = false;
@@ -178,7 +183,7 @@ contract TreasurySplitter is ITreasurySplitter {
     }
 
     /// @notice Sets the insurance amount for a token
-    function setTokenInsuranceAmount(address token, uint256 amount) public onlySelf {
+    function setTokenInsuranceAmount(address token, uint256 amount) external override onlySelf {
         tokenInsuranceAmount[token] = amount;
 
         _distribute(token);
@@ -187,7 +192,11 @@ contract TreasurySplitter is ITreasurySplitter {
     }
 
     /// @notice Sets a split for a specific token
-    function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions) public onlySelf {
+    function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions)
+        external
+        override
+        onlySelf
+    {
         _distribute(token);
 
         _setSplit(_tokenSplits[token], receivers, proportions);
@@ -198,7 +207,7 @@ contract TreasurySplitter is ITreasurySplitter {
     /// @notice Sets a default split used for tokens that don't have a specific split
     /// @dev All tokens should be distributed manually before calling this, so that
     ///      the new default distribution does not apply to undistributed tokens
-    function setDefaultSplit(address[] memory receivers, uint16[] memory proportions) public onlySelf {
+    function setDefaultSplit(address[] memory receivers, uint16[] memory proportions) external override onlySelf {
         _setSplit(_defaultSplit, receivers, proportions);
 
         emit SetDefaultSplit(receivers, proportions);
@@ -224,7 +233,7 @@ contract TreasurySplitter is ITreasurySplitter {
     }
 
     /// @notice Withdraws an amount of a token to another address
-    function withdrawToken(address token, address to, uint256 amount) external onlySelf {
+    function withdrawToken(address token, address to, uint256 amount) external override onlySelf {
         IERC20(token).safeTransfer(to, amount);
 
         emit WithdrawToken(token, to, amount);
