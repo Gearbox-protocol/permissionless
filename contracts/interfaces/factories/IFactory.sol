@@ -4,9 +4,10 @@
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {IDeployerTrait} from "../base/IDeployerTrait.sol";
 import {Call} from "../Types.sol";
 
-interface IFactory is IVersion {
+interface IFactory is IVersion, IDeployerTrait {
     // ------ //
     // ERRORS //
     // ------ //

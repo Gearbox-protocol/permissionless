@@ -3,22 +3,26 @@
 // (c) Gearbox Foundation, 2023.
 pragma solidity ^0.8.17;
 
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IGovernor} from "../interfaces/IGovernor.sol";
 import {ITimeLock} from "../interfaces/ITimeLock.sol";
 import {AP_GOVERNOR} from "../libraries/ContractLiterals.sol";
+import {TimeLock} from "./TimeLock.sol";
 
 /// @title Governor
 /// @notice Extends Uniswap's timelock contract with batch queueing/execution and reworked permissions model where,
 ///         instead of a single admin to perform all actions, there are multiple queue admins, a single veto admin,
 ///         and permissionless execution (which can optionally be restricted to non-contract accounts to prevent
 ///         unintended execution of governance proposals inside protocol functions)
-contract Governor is IGovernor {
+contract Governor is Ownable2Step, IGovernor {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
     /// @notice Contract version
     uint256 public constant override version = 3_10;
-    bytes32 public constant override contractType = AP_GOVERNOR;
 
-    using EnumerableSet for EnumerableSet.AddressSet;
+    /// @notice Contract type
+    bytes32 public constant override contractType = AP_GOVERNOR;
 
     /// @inheritdoc IGovernor
     address public immutable override timeLock;
@@ -26,11 +30,14 @@ contract Governor is IGovernor {
     /// @dev Set of queue admins
     EnumerableSet.AddressSet internal _queueAdminsSet;
 
+    /// @dev Set of execution admins
+    EnumerableSet.AddressSet internal _executionAdminsSet;
+
     /// @inheritdoc IGovernor
     address public override vetoAdmin;
 
     /// @inheritdoc IGovernor
-    bool public isExecutionByContractsAllowed;
+    bool public override isPermissionlessExecutionAllowed;
 
     /// @inheritdoc IGovernor
     mapping(uint256 => BatchInfo) public override batchInfo;
@@ -44,46 +51,53 @@ contract Governor is IGovernor {
         _;
     }
 
-    /// @dev Ensures that function can only be called by one of queue admins
+    /// @dev Ensures that function is called by one of queue admins
     modifier queueAdminOnly() {
-        if (!_queueAdminsSet.contains(msg.sender)) revert CallerNotQueueAdminException();
+        if (msg.sender != owner() && !_queueAdminsSet.contains(msg.sender)) revert CallerNotQueueAdminException();
         _;
     }
 
-    /// @dev Ensures that function can only be called by the veto admin
+    /// @dev Ensures that function is called by one of execution admins, unless permissionless execution is allowed
+    modifier executionAdminOnly() {
+        if (!isPermissionlessExecutionAllowed && msg.sender != owner() && !_executionAdminsSet.contains(msg.sender)) {
+            revert CallerNotExecutionAdminException();
+        }
+        _;
+    }
+
+    /// @dev Ensures that function is called by the veto admin
     modifier vetoAdminOnly() {
         if (msg.sender != vetoAdmin) revert CallerNotVetoAdminException();
         _;
     }
 
-    /// @dev Ensures that function can't be called by contracts unless explicitly allowed
-    /// TODO: change regarding EIP-7702!
-    modifier allowedCallerTypeOnly() {
-        if (!isExecutionByContractsAllowed && msg.sender != tx.origin) revert CallerMustNotBeContractException();
-        _;
-    }
-
     /// @notice Constructs a new governor contract
-    /// @param _timeLock Timelock contract address
-    /// @param _queueAdmin Address to add as the first queue admin, can't be `address(0)`
+    /// @param _owner Contract owner, automatically becomes the queue and execution admin
     /// @param _vetoAdmin Address to set as the veto admin, can't be `address(0)`
-    /// @param _allowExecutionByContracts Whether to allow transaction/batch execution by contracts
-    constructor(address _timeLock, address _queueAdmin, address _vetoAdmin, bool _allowExecutionByContracts) {
-        timeLock = _timeLock;
-        _addQueueAdmin(_queueAdmin);
+    /// @param _delay Delay of the timelock
+    /// @param _allowPermissionlessExecution Whether to allow permissionless execution
+    constructor(address _owner, address _vetoAdmin, uint256 _delay, bool _allowPermissionlessExecution) {
+        timeLock = address(new TimeLock(address(this), _delay));
+
+        _transferOwnership(_owner);
         _updateVetoAdmin(_vetoAdmin);
 
-        if (_allowExecutionByContracts) {
-            isExecutionByContractsAllowed = true;
-            emit AllowExecutionByContracts();
+        if (_allowPermissionlessExecution) {
+            isPermissionlessExecutionAllowed = true;
+            emit AllowPermissionlessExecution();
         } else {
-            emit ForbidExecutionByContracts();
+            emit ForbidPermissionlessExecution();
         }
     }
 
     /// @inheritdoc IGovernor
     function queueAdmins() external view override returns (address[] memory) {
         return _queueAdminsSet.values();
+    }
+
+    /// @inheritdoc IGovernor
+    function executionAdmins() external view override returns (address[] memory) {
+        return _executionAdminsSet.values();
     }
 
     // ------- //
@@ -127,12 +141,12 @@ contract Governor is IGovernor {
         string calldata signature,
         bytes calldata data,
         uint256 eta
-    ) external payable override allowedCallerTypeOnly returns (bytes memory) {
+    ) external payable override executionAdminOnly returns (bytes memory) {
         return _transactionAction(target, value, signature, data, eta, TxAction.Execute);
     }
 
     /// @inheritdoc IGovernor
-    function executeBatch(TxParams[] calldata txs) external payable override allowedCallerTypeOnly {
+    function executeBatch(TxParams[] calldata txs) external payable override executionAdminOnly {
         uint256 batchBlock = _batchAction(txs, TxAction.Execute);
         emit ExecuteBatch(msg.sender, batchBlock);
     }
@@ -160,16 +174,24 @@ contract Governor is IGovernor {
 
     /// @inheritdoc IGovernor
     function addQueueAdmin(address admin) external override timeLockOnly {
-        _addQueueAdmin(admin);
+        if (admin == address(0)) revert AdminCantBeZeroAddressException();
+        if (_queueAdminsSet.add(admin)) emit AddQueueAdmin(admin);
     }
 
     /// @inheritdoc IGovernor
     function removeQueueAdmin(address admin) external override timeLockOnly {
-        if (_queueAdminsSet.contains(admin)) {
-            if (_queueAdminsSet.length() == 1) revert CantRemoveLastQueueAdminException();
-            _queueAdminsSet.remove(admin);
-            emit RemoveQueueAdmin(admin);
-        }
+        if (_queueAdminsSet.remove(admin)) emit RemoveQueueAdmin(admin);
+    }
+
+    /// @inheritdoc IGovernor
+    function addExecutionAdmin(address admin) external override timeLockOnly {
+        if (admin == address(0)) revert AdminCantBeZeroAddressException();
+        if (_executionAdminsSet.add(admin)) emit AddExecutionAdmin(admin);
+    }
+
+    /// @inheritdoc IGovernor
+    function removeExecutionAdmin(address admin) external override timeLockOnly {
+        if (_executionAdminsSet.remove(admin)) emit RemoveExecutionAdmin(admin);
     }
 
     /// @inheritdoc IGovernor
@@ -178,24 +200,19 @@ contract Governor is IGovernor {
     }
 
     /// @inheritdoc IGovernor
-    function allowExecutionByContracts() external override timeLockOnly {
-        if (!isExecutionByContractsAllowed) {
-            isExecutionByContractsAllowed = true;
-            emit AllowExecutionByContracts();
+    function allowPermissionlessExecution() external override timeLockOnly {
+        if (!isPermissionlessExecutionAllowed) {
+            isPermissionlessExecutionAllowed = true;
+            emit AllowPermissionlessExecution();
         }
     }
 
     /// @inheritdoc IGovernor
-    function forbidExecutionByContracts() external override timeLockOnly {
-        if (isExecutionByContractsAllowed) {
-            isExecutionByContractsAllowed = false;
-            emit ForbidExecutionByContracts();
+    function forbidPermissionlessExecution() external override timeLockOnly {
+        if (isPermissionlessExecutionAllowed) {
+            isPermissionlessExecutionAllowed = false;
+            emit ForbidPermissionlessExecution();
         }
-    }
-
-    /// @inheritdoc IGovernor
-    function claimTimeLockOwnership() external override queueAdminOnly {
-        ITimeLock(timeLock).acceptAdmin();
     }
 
     // --------- //
@@ -226,17 +243,15 @@ contract Governor is IGovernor {
 
         if (len != batchInfo[batchBlock].length) revert IncorrectBatchException();
 
-        unchecked {
-            for (uint256 i; i < len; ++i) {
-                TxParams calldata tx_ = txs[i];
-                bytes32 txHash = _getTxHash(tx_);
+        for (uint256 i; i < len; ++i) {
+            TxParams calldata tx_ = txs[i];
+            bytes32 txHash = _getTxHash(tx_);
 
-                BatchedTxInfo memory info = batchedTxInfo[txHash];
-                if (info.batchBlock != batchBlock || info.index != i) revert UnexpectedTransactionException(txHash);
+            BatchedTxInfo memory info = batchedTxInfo[txHash];
+            if (info.batchBlock != batchBlock || info.index != i) revert UnexpectedTransactionException(txHash);
 
-                _performAction(tx_.target, tx_.value, tx_.signature, tx_.data, tx_.eta, action);
-                delete batchedTxInfo[txHash];
-            }
+            _performAction(tx_.target, tx_.value, tx_.signature, tx_.data, tx_.eta, action);
+            delete batchedTxInfo[txHash];
         }
 
         delete batchInfo[batchBlock];
@@ -255,15 +270,6 @@ contract Governor is IGovernor {
             result = ITimeLock(timeLock).executeTransaction{value: value}(target, value, signature, data, eta);
         } else {
             ITimeLock(timeLock).cancelTransaction(target, value, signature, data, eta);
-        }
-    }
-
-    /// @dev `addQueueAdmin` implementation
-    function _addQueueAdmin(address admin) internal {
-        if (admin == address(0)) revert AdminCantBeZeroAddressException();
-        if (!_queueAdminsSet.contains(admin)) {
-            _queueAdminsSet.add(admin);
-            emit AddQueueAdmin(admin);
         }
     }
 

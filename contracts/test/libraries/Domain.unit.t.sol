@@ -15,10 +15,10 @@ contract DomainUnitTest is Test {
     }
 
     /// @notice Test extracting domain from string without domain separator
-    function test_Domain_02_extracts_empty_domain_without_separator() public {
+    function test_Domain_02_extracts_full_domain_without_separator() public {
         string memory input = "test";
         string memory domain = Domain.extractDomain(input);
-        assertEq(domain, "");
+        assertEq(domain, "test");
     }
 
     /// @notice Test extracting domain from empty string

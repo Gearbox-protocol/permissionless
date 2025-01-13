@@ -22,37 +22,32 @@ contract GovernorTest is Test {
 
     address target0;
     address target1;
+    address owner;
     address vetoAdmin;
-    address queueAdmin0;
-    address queueAdmin1;
+    address queueAdmin;
+    address executionAdmin;
 
     function setUp() public {
-        _createFork();
-
-        timeLock = vm.envAddress("TIMELOCK_ADDRESS");
-        delay = ITimeLock(timeLock).delay();
-
         target0 = address(new TargetMock());
         target1 = address(new TargetMock());
+        owner = makeAddr("owner");
         vetoAdmin = makeAddr("vetoAdmin");
-        queueAdmin0 = makeAddr("queueAdmin0");
-        queueAdmin1 = makeAddr("queueAdmin1");
+        queueAdmin = makeAddr("queueAdmin");
+        executionAdmin = makeAddr("executionAdmin");
 
-        governor = new Governor(timeLock, queueAdmin0, vetoAdmin, true);
+        governor = new Governor(owner, vetoAdmin, 1 days, true);
 
-        vm.prank(timeLock);
-        ITimeLock(timeLock).setPendingAdmin(address(governor));
-
-        vm.prank(queueAdmin0);
-        governor.claimTimeLockOwnership();
-
+        timeLock = governor.timeLock();
+        delay = ITimeLock(timeLock).delay();
         uint256 eta = block.timestamp + delay;
 
-        vm.prank(queueAdmin0);
-        governor.queueTransaction(address(governor), 0, "addQueueAdmin(address)", abi.encode(queueAdmin1), eta);
-
+        vm.startPrank(owner);
+        governor.queueTransaction(address(governor), 0, "addQueueAdmin(address)", abi.encode(queueAdmin), eta);
+        governor.queueTransaction(address(governor), 0, "addExecutionAdmin(address)", abi.encode(executionAdmin), eta);
         vm.warp(eta);
-        governor.executeTransaction(address(governor), 0, "addQueueAdmin(address)", abi.encode(queueAdmin1), eta);
+        governor.executeTransaction(address(governor), 0, "addQueueAdmin(address)", abi.encode(queueAdmin), eta);
+        governor.executeTransaction(address(governor), 0, "addExecutionAdmin(address)", abi.encode(executionAdmin), eta);
+        vm.stopPrank();
     }
 
     // ------- //
@@ -61,36 +56,31 @@ contract GovernorTest is Test {
 
     function test_GOV_01_setUp_is_correct() public view {
         assertEq(ITimeLock(timeLock).admin(), address(governor), "Timelock admin");
-        assertEq(governor.timeLock(), timeLock, "Timelock");
         assertEq(governor.vetoAdmin(), vetoAdmin, "Veto admin");
-        assertEq(governor.queueAdmins(), _toDyn([queueAdmin0, queueAdmin1]), "Queue admins");
-        assertTrue(governor.isExecutionByContractsAllowed(), "Execution by contracts is forbidden");
+        assertEq(governor.queueAdmins(), _toDyn([queueAdmin]), "Queue admins");
+        assertEq(governor.executionAdmins(), _toDyn([executionAdmin]), "Queue admins");
+        assertTrue(governor.isPermissionlessExecutionAllowed(), "Permissionless execution is forbiden");
     }
 
-    function test_GOV_02_constructor_reverts_on_zero_admins() public {
+    function test_GOV_02_constructor_reverts_on_zero_veto_admin() public {
         vm.expectRevert(IGovernor.AdminCantBeZeroAddressException.selector);
-        new Governor(timeLock, address(0), vetoAdmin, true);
-
-        vm.expectRevert(IGovernor.AdminCantBeZeroAddressException.selector);
-        new Governor(timeLock, queueAdmin0, address(0), true);
+        new Governor(owner, address(0), 1 days, false);
     }
 
     function test_GOV_03_constructor_works_as_expected() public {
         vm.expectEmit(true, true, true, true);
-        emit IGovernor.AddQueueAdmin(queueAdmin0);
-
-        vm.expectEmit(true, true, true, true);
         emit IGovernor.UpdateVetoAdmin(vetoAdmin);
 
         vm.expectEmit(true, true, true, true);
-        emit IGovernor.AllowExecutionByContracts();
+        emit IGovernor.AllowPermissionlessExecution();
 
-        governor = new Governor(timeLock, queueAdmin0, vetoAdmin, true);
+        governor = new Governor(owner, vetoAdmin, 1 days, true);
 
-        assertEq(governor.timeLock(), timeLock, "Timelock");
+        assertEq(governor.owner(), owner, "Owner");
         assertEq(governor.vetoAdmin(), vetoAdmin, "Veto admin");
-        assertEq(governor.queueAdmins(), _toDyn([queueAdmin0]), "Queue admins");
-        assertTrue(governor.isExecutionByContractsAllowed(), "Execution by contracts is forbidden");
+        assertEq(governor.queueAdmins().length, 0, "Queue admins");
+        assertEq(governor.executionAdmins().length, 0, "Execution admins");
+        assertTrue(governor.isPermissionlessExecutionAllowed(), "Permissionless execution is forbidden");
     }
 
     function test_GOV_04_external_functions_have_correct_access_rights() public {
@@ -113,16 +103,19 @@ contract GovernorTest is Test {
         governor.removeQueueAdmin(address(0));
 
         vm.expectRevert(IGovernor.CallerNotTimelockException.selector);
+        governor.addExecutionAdmin(address(0));
+
+        vm.expectRevert(IGovernor.CallerNotTimelockException.selector);
+        governor.removeExecutionAdmin(address(0));
+
+        vm.expectRevert(IGovernor.CallerNotTimelockException.selector);
         governor.updateVetoAdmin(address(0));
 
         vm.expectRevert(IGovernor.CallerNotTimelockException.selector);
-        governor.allowExecutionByContracts();
+        governor.allowPermissionlessExecution();
 
         vm.expectRevert(IGovernor.CallerNotTimelockException.selector);
-        governor.forbidExecutionByContracts();
-
-        vm.expectRevert(IGovernor.CallerNotQueueAdminException.selector);
-        governor.claimTimeLockOwnership();
+        governor.forbidPermissionlessExecution();
     }
 
     // ------- //
@@ -132,11 +125,11 @@ contract GovernorTest is Test {
     function test_GOV_05_queueTransaction_reverts_if_transaction_is_already_queued_in_timelock() public {
         uint256 eta = block.timestamp + delay;
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.queueTransaction(target0, 123, "signature", "data", eta);
 
         vm.expectRevert(IGovernor.TransactionAlreadyQueuedException.selector);
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.queueTransaction(target0, 123, "signature", "data", eta);
     }
 
@@ -145,7 +138,7 @@ contract GovernorTest is Test {
 
         vm.expectCall(timeLock, abi.encodeCall(ITimeLock.queueTransaction, (target0, 123, "signature", "data", eta)));
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         bytes32 txHash = governor.queueTransaction(target0, 123, "signature", "data", eta);
 
         assertEq(txHash, _getTxHash(target0, 123, "signature", "data", eta), "Tx hash");
@@ -156,25 +149,25 @@ contract GovernorTest is Test {
     }
 
     function test_GOV_07_startBatch_reverts_if_batch_is_already_started() public {
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.startBatch(123);
 
         vm.expectRevert(IGovernor.BatchAlreadyStartedException.selector);
 
-        vm.prank(queueAdmin1);
+        vm.prank(queueAdmin);
         governor.startBatch(456);
     }
 
     function test_GOV_08_startBatch_works_as_expected() public {
         vm.expectEmit(true, true, true, true);
-        emit IGovernor.QueueBatch(queueAdmin0, block.number);
+        emit IGovernor.QueueBatch(owner, block.number);
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.startBatch(uint80(block.timestamp + delay));
 
         (address initiator, uint16 length, uint80 eta) = governor.batchInfo(block.number);
 
-        assertEq(initiator, queueAdmin0, "Inititator");
+        assertEq(initiator, owner, "Inititator");
         assertEq(length, 0, "Length");
         assertEq(eta, block.timestamp + delay, "ETA");
     }
@@ -182,24 +175,24 @@ contract GovernorTest is Test {
     function test_GOV_09_queueTransaction_reverts_if_caller_is_not_batch_initiator() public {
         uint256 eta = block.timestamp + delay;
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.startBatch(uint80(eta));
 
         vm.expectRevert(IGovernor.CallerNotBatchInitiatorException.selector);
 
-        vm.prank(queueAdmin1);
+        vm.prank(queueAdmin);
         governor.queueTransaction(target0, 123, "signature", "data", eta);
     }
 
     function test_GOV_10_queueTransaction_reverts_if_eta_is_different_from_batch_eta() public {
         uint256 eta = block.timestamp + delay;
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.startBatch(uint80(eta));
 
         vm.expectRevert(IGovernor.ETAMistmatchException.selector);
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.queueTransaction(target0, 123, "signature", "data", eta + 1);
     }
 
@@ -207,7 +200,7 @@ contract GovernorTest is Test {
         uint256 batchBlock = block.number;
         uint256 eta = block.timestamp + delay;
 
-        vm.startPrank(queueAdmin0);
+        vm.startPrank(owner);
         governor.startBatch(uint80(eta));
 
         vm.expectCall(timeLock, abi.encodeCall(ITimeLock.queueTransaction, (target0, 123, "signature", "data", eta)));
@@ -239,7 +232,7 @@ contract GovernorTest is Test {
     function test_GOV_12_executeTransaction_and_cancelTransaction_revert_if_tx_is_part_of_batch() public {
         uint256 eta = block.timestamp + delay;
 
-        vm.startPrank(queueAdmin0);
+        vm.startPrank(owner);
         governor.startBatch(uint80(eta));
         governor.queueTransaction(target0, 123, "signature", "data", eta);
         vm.stopPrank();
@@ -255,7 +248,7 @@ contract GovernorTest is Test {
     function test_GOV_13_executeTransaction_and_cancelTransaction_work_as_expected_for_individual_txs() public {
         uint256 eta = block.timestamp + delay;
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         bytes32 txHash = governor.queueTransaction(target0, 123, "signature", "data", eta);
 
         vm.warp(eta);
@@ -279,7 +272,7 @@ contract GovernorTest is Test {
     function test_GOV_14_executeBatch_and_cancelBatch_revert_if_provided_batch_is_incorrect() public {
         uint256 eta = block.timestamp + delay;
 
-        vm.startPrank(queueAdmin0);
+        vm.startPrank(owner);
         governor.startBatch(uint80(eta));
         governor.queueTransaction(target0, 123, "signature", "data", eta);
         governor.queueTransaction(target1, 123, "signature", "data", eta);
@@ -349,7 +342,7 @@ contract GovernorTest is Test {
         uint256 eta = block.timestamp + delay;
         uint256 batchBlock = block.number;
 
-        vm.startPrank(queueAdmin0);
+        vm.startPrank(owner);
         governor.startBatch(uint80(eta));
         bytes32 tx1Hash = governor.queueTransaction(target0, 123, "signature", "data", eta);
         bytes32 tx2Hash = governor.queueTransaction(target1, 123, "signature", "data", eta);
@@ -415,23 +408,11 @@ contract GovernorTest is Test {
     // CONFIGURATION //
     // ------------- //
 
-    function test_GOV_16_removeQueueAdmin_reverts_if_trying_to_remove_last_admin() public {
-        vm.startPrank(timeLock);
-
-        governor.removeQueueAdmin(queueAdmin1);
-        assertEq(governor.queueAdmins(), _toDyn([queueAdmin0]));
-
-        vm.expectRevert(IGovernor.CantRemoveLastQueueAdminException.selector);
-        governor.removeQueueAdmin(queueAdmin0);
-
-        vm.stopPrank();
-    }
-
-    function test_GOV_17_addQueueAdmin_and_removeQueueAdmin_work_as_expected() public {
+    function test_GOV_16_addQueueAdmin_and_removeQueueAdmin_work_as_expected() public {
         address newQueueAdmin = makeAddr("newQueueAdmin");
         uint256 eta = block.timestamp + delay;
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.queueTransaction(address(governor), 0, "addQueueAdmin(address)", abi.encode(newQueueAdmin), eta);
 
         vm.expectEmit(true, true, true, true);
@@ -440,11 +421,11 @@ contract GovernorTest is Test {
         vm.warp(eta);
         governor.executeTransaction(address(governor), 0, "addQueueAdmin(address)", abi.encode(newQueueAdmin), eta);
 
-        assertEq(governor.queueAdmins(), _toDyn([queueAdmin0, queueAdmin1, newQueueAdmin]), "Queue admins after adding");
+        assertEq(governor.queueAdmins(), _toDyn([queueAdmin, newQueueAdmin]), "Queue admins after adding");
 
         eta = block.timestamp + delay;
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.queueTransaction(address(governor), 0, "removeQueueAdmin(address)", abi.encode(newQueueAdmin), eta);
 
         vm.expectEmit(true, true, true, true);
@@ -453,14 +434,53 @@ contract GovernorTest is Test {
         vm.warp(eta);
         governor.executeTransaction(address(governor), 0, "removeQueueAdmin(address)", abi.encode(newQueueAdmin), eta);
 
-        assertEq(governor.queueAdmins(), _toDyn([queueAdmin0, queueAdmin1]), "Queue admins after removing");
+        assertEq(governor.queueAdmins(), _toDyn([queueAdmin]), "Queue admins after removing");
+    }
+
+    function test_GOV_16_addExecutionAdmin_and_removeExecutionAdmin_work_as_expected() public {
+        address newExecutionAdmin = makeAddr("newExecutionAdmin");
+        uint256 eta = block.timestamp + delay;
+
+        vm.prank(owner);
+        governor.queueTransaction(
+            address(governor), 0, "addExecutionAdmin(address)", abi.encode(newExecutionAdmin), eta
+        );
+
+        vm.expectEmit(true, true, true, true);
+        emit IGovernor.AddExecutionAdmin(newExecutionAdmin);
+
+        vm.warp(eta);
+        governor.executeTransaction(
+            address(governor), 0, "addExecutionAdmin(address)", abi.encode(newExecutionAdmin), eta
+        );
+
+        assertEq(
+            governor.executionAdmins(), _toDyn([executionAdmin, newExecutionAdmin]), "Execution admins after adding"
+        );
+
+        eta = block.timestamp + delay;
+
+        vm.prank(owner);
+        governor.queueTransaction(
+            address(governor), 0, "removeExecutionAdmin(address)", abi.encode(newExecutionAdmin), eta
+        );
+
+        vm.expectEmit(true, true, true, true);
+        emit IGovernor.RemoveExecutionAdmin(newExecutionAdmin);
+
+        vm.warp(eta);
+        governor.executeTransaction(
+            address(governor), 0, "removeExecutionAdmin(address)", abi.encode(newExecutionAdmin), eta
+        );
+
+        assertEq(governor.executionAdmins(), _toDyn([executionAdmin]), "Execution admins after removing");
     }
 
     function test_GOV_18_updateVetoAdmin_works_as_expected() public {
         address newVetoAdmin = makeAddr("newVetoAdmin");
         uint256 eta = block.timestamp + delay;
 
-        vm.prank(queueAdmin0);
+        vm.prank(owner);
         governor.queueTransaction(address(governor), 0, "updateVetoAdmin(address)", abi.encode(newVetoAdmin), eta);
 
         vm.expectEmit(true, true, true, true);
@@ -472,12 +492,10 @@ contract GovernorTest is Test {
         assertEq(governor.vetoAdmin(), newVetoAdmin, "Veto admin after update");
     }
 
-    function test_GOV_19_allowExecutionByContracts_and_forbidExecutionByContracts_work_as_expected() public {
-        address executor = makeAddr("EXECUTOR");
-
+    function test_GOV_19_allowPermissionlessExecution_and_forbidPermissionlessExecution_work_as_expected() public {
         uint256 eta = block.timestamp + delay;
 
-        vm.startPrank(queueAdmin0);
+        vm.startPrank(owner);
         governor.queueTransaction(target0, 0, "signature", "data", eta);
         governor.startBatch(uint80(eta));
         governor.queueTransaction(target1, 0, "signature", "data", eta);
@@ -487,51 +505,41 @@ contract GovernorTest is Test {
         txs[0] = IGovernor.TxParams(target1, 0, "signature", "data", eta);
 
         vm.expectEmit(true, true, true, true);
-        emit IGovernor.ForbidExecutionByContracts();
+        emit IGovernor.ForbidPermissionlessExecution();
 
         vm.prank(timeLock);
-        governor.forbidExecutionByContracts();
-        assertFalse(governor.isExecutionByContractsAllowed(), "Execution by contracts is allowed");
+        governor.forbidPermissionlessExecution();
+        assertFalse(governor.isPermissionlessExecutionAllowed(), "Permissionless execution is allowed");
 
         vm.warp(eta);
 
-        // can't be executed by CA
-        vm.expectRevert(IGovernor.CallerMustNotBeContractException.selector);
-        vm.prank(executor);
+        // can't be executed by non-execution admin
+        vm.expectRevert(IGovernor.CallerNotExecutionAdminException.selector);
+        vm.prank(queueAdmin);
         governor.executeTransaction(target0, 0, "signature", "data", eta);
 
-        vm.expectRevert(IGovernor.CallerMustNotBeContractException.selector);
-        vm.prank(executor);
+        vm.expectRevert(IGovernor.CallerNotExecutionAdminException.selector);
+        vm.prank(queueAdmin);
         governor.executeBatch(txs);
 
-        // can be executed by EOA
-        vm.prank({msgSender: executor, txOrigin: executor});
+        // can be executed by execution admin or owner
+        vm.prank(owner);
         governor.executeTransaction(target0, 0, "signature", "data", eta);
 
-        vm.prank({msgSender: executor, txOrigin: executor});
+        vm.prank(executionAdmin);
         governor.executeBatch(txs);
 
         vm.expectEmit(true, true, true, true);
-        emit IGovernor.AllowExecutionByContracts();
+        emit IGovernor.AllowPermissionlessExecution();
 
         vm.prank(timeLock);
-        governor.allowExecutionByContracts();
-        assertTrue(governor.isExecutionByContractsAllowed(), "Execution by contracts is forbidden");
+        governor.allowPermissionlessExecution();
+        assertTrue(governor.isPermissionlessExecutionAllowed(), "Permissionless execution is forbidden");
     }
 
     // ----- //
     // UTILS //
     // ----- //
-
-    function _createFork() internal {
-        string memory rpcUrl = vm.envString("FORK_RPC_URL");
-        uint256 blockNumber = vm.envOr("FORK_BLOCK_NUMBER", uint256(0));
-        if (blockNumber != 0) {
-            vm.createSelectFork(rpcUrl, blockNumber);
-        } else {
-            vm.createSelectFork(rpcUrl);
-        }
-    }
 
     function _toDyn(address[1] memory addrs) internal pure returns (address[] memory dynAddrs) {
         dynAddrs = new address[](1);

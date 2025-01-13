@@ -49,6 +49,9 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
     /// @notice Thrown when trying to set price feed for a token that is not allowed in the price feed store
     error PriceFeedNotAllowedException(address token, address priceFeed);
 
+    /// @notice Thrown when trying to set a price feed that was allowed too recently
+    error PriceFeedAllowedTooRecentlyException(address token, address priceFeed);
+
     /// @notice Thrown when trying to set price feed for a token that has not been added to the market
     error TokenIsNotAddedException(address token);
 
@@ -111,7 +114,6 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         address[] memory tokens = _quotedTokens(_quotaKeeper(pool));
         uint256 numTokens = tokens.length;
         for (uint256 i; i < numTokens; ++i) {
-            // FIXME: reallocating the whole array is not the most optimal solution
             address main = _getPriceFeed(oldPriceOracle, tokens[i], false);
             calls = calls.extend(_setPriceFeed(newPriceOracle, tokens[i], main, false));
 
@@ -167,6 +169,9 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         if (selector == IConfigureActions.setPriceFeed.selector) {
             (address token, address priceFeed) = abi.decode(callData[4:], (address, address));
             _validatePriceFeed(pool, token, priceFeed, true);
+            if (block.timestamp < IPriceFeedStore(priceFeedStore).getAllowanceTimestamp(token, priceFeed) + 1 days) {
+                revert PriceFeedAllowedTooRecentlyException(token, priceFeed);
+            }
             return _setPriceFeed(priceOracle, token, priceFeed, false);
         } else {
             revert ForbiddenEmergencyConfigurationCallException(selector);
@@ -223,7 +228,6 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         returns (Call[] memory)
     {
         try IUpdatablePriceFeed(priceFeed).updatable() returns (bool updatable) {
-            // FIXME: reallocating the whole array is not the most optimal solution
             if (updatable) calls = calls.append(_addUpdatablePriceFeed(priceOracle, priceFeed));
         } catch {}
         address[] memory underlyingFeeds = IPriceFeed(priceFeed).getUnderlyingFeeds();

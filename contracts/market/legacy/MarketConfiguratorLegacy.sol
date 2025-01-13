@@ -85,13 +85,14 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         address admin_,
         address emergencyAdmin_,
         string memory curatorName_,
+        bool deployGovernor_,
         address aclLegacy_,
         address contractsRegisterLegacy_,
         address gearStakingLegacy_,
         address[] memory pausableAdmins_,
         address[] memory unpausableAdmins_,
         address[] memory emergencyLiquidators_
-    ) MarketConfigurator(addressProvider_, admin_, emergencyAdmin_, curatorName_) {
+    ) MarketConfigurator(addressProvider_, admin_, emergencyAdmin_, curatorName_, deployGovernor_) {
         crossChainGovernanceProxy = _getAddressOrRevert(AP_CROSS_CHAIN_GOVERNANCE_PROXY, NO_VERSION_CONTROL);
 
         aclLegacy = aclLegacy_;
@@ -103,16 +104,20 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
             address admin = pausableAdmins_[i];
             if (!IACLLegacy(aclLegacy).isPausableAdmin(admin)) revert AddressIsNotPausableAdminException(admin);
             IACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, admin);
+            emit GrantRole(ROLE_PAUSABLE_ADMIN, admin);
         }
         num = unpausableAdmins_.length;
         for (uint256 i; i < num; ++i) {
             address admin = unpausableAdmins_[i];
             if (!IACLLegacy(aclLegacy).isUnpausableAdmin(admin)) revert AddressIsNotUnpausableAdminException(admin);
             IACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, admin);
+            emit GrantRole(ROLE_UNPAUSABLE_ADMIN, admin);
         }
         num = emergencyLiquidators_.length;
         for (uint256 i; i < num; ++i) {
-            IACL(acl).grantRole(ROLE_EMERGENCY_LIQUIDATOR, emergencyLiquidators_[i]);
+            address liquidator = emergencyLiquidators_[i];
+            IACL(acl).grantRole(ROLE_EMERGENCY_LIQUIDATOR, liquidator);
+            emit GrantRole(ROLE_EMERGENCY_LIQUIDATOR, liquidator);
         }
 
         address[] memory pools = IContractsRegisterLegacy(contractsRegisterLegacy).getPools();
@@ -127,10 +132,11 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
 
             address quotaKeeper = _quotaKeeper(pool);
             address priceOracle = _priceOracle(creditManagers[0]);
+            address interestRateModel = _interestRateModel(pool);
+            address rateKeeper = _rateKeeper(quotaKeeper);
             address lossPolicy = address(new DefaultLossPolicy(acl));
 
-            IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
-            _setMarketFactories(pool, quotaKeeper, priceOracle, lossPolicy);
+            _createMarket(pool, quotaKeeper, priceOracle, interestRateModel, rateKeeper, lossPolicy);
 
             for (uint256 j; j < numCreditManagers; ++j) {
                 address creditManager = creditManagers[j];
@@ -146,24 +152,35 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
                     }
                 }
 
-                IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
-                _setCreditFactory(creditManager);
+                _createCreditSuite(creditManager);
             }
         }
     }
 
-    function _setMarketFactories(address pool, address quotaKeeper, address priceOracle, address lossPolicy) internal {
+    function _createMarket(
+        address pool,
+        address quotaKeeper,
+        address priceOracle,
+        address interestRateModel,
+        address rateKeeper,
+        address lossPolicy
+    ) internal {
+        IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
         MarketFactories memory factories = _getLatestMarketFactories(version);
         _marketFactories[pool] = factories;
         _authorizeFactory(factories.poolFactory, pool, pool);
         _authorizeFactory(factories.poolFactory, pool, quotaKeeper);
         _authorizeFactory(factories.priceOracleFactory, pool, priceOracle);
-        _authorizeFactory(factories.interestRateModelFactory, pool, _interestRateModel(pool));
-        _authorizeFactory(factories.rateKeeperFactory, pool, _rateKeeper(quotaKeeper));
+        _authorizeFactory(factories.interestRateModelFactory, pool, interestRateModel);
+        _authorizeFactory(factories.rateKeeperFactory, pool, rateKeeper);
         _authorizeFactory(factories.lossPolicyFactory, pool, lossPolicy);
+
+        emit CreateMarket(pool, priceOracle, interestRateModel, rateKeeper, lossPolicy, factories);
     }
 
-    function _setCreditFactory(address creditManager) internal {
+    function _createCreditSuite(address creditManager) internal {
+        IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
+
         address factory = _getLatestCreditFactory(version);
         _creditFactories[creditManager] = factory;
         address creditConfigurator = ICreditManagerV3(creditManager).creditConfigurator();
@@ -174,6 +191,8 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         for (uint256 k; k < numAdapters; ++k) {
             _authorizeFactory(factory, creditManager, adapters[k]);
         }
+
+        emit CreateCreditSuite(creditManager, factory);
     }
 
     // ------------- //

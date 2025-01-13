@@ -4,7 +4,7 @@
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
-import {IImmutableOwnable} from "./IImmutableIOwnable.sol";
+import {IImmutableOwnableTrait} from "./base/IImmutableOwnableTrait.sol";
 
 struct ContractValue {
     string key;
@@ -13,7 +13,7 @@ struct ContractValue {
 }
 
 /// @title Address provider interface
-interface IAddressProvider is IVersion, IImmutableOwnable {
+interface IAddressProvider is IVersion, IImmutableOwnableTrait {
     event SetAddress(string indexed key, uint256 indexed version, address indexed value);
 
     function addresses(string memory key, uint256 _version) external view returns (address);

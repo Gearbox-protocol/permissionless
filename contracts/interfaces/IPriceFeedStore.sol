@@ -4,9 +4,9 @@
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
-import {IImmutableOwnable} from "./IImmutableIOwnable.sol";
+import {IImmutableOwnableTrait} from "./base/IImmutableOwnableTrait.sol";
 
-interface IPriceFeedStore is IVersion, IImmutableOwnable {
+interface IPriceFeedStore is IVersion, IImmutableOwnableTrait {
     //
     // ERRORS
     //
@@ -23,9 +23,6 @@ interface IPriceFeedStore is IVersion, IImmutableOwnable {
     //
     // EVENTS
     //
-
-    /// @notice Emitted when a new security audit is added for a price feed
-    event AuditPriceFeed(address auditor, address priceFeed);
 
     /// @notice Emitted when a new price feed is added to PriceFeedStore
     event AddPriceFeed(address priceFeed, uint32 stalenessPeriod);
@@ -45,6 +42,7 @@ interface IPriceFeedStore is IVersion, IImmutableOwnable {
     function getPriceFeeds(address token) external view returns (address[] memory);
     function isAllowedPriceFeed(address token, address priceFeed) external view returns (bool);
     function getStalenessPeriod(address priceFeed) external view returns (uint32);
+    function getAllowanceTimestamp(address token, address priceFeed) external view returns (uint256);
 
     //
     // CONFIGURATION

@@ -122,7 +122,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         string memory name = "Test Market ETH";
         string memory symbol = "dETH";
 
-        address pool = MarketConfigurator(mc).previewPoolAddress(3_10, WETH, name, symbol);
+        address pool = MarketConfigurator(mc).previewCreateMarket(3_10, WETH, name, symbol);
 
         bytes memory interestRateModelParams =
             abi.encode(uint16(100), uint16(200), uint16(100), uint16(100), uint16(200), uint16(300), false);

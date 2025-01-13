@@ -3,8 +3,6 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {AbstractDeployer} from "../helpers/AbstractDeployer.sol";
-
 import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFactory.sol";
@@ -12,13 +10,15 @@ import {Call} from "../interfaces/Types.sol";
 
 import {AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
 
-abstract contract AbstractFactory is AbstractDeployer, IFactory {
+import {DeployerTrait} from "../traits/DeployerTrait.sol";
+
+abstract contract AbstractFactory is DeployerTrait, IFactory {
     modifier onlyMarketConfigurators() {
         _ensureCallerIsMarketConfigurator();
         _;
     }
 
-    constructor(address addressProvider_) AbstractDeployer(addressProvider_) {}
+    constructor(address addressProvider_) DeployerTrait(addressProvider_) {}
 
     // ------------- //
     // CONFIGURATION //

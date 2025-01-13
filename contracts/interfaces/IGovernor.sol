@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Gearbox Protocol. Generalized leverage for DeFi protocols
-// (c) Gearbox Foundation, 2023.
-pragma solidity ^0.8.0;
+// (c) Gearbox Foundation, 2024.
+pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
@@ -68,30 +68,36 @@ interface IGovernor is IVersion {
     /// @notice Emitted when `admin` is removed from the list of queue admins
     event RemoveQueueAdmin(address indexed admin);
 
+    /// @notice Emitted when `admin` is added to the list of execution admins
+    event AddExecutionAdmin(address indexed admin);
+
+    /// @notice Emitted when `admin` is removed from the list of execution admins
+    event RemoveExecutionAdmin(address indexed admin);
+
     /// @notice Emitted when `admin` is set as the new veto admin
     event UpdateVetoAdmin(address indexed admin);
 
-    /// @notice Emitted when transaction/batch execution by contracts is allowed
-    event AllowExecutionByContracts();
+    /// @notice Emitted when permissionless transaction/batch execution is allowed
+    event AllowPermissionlessExecution();
 
-    /// @notice Emitted when transaction/batch execution by contracts is forbidden
-    event ForbidExecutionByContracts();
+    /// @notice Emitted when permissionless transaction/batch execution is forbidden
+    event ForbidPermissionlessExecution();
 
     // ------ //
     // ERRORS //
     // ------ //
 
-    /// @notice Thrown when an account that is not a queue admin tries to queue a transaction or initiate a batch
+    /// @notice Thrown when an account that is not one of queue admins tries to queue a transaction or initiate a batch
     error CallerNotQueueAdminException();
+
+    /// @notice Thrown when an account that is not one of execution admins tries to execute a transaction or a batch
+    error CallerNotExecutionAdminException();
 
     /// @notice Thrown when an account that is not the timelock contract tries to configure the governor
     error CallerNotTimelockException();
 
     /// @notice Thrown when an account that is not the veto admin tries to cancel a transaction or a batch
     error CallerNotVetoAdminException();
-
-    /// @notice Thrown when trying to execute a trasaction or a batch from the contract when it's forbidden
-    error CallerMustNotBeContractException();
 
     /// @notice Thrown when a queue admin tries to add transactions to the batch not initiated by themselves
     error CallerNotBatchInitiatorException();
@@ -114,11 +120,8 @@ interface IGovernor is IVersion {
     /// @notice Thrown when a passed list of transactions contains a transaction different from those in the queued batch
     error UnexpectedTransactionException(bytes32 txHash);
 
-    /// @notice Thrown when trying to set zero address as a queue or veto admin
+    /// @notice Thrown when trying to set zero address as a queue, execution or veto admin
     error AdminCantBeZeroAddressException();
-
-    /// @notice Thrown when trying to remove the last queue admin
-    error CantRemoveLastQueueAdminException();
 
     // ----- //
     // STATE //
@@ -130,11 +133,14 @@ interface IGovernor is IVersion {
     /// @notice Returns an array of addresses of queue admins
     function queueAdmins() external view returns (address[] memory);
 
+    /// @notice Returns an array of addresses of execution admins
+    function executionAdmins() external view returns (address[] memory);
+
     /// @notice Returns an address of the veto admin
     function vetoAdmin() external view returns (address);
 
-    /// @notice Whether transaction/batch execution by contracts is allowed
-    function isExecutionByContractsAllowed() external view returns (bool);
+    /// @notice Whether permissionless transaction/batch execution is allowed
+    function isPermissionlessExecutionAllowed() external view returns (bool);
 
     /// @notice Returns info for the batch initiated in `batchBlock`
     /// @dev `initiator == address(0)` means that there was no batch initiated in that block
@@ -171,7 +177,7 @@ interface IGovernor is IVersion {
     /// @notice Executes a queued transaction. Ensures that it is not part of any batch and forwards the call to the
     ///         timelock contract.
     /// @dev See `TxParams` for params description
-    /// @dev Can only be called by EOAs unless execution by contracts is allowed
+    /// @dev Can only be called by execution admins unless permissionless execution is allowed
     function executeTransaction(
         address target,
         uint256 value,
@@ -182,7 +188,7 @@ interface IGovernor is IVersion {
 
     /// @notice Executes a queued batch of transactions. Ensures that `txs` is the same ordered list of transactions as
     ///         the one that was queued, and forwards all calls to the timelock contract.
-    /// @dev Can only be called by EOAs unless execution by contracts is allowed
+    /// @dev Can only be called by execution admins unless permissionless execution is allowed
     function executeBatch(TxParams[] calldata txs) external payable;
 
     /// @notice Cancels a queued transaction. Ensures that it is not part of any batch and forwards the call to the
@@ -210,9 +216,17 @@ interface IGovernor is IVersion {
     /// @dev Can only be called by the timelock contract
     function addQueueAdmin(address admin) external;
 
-    /// @notice Removes `admin` from the list of queue admins, ensures that it's not the last admin
+    /// @notice Removes `admin` from the list of queue admins
     /// @dev Can only be called by the timelock contract
     function removeQueueAdmin(address admin) external;
+
+    /// @notice Adds `admin` to the list of execution admins, ensures that it's not zero address
+    /// @dev Can only be called by the timelock contract
+    function addExecutionAdmin(address admin) external;
+
+    /// @notice Removes `admin` from the list of execution admins
+    /// @dev Can only be called by the timelock contract
+    function removeExecutionAdmin(address admin) external;
 
     /// @notice Sets `admin` as the new veto admin, ensures that it's not zero address
     /// @dev Can only be called by the timelock contract
@@ -220,15 +234,11 @@ interface IGovernor is IVersion {
     ///      for example, it might be a multisig that can remove malicious signers
     function updateVetoAdmin(address admin) external;
 
-    /// @notice Allows transactions/batches to be executed by contracts
+    /// @notice Allows permissionless transactions/batches execution
     /// @dev Can only be called by the timelock contract
-    function allowExecutionByContracts() external;
+    function allowPermissionlessExecution() external;
 
-    /// @notice Forbids transactions/batches to be executed by contracts
+    /// @notice Forbids permissionless transactions/batches execution
     /// @dev Can only be called by the timelock contract
-    function forbidExecutionByContracts() external;
-
-    /// @notice Claims ownership ower the `timeLock` contract
-    /// @dev Must be executed by the first queue admin after deploying this contract and setting it as timelock's owner
-    function claimTimeLockOwnership() external;
+    function forbidPermissionlessExecution() external;
 }

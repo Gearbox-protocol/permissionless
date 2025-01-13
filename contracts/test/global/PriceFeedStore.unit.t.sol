@@ -70,7 +70,7 @@ contract PriceFeedStoreTest is Test {
     function test_PFS_02_addPriceFeed_reverts_if_not_owner() public {
         address notOwner = makeAddr("notOwner");
         vm.prank(notOwner);
-        vm.expectRevert(ImmutableOwnableTrait.NotOwnerException.selector);
+        vm.expectRevert(abi.encodeWithSignature("CallerIsNotOwnerException(address)", notOwner));
         store.addPriceFeed(address(priceFeed), 3600);
     }
 
@@ -122,7 +122,7 @@ contract PriceFeedStoreTest is Test {
 
         address notOwner = makeAddr("notOwner");
         vm.prank(notOwner);
-        vm.expectRevert(ImmutableOwnableTrait.NotOwnerException.selector);
+        vm.expectRevert(abi.encodeWithSignature("CallerIsNotOwnerException(address)", notOwner));
         store.allowPriceFeed(token, address(priceFeed));
     }
 
@@ -153,7 +153,7 @@ contract PriceFeedStoreTest is Test {
 
         address notOwner = makeAddr("notOwner");
         vm.prank(notOwner);
-        vm.expectRevert(ImmutableOwnableTrait.NotOwnerException.selector);
+        vm.expectRevert(abi.encodeWithSignature("CallerIsNotOwnerException(address)", notOwner));
         store.forbidPriceFeed(token, address(priceFeed));
     }
 

@@ -37,7 +37,10 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
     EnumerableSet.AddressSet internal _knownTokens;
 
     /// @dev Mapping from token address to its set of allowed price feeds
-    mapping(address => EnumerableSet.AddressSet) internal _allowedPriceFeeds;
+    mapping(address token => EnumerableSet.AddressSet) internal _allowedPriceFeeds;
+
+    /// @dev Mapping from a (token, priceFeed) pair to a timestamp when price feed was allowed for token
+    mapping(address token => mapping(address priceFeed => uint256)) _allowanceTimestamps;
 
     /// @notice Mapping from price feed address to its data
     mapping(address => PriceFeedInfo) internal _priceFeedInfo;
@@ -61,6 +64,12 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
     /// @notice Returns the staleness period for a price feed
     function getStalenessPeriod(address priceFeed) external view returns (uint32) {
         return _priceFeedInfo[priceFeed].stalenessPeriod;
+    }
+
+    /// @notice Returns the timestamp when priceFeed was allowed for token
+    function getAllowanceTimestamp(address token, address priceFeed) external view returns (uint256) {
+        if (!_allowedPriceFeeds[token].contains(priceFeed)) revert PriceFeedIsNotAllowedException(token, priceFeed);
+        return _allowanceTimestamps[token][priceFeed];
     }
 
     function getKnownTokens() external view returns (address[] memory) {
@@ -133,6 +142,7 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
         if (!_knownPriceFeeds.contains(priceFeed)) revert PriceFeedNotKnownException(priceFeed);
 
         _allowedPriceFeeds[token].add(priceFeed);
+        _allowanceTimestamps[token][priceFeed] = block.timestamp;
         _knownTokens.add(token);
 
         emit AllowPriceFeed(token, priceFeed);
@@ -149,6 +159,7 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
         if (!_allowedPriceFeeds[token].contains(priceFeed)) revert PriceFeedIsNotAllowedException(token, priceFeed);
 
         _allowedPriceFeeds[token].remove(priceFeed);
+        _allowanceTimestamps[token][priceFeed] = 0;
 
         emit ForbidPriceFeed(token, priceFeed);
     }
