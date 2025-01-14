@@ -35,6 +35,7 @@ interface IMarketConfiguratorFactory is IVersion, IDeployerTrait {
     function createMarketConfigurator(
         address admin,
         address emergencyAdmin,
+        address adminFeeTreasury,
         string calldata curatorName,
         bool deployGovernor
     ) external returns (address marketConfigurator);

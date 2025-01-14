@@ -9,6 +9,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {ITreasurySplitter, Split, TwoAdminProposal} from "../interfaces/ITreasurySplitter.sol";
+import {ITimeLock} from "../interfaces/ITimelock.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -21,9 +22,6 @@ contract TreasurySplitter is ITreasurySplitter {
 
     /// @notice Address of the market admin
     address public immutable override admin;
-
-    /// @notice Address of the Gearbox treasury
-    address public immutable override treasury;
 
     /// @notice Address of the Treasury proxy
     address public immutable override treasuryProxy;
@@ -53,13 +51,14 @@ contract TreasurySplitter is ITreasurySplitter {
         _;
     }
 
-    constructor(address addressProvider_, address admin_) {
+    constructor(address addressProvider_, address admin_, address adminFeeTreasury_) {
         admin = admin_;
-        treasury = IAddressProvider(addressProvider_).getAddressOrRevert(AP_TREASURY, NO_VERSION_CONTROL);
+        address treasury = IAddressProvider(addressProvider_).getAddressOrRevert(AP_TREASURY, NO_VERSION_CONTROL);
         treasuryProxy = IAddressProvider(addressProvider_).getAddressOrRevert(AP_TREASURY_PROXY, NO_VERSION_CONTROL);
 
         address[] memory receivers = new address[](2);
-        receivers[0] = admin_;
+
+        receivers[0] = adminFeeTreasury_;
         receivers[1] = treasury;
 
         uint16[] memory proportions = new uint16[](2);
@@ -107,21 +106,17 @@ contract TreasurySplitter is ITreasurySplitter {
 
     /// @dev Internal function for `distribute`.
     function _distribute(address token) internal {
-        Split memory split;
-
-        if (_tokenSplits[token].initialized) {
-            split = _tokenSplits[token];
-        } else {
-            split = _defaultSplit;
-        }
+        Split memory split = _tokenSplits[token].initialized ? _tokenSplits[token] : _defaultSplit;
 
         uint256 len = split.receivers.length;
 
         uint256 balance = IERC20(token).balanceOf(address(this));
 
-        if (balance <= tokenInsuranceAmount[token]) return;
+        uint256 insuranceAmount = tokenInsuranceAmount[token];
 
-        uint256 balanceDiff = balance - tokenInsuranceAmount[token];
+        if (balance <= insuranceAmount) return;
+
+        uint256 balanceDiff = balance - insuranceAmount;
 
         for (uint256 i = 0; i < len; ++i) {
             address receiver = split.receivers[i];
@@ -159,7 +154,7 @@ contract TreasurySplitter is ITreasurySplitter {
 
         if (msg.sender == admin) {
             _proposal.confirmedByAdmin = true;
-        } else if (msg.sender == treasuryProxy) {
+        } else {
             _proposal.confirmedByTreasuryProxy = true;
         }
 
@@ -186,18 +181,18 @@ contract TreasurySplitter is ITreasurySplitter {
     function setTokenInsuranceAmount(address token, uint256 amount) external override onlySelf {
         tokenInsuranceAmount[token] = amount;
 
-        _distribute(token);
-
         emit SetTokenInsuranceAmount(token, amount);
     }
 
     /// @notice Sets a split for a specific token
-    function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions)
+    function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions, bool distributeBefore)
         external
         override
         onlySelf
     {
-        _distribute(token);
+        if (distributeBefore) {
+            _distribute(token);
+        }
 
         _setSplit(_tokenSplits[token], receivers, proportions);
 
@@ -215,11 +210,13 @@ contract TreasurySplitter is ITreasurySplitter {
 
     /// @dev Internal logic for `setTokenSplit` and `setDefaultSplit`
     function _setSplit(Split storage _split, address[] memory receivers, uint16[] memory proportions) internal {
-        if (receivers.length != proportions.length) revert SplitArraysDifferentLengthException();
+        uint256 len = proportions.length;
+
+        if (receivers.length != len) revert SplitArraysDifferentLengthException();
 
         uint256 propSum = 0;
 
-        for (uint256 i = 0; i < proportions.length; ++i) {
+        for (uint256 i = 0; i < len; ++i) {
             if (receivers[i] == address(this)) revert TreasurySplitterAsReceiverException();
 
             propSum += proportions[i];

@@ -114,6 +114,7 @@ contract MarketConfigurator is IMarketConfigurator {
         address addressProvider_,
         address admin_,
         address emergencyAdmin_,
+        address adminFeeTreasury_,
         string memory curatorName_,
         bool deployGovernor_
     ) {
@@ -131,7 +132,7 @@ contract MarketConfigurator is IMarketConfigurator {
 
         acl = address(new ACL());
         contractsRegister = address(new ContractsRegister(acl));
-        treasury = address(new TreasurySplitter(addressProvider, admin));
+        treasury = address(new TreasurySplitter(addressProvider, admin, adminFeeTreasury_));
 
         ACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, address(this));
         ACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, address(this));

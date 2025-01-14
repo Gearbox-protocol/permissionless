@@ -118,7 +118,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         vm.startPrank(riskCurator);
         address mc = MarketConfiguratorFactory(mcf).createMarketConfigurator(
-            riskCurator, riskCurator, "Test Risk Curator", false
+            riskCurator, riskCurator, riskCurator, "Test Risk Curator", false
         );
 
         string memory name = "Test Market ETH";
