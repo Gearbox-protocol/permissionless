@@ -91,13 +91,16 @@ contract MarketConfiguratorFactory is DeployerTrait, IMarketConfiguratorFactory 
     function createMarketConfigurator(
         address admin,
         address emergencyAdmin,
+        address adminFeeTreasury,
         string calldata curatorName,
         bool deployGovernor
     ) external override returns (address marketConfigurator) {
         marketConfigurator = _deployLatestPatch({
             contractType: AP_MARKET_CONFIGURATOR,
             minorVersion: version,
-            constructorParams: abi.encode(addressProvider, admin, emergencyAdmin, curatorName, deployGovernor),
+            constructorParams: abi.encode(
+                addressProvider, admin, emergencyAdmin, adminFeeTreasury, curatorName, deployGovernor
+            ),
             salt: bytes32(bytes20(msg.sender)) // QUESTION: whose address?
         });
 

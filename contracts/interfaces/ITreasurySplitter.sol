@@ -67,8 +67,6 @@ interface ITreasurySplitter {
 
     function admin() external view returns (address);
 
-    function treasury() external view returns (address);
-
     function treasuryProxy() external view returns (address);
 
     function tokenSplits(address token) external view returns (Split memory);
@@ -97,7 +95,7 @@ interface ITreasurySplitter {
 
     function setTokenInsuranceAmount(address token, uint256 amount) external;
 
-    function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions) external;
+    function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions, bool distribute) external;
 
     function setDefaultSplit(address[] memory receivers, uint16[] memory proportions) external;
 
