@@ -9,7 +9,6 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {ITreasurySplitter, Split, TwoAdminProposal} from "../interfaces/ITreasurySplitter.sol";
-import {ITimeLock} from "../interfaces/ITimelock.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
