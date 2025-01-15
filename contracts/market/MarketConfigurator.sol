@@ -35,6 +35,7 @@ import {
     AP_POOL_FACTORY,
     AP_PRICE_ORACLE_FACTORY,
     AP_RATE_KEEPER_FACTORY,
+    AP_TREASURY,
     NO_VERSION_CONTROL,
     ROLE_PAUSABLE_ADMIN,
     ROLE_UNPAUSABLE_ADMIN
@@ -132,7 +133,11 @@ contract MarketConfigurator is IMarketConfigurator {
 
         acl = address(new ACL());
         contractsRegister = address(new ContractsRegister(acl));
-        treasury = address(new TreasurySplitter(addressProvider, admin, adminFeeTreasury_));
+        if (adminFeeTreasury_ != address(0)) {
+            treasury = address(new TreasurySplitter(addressProvider, admin, adminFeeTreasury_));
+        } else {
+            treasury = _getAddressOrRevert(AP_TREASURY, NO_VERSION_CONTROL);
+        }
 
         ACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, address(this));
         ACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, address(this));
