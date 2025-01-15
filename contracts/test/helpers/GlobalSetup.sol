@@ -147,7 +147,8 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
-        _submitProposalAndSign(calls);
+
+        _submitProposalAndSign("Add Auditor", calls);
 
         DeploySystemContractCall[10] memory deployCalls = [
             DeploySystemContractCall({contractType: AP_BOT_LIST, version: 3_10, saveVersion: false}),
@@ -180,7 +181,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             );
         }
 
-        _submitProposalAndSign(calls);
+        _submitProposalAndSign("System contracts", calls);
     }
 
     function _setCoreContracts() internal {
