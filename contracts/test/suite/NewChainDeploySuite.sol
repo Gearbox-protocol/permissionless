@@ -151,8 +151,6 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         assertEq(pool, poolFromMarket);
 
-        address botList = 0x6B24183313074ABb6E3B30Ea206F20c12205053a;
-
         DeployParams memory accountFactoryParams =
             DeployParams({postfix: "DEFAULT", salt: 0, constructorParams: abi.encode(imProxy)});
         CreditManagerParams memory creditManagerParams = CreditManagerParams({
@@ -169,7 +167,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         });
 
         CreditFacadeParams memory facadeParams =
-            CreditFacadeParams({botList: botList, degenNFT: address(0), expirable: false});
+            CreditFacadeParams({degenNFT: address(0), expirable: false, migrateBotList: false});
 
         bytes memory creditSuiteParams = abi.encode(creditManagerParams, facadeParams);
 

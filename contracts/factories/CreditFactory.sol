@@ -5,6 +5,7 @@ pragma solidity ^0.8.23;
 
 import {IAccountFactory} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IAccountFactory.sol";
 import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
+import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
@@ -20,6 +21,7 @@ import {
     DOMAIN_ADAPTER,
     DOMAIN_CREDIT_MANAGER,
     DOMAIN_DEGEN_NFT,
+    AP_BOT_LIST,
     AP_CREDIT_CONFIGURATOR,
     AP_CREDIT_FACADE,
     AP_CREDIT_FACTORY,
@@ -44,9 +46,9 @@ struct CreditManagerParams {
 }
 
 struct CreditFacadeParams {
-    address botList;
     address degenNFT;
     bool expirable;
+    bool migrateBotList;
 }
 
 interface IConfigureActions {
@@ -90,6 +92,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     /// @notice Contract type
     bytes32 public constant override contractType = AP_CREDIT_FACTORY;
 
+    /// @notice Address of the bot list contract
+    address public immutable botList;
+
     /// @notice Address of the WETH token
     address public immutable weth;
 
@@ -100,6 +105,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
+        botList = _getAddressOrRevert(AP_BOT_LIST, NO_VERSION_CONTROL);
         weth = _tryGetAddress(AP_WETH_TOKEN, NO_VERSION_CONTROL);
     }
 
@@ -371,9 +377,14 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
             revert DegenNFTIsNotRegisteredException(params.degenNFT);
         }
 
-        // TODO: ensure that botList is registered, coincides with the previous one, add manager to it
+        address botList_ = botList;
+        if (params.migrateBotList) {
+            address prevCreditFacade = ICreditManagerV3(creditManager).creditFacade();
+            botList_ = ICreditFacadeV3(prevCreditFacade).botList();
+        }
+
         bytes memory constructorParams =
-            abi.encode(acl, creditManager, lossPolicy, params.botList, weth, params.degenNFT, params.expirable);
+            abi.encode(acl, creditManager, lossPolicy, botList_, weth, params.degenNFT, params.expirable);
 
         return _deployLatestPatch({
             contractType: AP_CREDIT_FACADE,

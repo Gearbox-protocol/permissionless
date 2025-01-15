@@ -15,6 +15,7 @@ import {IWETH} from "@gearbox-protocol/core-v3/contracts/interfaces/external/IWE
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {
     AP_ACCOUNT_FACTORY_DEFAULT,
+    AP_BOT_LIST,
     AP_PRICE_FEED_STORE,
     AP_INTEREST_RATE_MODEL_FACTORY,
     AP_CREDIT_FACTORY,
@@ -54,6 +55,7 @@ import {ContractsRegister} from "../../market/ContractsRegister.sol";
 import {Governor} from "../../market/Governor.sol";
 
 // Core contracts
+import {BotListV3} from "@gearbox-protocol/core-v3/contracts/core/BotListV3.sol";
 import {PoolV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolV3.sol";
 import {PoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolQuotaKeeperV3.sol";
 import {DefaultAccountFactoryV3} from "@gearbox-protocol/core-v3/contracts/core/DefaultAccountFactoryV3.sol";
@@ -143,7 +145,8 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
         _submitProposalAndSign(calls);
 
-        DeploySystemContractCall[8] memory deployCalls = [
+        DeploySystemContractCall[9] memory deployCalls = [
+            DeploySystemContractCall({contractType: AP_BOT_LIST, version: 3_10, saveVersion: false}),
             DeploySystemContractCall({contractType: AP_PRICE_FEED_STORE, version: 3_10, saveVersion: false}),
             DeploySystemContractCall({contractType: AP_MARKET_CONFIGURATOR_FACTORY, version: 3_10, saveVersion: false}),
             DeploySystemContractCall({contractType: AP_POOL_FACTORY, version: 3_10, saveVersion: true}),
@@ -262,6 +265,10 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({initCode: type(GaugeV3).creationCode, contractType: AP_RATE_KEEPER_GAUGE, version: 3_10})
+        );
+
+        contractsToUpload.push(
+            UploadableContract({initCode: type(BotListV3).creationCode, contractType: AP_BOT_LIST, version: 3_10})
         );
 
         contractsToUpload.push(
