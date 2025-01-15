@@ -14,6 +14,7 @@ import {IInstanceManager} from "../../interfaces/IInstanceManager.sol";
 import {IWETH} from "@gearbox-protocol/core-v3/contracts/interfaces/external/IWETH.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {
+    AP_ACCOUNT_FACTORY_DEFAULT,
     AP_PRICE_FEED_STORE,
     AP_INTEREST_RATE_MODEL_FACTORY,
     AP_CREDIT_FACTORY,
@@ -55,6 +56,7 @@ import {Governor} from "../../market/Governor.sol";
 // Core contracts
 import {PoolV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolV3.sol";
 import {PoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolQuotaKeeperV3.sol";
+import {DefaultAccountFactoryV3} from "@gearbox-protocol/core-v3/contracts/core/DefaultAccountFactoryV3.sol";
 import {PriceOracleV3} from "@gearbox-protocol/core-v3/contracts/core/PriceOracleV3.sol";
 import {LinearInterestRateModelV3} from "@gearbox-protocol/core-v3/contracts/pool/LinearInterestRateModelV3.sol";
 import {TumblerV3} from "@gearbox-protocol/core-v3/contracts/pool/TumblerV3.sol";
@@ -260,6 +262,14 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({initCode: type(GaugeV3).creationCode, contractType: AP_RATE_KEEPER_GAUGE, version: 3_10})
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(DefaultAccountFactoryV3).creationCode,
+                contractType: AP_ACCOUNT_FACTORY_DEFAULT,
+                version: 3_10
+            })
         );
 
         contractsToUpload.push(

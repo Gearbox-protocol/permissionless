@@ -3,6 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
+import {IAccountFactory} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IAccountFactory.sol";
 import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
@@ -15,12 +16,14 @@ import {Call, DeployParams, DeployResult} from "../interfaces/Types.sol";
 
 import {CallBuilder} from "../libraries/CallBuilder.sol";
 import {
+    DOMAIN_ACCOUNT_FACTORY,
     DOMAIN_ADAPTER,
     DOMAIN_CREDIT_MANAGER,
     DOMAIN_DEGEN_NFT,
     AP_CREDIT_CONFIGURATOR,
     AP_CREDIT_FACADE,
     AP_CREDIT_FACTORY,
+    AP_INSTANCE_MANAGER_PROXY,
     AP_WETH_TOKEN,
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
@@ -28,7 +31,6 @@ import {
 import {AbstractFactory} from "./AbstractFactory.sol";
 
 struct CreditManagerParams {
-    address accountFactory;
     uint8 maxEnabledTokens;
     uint16 feeInterest;
     uint16 feeLiquidation;
@@ -38,6 +40,7 @@ struct CreditManagerParams {
     uint128 minDebt;
     uint128 maxDebt;
     string name;
+    DeployParams accountFactoryParams;
 }
 
 struct CreditFacadeParams {
@@ -113,10 +116,12 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         (CreditManagerParams memory params, CreditFacadeParams memory facadeParams) =
             abi.decode(encodedParams, (CreditManagerParams, CreditFacadeParams));
 
-        address creditManager = _deployCreditManager(msg.sender, pool, params);
+        address accountFactory = _deployAccountFactory(msg.sender, params.accountFactoryParams);
+        address creditManager = _deployCreditManager(msg.sender, pool, accountFactory, params);
         address creditConfigurator = _deployCreditConfigurator(msg.sender, creditManager);
         address creditFacade = _deployCreditFacade(msg.sender, creditManager, facadeParams);
 
+        IAccountFactory(accountFactory).addCreditManager(creditManager);
         ICreditManagerV3(creditManager).setCreditConfigurator(creditConfigurator);
 
         return DeployResult({
@@ -253,12 +258,43 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     // INTERNALS //
     // --------- //
 
-    function _deployCreditManager(address marketConfigurator, address pool, CreditManagerParams memory params)
+    function _deployAccountFactory(address marketConfigurator, DeployParams memory params) internal returns (address) {
+        address decodedOwner = abi.decode(params.constructorParams, (address));
+        if (decodedOwner != _getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL)) {
+            revert InvalidConstructorParamsException();
+        }
+
+        return _deployLatestPatch({
+            contractType: _getContractType(DOMAIN_ACCOUNT_FACTORY, params.postfix),
+            minorVersion: version,
+            constructorParams: params.constructorParams,
+            salt: keccak256(abi.encode(params.salt, marketConfigurator))
+        });
+    }
+
+    function _computeAccountFactoryAddress(address marketConfigurator, DeployParams memory params)
         internal
+        view
         returns (address)
     {
+        return _computeAddressLatestPatch({
+            contractType: _getContractType(DOMAIN_ACCOUNT_FACTORY, params.postfix),
+            minorVersion: version,
+            constructorParams: params.constructorParams,
+            salt: keccak256(abi.encode(params.salt, marketConfigurator)),
+            deployer: address(this)
+        });
+    }
+
+    function _deployCreditManager(
+        address marketConfigurator,
+        address pool,
+        address accountFactory,
+        CreditManagerParams memory params
+    ) internal returns (address) {
         bytes32 postfix = _getTokenSpecificPostfix(IPoolV3(pool).asset());
-        bytes memory constructorParams = _buildCreditManagerConstructorParams(marketConfigurator, pool, params);
+        bytes memory constructorParams =
+            _buildCreditManagerConstructorParams(marketConfigurator, pool, accountFactory, params);
         return _deployLatestPatch({
             contractType: _getContractType(DOMAIN_CREDIT_MANAGER, postfix),
             minorVersion: version,
@@ -272,8 +308,10 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         view
         returns (address)
     {
+        address accountFactory = _computeAccountFactoryAddress(marketConfigurator, params.accountFactoryParams);
         bytes32 postfix = _getTokenSpecificPostfix(IPoolV3(pool).asset());
-        bytes memory constructorParams = _buildCreditManagerConstructorParams(marketConfigurator, pool, params);
+        bytes memory constructorParams =
+            _buildCreditManagerConstructorParams(marketConfigurator, pool, accountFactory, params);
         return _computeAddressLatestPatch({
             contractType: _getContractType(DOMAIN_CREDIT_MANAGER, postfix),
             minorVersion: version,
@@ -286,15 +324,15 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     function _buildCreditManagerConstructorParams(
         address marketConfigurator,
         address pool,
+        address accountFactory,
         CreditManagerParams memory params
     ) internal view returns (bytes memory) {
         address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
         address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
 
-        // TODO: ensure that account factory is registered, add manager to it
         return abi.encode(
             pool,
-            params.accountFactory,
+            accountFactory,
             priceOracle,
             params.maxEnabledTokens,
             params.feeInterest,
@@ -350,25 +388,13 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         returns (address)
     {
         address decodedCreditManager = abi.decode(params.constructorParams, (address));
-
         if (decodedCreditManager != creditManager) revert InvalidConstructorParamsException();
-
-        // NOTE: allowing a previously forbidden adapter is considered a valid operation,
-        // so we just return the contract address if it's already deployed
-        address adapter = _computeAddressLatestPatch({
-            contractType: _getContractType(DOMAIN_ADAPTER, params.postfix),
-            minorVersion: version,
-            constructorParams: params.constructorParams,
-            salt: bytes32(bytes20(marketConfigurator)),
-            deployer: address(this)
-        });
-        if (adapter.code.length != 0) return adapter;
 
         return _deployLatestPatch({
             contractType: _getContractType(DOMAIN_ADAPTER, params.postfix),
             minorVersion: version,
             constructorParams: params.constructorParams,
-            salt: bytes32(bytes20(marketConfigurator))
+            salt: keccak256(abi.encode(params.salt, marketConfigurator))
         });
     }
 

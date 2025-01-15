@@ -16,6 +16,7 @@ import {IWETH} from "@gearbox-protocol/core-v3/contracts/interfaces/external/IWE
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {
     AP_PRICE_FEED_STORE,
+    AP_INSTANCE_MANAGER_PROXY,
     AP_INTEREST_RATE_MODEL_FACTORY,
     AP_CREDIT_FACTORY,
     AP_POOL_FACTORY,
@@ -110,6 +111,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         address ap = instanceManager.addressProvider();
 
         address mcf = IAddressProvider(ap).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
+        address imProxy = IAddressProvider(ap).getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL);
 
         address poolFactory = IAddressProvider(ap).getAddressOrRevert(AP_POOL_FACTORY, 3_10);
 
@@ -126,29 +128,34 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         address pool = MarketConfigurator(mc).previewCreateMarket(3_10, WETH, name, symbol);
 
-        bytes memory interestRateModelParams =
-            abi.encode(uint16(100), uint16(200), uint16(100), uint16(100), uint16(200), uint16(300), false);
-        bytes memory rateKeeperParams = abi.encode(pool, 7 days);
-        bytes memory lossPolicyParams = abi.encode(pool, ap);
+        DeployParams memory interestRateModelParams = DeployParams({
+            postfix: "LINEAR",
+            salt: 0,
+            constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
+        });
+        DeployParams memory rateKeeperParams =
+            DeployParams({postfix: "TUMBLER", salt: 0, constructorParams: abi.encode(pool, 7 days)});
+        DeployParams memory lossPolicyParams =
+            DeployParams({postfix: "DEFAULT", salt: 0, constructorParams: abi.encode(pool, ap)});
 
         address poolFromMarket = MarketConfigurator(mc).createMarket({
             minorVersion: 3_10,
             underlying: WETH,
             name: name,
             symbol: symbol,
-            interestRateModelParams: DeployParams("LINEAR", interestRateModelParams),
-            rateKeeperParams: DeployParams("TUMBLER", rateKeeperParams),
-            lossPolicyParams: DeployParams("DEFAULT", lossPolicyParams),
+            interestRateModelParams: interestRateModelParams,
+            rateKeeperParams: rateKeeperParams,
+            lossPolicyParams: lossPolicyParams,
             underlyingPriceFeed: CHAINLINK_ETH_USD
         });
 
         assertEq(pool, poolFromMarket);
 
-        address mainnetAF = 0x444CD42BaEdDEB707eeD823f7177b9ABcC779C04;
         address botList = 0x6B24183313074ABb6E3B30Ea206F20c12205053a;
 
+        DeployParams memory accountFactoryParams =
+            DeployParams({postfix: "DEFAULT", salt: 0, constructorParams: abi.encode(imProxy)});
         CreditManagerParams memory creditManagerParams = CreditManagerParams({
-            accountFactory: mainnetAF,
             maxEnabledTokens: 4,
             feeInterest: 10_00,
             feeLiquidation: 1_50,
@@ -157,7 +164,8 @@ contract NewChainDeploySuite is Test, GlobalSetup {
             liquidationPremiumExpired: 1_50,
             minDebt: 1e18,
             maxDebt: 20e18,
-            name: "Credit Manager ETH"
+            name: "Credit Manager ETH",
+            accountFactoryParams: accountFactoryParams
         });
 
         CreditFacadeParams memory facadeParams =
@@ -172,7 +180,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         MarketConfigurator(mc).configureCreditSuite(
             cm,
             abi.encodeCall(
-                IConfigureActions.allowAdapter, (DeployParams("BALANCER_VAULT", abi.encode(cm, balancerVault)))
+                IConfigureActions.allowAdapter, (DeployParams("BALANCER_VAULT", 0, abi.encode(cm, balancerVault)))
             )
         );
 

@@ -22,6 +22,7 @@ struct SignedProposal {
 
 struct DeployParams {
     bytes32 postfix;
+    bytes32 salt;
     bytes constructorParams;
 }
 

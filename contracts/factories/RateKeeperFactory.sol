@@ -63,7 +63,7 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
             contractType: _getContractType(DOMAIN_RATE_KEEPER, params.postfix),
             minorVersion: version,
             constructorParams: params.constructorParams,
-            salt: bytes32(bytes20(msg.sender))
+            salt: keccak256(abi.encode(params.salt, msg.sender))
         });
 
         return DeployResult({

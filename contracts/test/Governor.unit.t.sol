@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 // Gearbox Protocol. Generalized leverage for DeFi protocols
-// (c) Gearbox Foundation, 2023.
-pragma solidity ^0.8.22;
+// (c) Gearbox Foundation, 2024.
+pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
 
@@ -14,7 +14,7 @@ contract TargetMock {
     fallback() external payable {}
 }
 
-contract GovernorTest is Test {
+contract GovernorUnitTest is Test {
     Governor governor;
 
     address timeLock;
