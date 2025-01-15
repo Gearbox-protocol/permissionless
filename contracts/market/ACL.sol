@@ -26,6 +26,12 @@ contract ACL is IACL, Ownable2Step {
     /// @dev Set of accounts that have been granted role `role`
     mapping(bytes32 role => EnumerableSet.AddressSet) internal _roleHolders;
 
+    /// @notice Constructor
+    /// @param owner_ Initial owner
+    constructor(address owner_) {
+        _transferOwnership(owner_);
+    }
+
     /// @notice Returns configurator
     function getConfigurator() external view override returns (address) {
         return owner();

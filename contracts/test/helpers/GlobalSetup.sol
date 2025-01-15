@@ -16,6 +16,7 @@ import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {
     AP_ACCOUNT_FACTORY_DEFAULT,
     AP_BOT_LIST,
+    AP_GEAR_STAKING,
     AP_PRICE_FEED_STORE,
     AP_INTEREST_RATE_MODEL_FACTORY,
     AP_CREDIT_FACTORY,
@@ -25,6 +26,7 @@ import {
     AP_MARKET_CONFIGURATOR_FACTORY,
     AP_LOSS_POLICY_FACTORY,
     AP_GOVERNOR,
+    AP_TREASURY_SPLITTER,
     AP_POOL,
     AP_POOL_QUOTA_KEEPER,
     AP_PRICE_ORACLE,
@@ -53,9 +55,11 @@ import {MarketConfiguratorFactory} from "../../instance/MarketConfiguratorFactor
 import {ACL} from "../../market/ACL.sol";
 import {ContractsRegister} from "../../market/ContractsRegister.sol";
 import {Governor} from "../../market/Governor.sol";
+import {TreasurySplitter} from "../../market/TreasurySplitter.sol";
 
 // Core contracts
 import {BotListV3} from "@gearbox-protocol/core-v3/contracts/core/BotListV3.sol";
+import {GearStakingV3} from "@gearbox-protocol/core-v3/contracts/core/GearStakingV3.sol";
 import {PoolV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolV3.sol";
 import {PoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/pool/PoolQuotaKeeperV3.sol";
 import {DefaultAccountFactoryV3} from "@gearbox-protocol/core-v3/contracts/core/DefaultAccountFactoryV3.sol";
@@ -145,8 +149,9 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
         _submitProposalAndSign(calls);
 
-        DeploySystemContractCall[9] memory deployCalls = [
+        DeploySystemContractCall[10] memory deployCalls = [
             DeploySystemContractCall({contractType: AP_BOT_LIST, version: 3_10, saveVersion: false}),
+            DeploySystemContractCall({contractType: AP_GEAR_STAKING, version: 3_10, saveVersion: false}),
             DeploySystemContractCall({contractType: AP_PRICE_FEED_STORE, version: 3_10, saveVersion: false}),
             DeploySystemContractCall({contractType: AP_MARKET_CONFIGURATOR_FACTORY, version: 3_10, saveVersion: false}),
             DeploySystemContractCall({contractType: AP_POOL_FACTORY, version: 3_10, saveVersion: true}),
@@ -236,6 +241,14 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         );
 
         contractsToUpload.push(
+            UploadableContract({
+                initCode: type(TreasurySplitter).creationCode,
+                contractType: AP_TREASURY_SPLITTER,
+                version: 3_10
+            })
+        );
+
+        contractsToUpload.push(
             UploadableContract({initCode: type(PoolV3).creationCode, contractType: AP_POOL, version: 3_10})
         );
 
@@ -269,6 +282,14 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({initCode: type(BotListV3).creationCode, contractType: AP_BOT_LIST, version: 3_10})
+        );
+
+        contractsToUpload.push(
+            UploadableContract({
+                initCode: type(GearStakingV3).creationCode,
+                contractType: AP_GEAR_STAKING,
+                version: 3_10
+            })
         );
 
         contractsToUpload.push(

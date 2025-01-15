@@ -1,22 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Gearbox Protocol. Generalized leverage for DeFi protocols
-// (c) Gearbox Foundation, 2023.
-pragma solidity ^0.8.0;
+// (c) Gearbox Foundation, 2024.
+pragma solidity ^0.8.23;
 
-struct Split {
-    bool initialized;
-    address[] receivers;
-    uint16[] proportions;
-}
-
-struct TwoAdminProposal {
-    bytes callData;
-    bool confirmedByAdmin;
-    bool confirmedByTreasuryProxy;
-}
+import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {Split, TwoAdminProposal} from "./Types.sol";
 
 /// @title Treasury splitter
-interface ITreasurySplitter {
+interface ITreasurySplitter is IVersion {
     // ------ //
     // ERRORS //
     // ------ //
@@ -95,7 +86,8 @@ interface ITreasurySplitter {
 
     function setTokenInsuranceAmount(address token, uint256 amount) external;
 
-    function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions, bool distribute) external;
+    function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions, bool distribute)
+        external;
 
     function setDefaultSplit(address[] memory receivers, uint16[] memory proportions) external;
 

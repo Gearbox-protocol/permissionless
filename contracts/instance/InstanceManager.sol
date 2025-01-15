@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
+// Gearbox Protocol. Generalized leverage for DeFi protocols
+// (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
 import {BytecodeRepository} from "../global/BytecodeRepository.sol";
@@ -13,17 +15,18 @@ import {
     AP_INSTANCE_MANAGER_PROXY,
     AP_CROSS_CHAIN_GOVERNANCE_PROXY,
     AP_TREASURY_PROXY,
+    AP_GEAR_STAKING,
     AP_GEAR_TOKEN,
     AP_WETH_TOKEN,
     AP_MARKET_CONFIGURATOR_FACTORY
 } from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
+import {IInstanceManager} from "../interfaces/IInstanceManager.sol";
 import {ProxyCall} from "../helpers/ProxyCall.sol";
 import {LibString} from "@solady/utils/LibString.sol";
-import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {AddressProvider} from "./AddressProvider.sol";
 
-contract InstanceManager is Ownable, IVersion {
+contract InstanceManager is Ownable, IInstanceManager {
     using LibString for string;
 
     /// @notice Meta info about contract type & version
@@ -92,10 +95,22 @@ contract InstanceManager is Ownable, IVersion {
         external
         onlyCrossChainGovernance
     {
-        // deploy contract
-        // set address in address provider
+        address newSystemContract;
+        if (
+            _contractName == AP_GEAR_STAKING && _version == 3_10
+                && (block.chainid == 1 || block.chainid == 10 || block.chainid == 42161)
+        ) {
+            if (block.chainid == 1) {
+                newSystemContract = 0x2fcbD02d5B1D52FC78d4c02890D7f4f47a459c33;
+            } else if (block.chainid == 10) {
+                newSystemContract = 0x8D2622f1CA3B42b637e2ff6753E6b69D3ab9Adfd;
+            } else if (block.chainid == 42161) {
+                newSystemContract = 0xf3599BEfe8E79169Afd5f0b7eb0A1aA322F193D9;
+            }
+        } else {
+            newSystemContract = _deploySystemContract(_contractName, _version);
+        }
 
-        address newSystemContract = _deploySystemContract(_contractName, _version);
         _setAddress(_contractName, newSystemContract, _saveVersion);
     }
 

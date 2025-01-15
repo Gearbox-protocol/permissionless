@@ -4,9 +4,10 @@
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {IDeployerTrait} from "./base/IDeployerTrait.sol";
 import {Call, DeployParams, MarketFactories} from "./Types.sol";
 
-interface IMarketConfigurator is IVersion {
+interface IMarketConfigurator is IVersion, IDeployerTrait {
     // ------ //
     // EVENTS //
     // ------ //
@@ -111,9 +112,6 @@ interface IMarketConfigurator is IVersion {
     // --------------- //
     // STATE VARIABLES //
     // --------------- //
-
-    function addressProvider() external view returns (address);
-    function bytecodeRepository() external view returns (address);
 
     function admin() external view returns (address);
     function emergencyAdmin() external view returns (address);

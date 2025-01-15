@@ -4,20 +4,30 @@
 pragma solidity ^0.8.23;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-import {ITreasurySplitter, Split, TwoAdminProposal} from "../interfaces/ITreasurySplitter.sol";
-import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v3/contracts/libraries/Constants.sol";
-import {AP_TREASURY, AP_TREASURY_PROXY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
+
+import {ITreasurySplitter} from "../interfaces/ITreasurySplitter.sol";
+import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
+import {Split, TwoAdminProposal} from "../interfaces/Types.sol";
+
+import {
+    AP_TREASURY, AP_TREASURY_PROXY, AP_TREASURY_SPLITTER, NO_VERSION_CONTROL
+} from "../libraries/ContractLiterals.sol";
 
 contract TreasurySplitter is ITreasurySplitter {
     using EnumerableSet for EnumerableSet.Bytes32Set;
     using SafeERC20 for IERC20;
+
+    /// @notice Contract version
+    uint256 public constant override version = 3_10;
+
+    /// @notice Contract type
+    bytes32 public constant override contractType = AP_TREASURY_SPLITTER;
 
     /// @notice Address of the market admin
     address public immutable override admin;
@@ -184,11 +194,12 @@ contract TreasurySplitter is ITreasurySplitter {
     }
 
     /// @notice Sets a split for a specific token
-    function setTokenSplit(address token, address[] memory receivers, uint16[] memory proportions, bool distributeBefore)
-        external
-        override
-        onlySelf
-    {
+    function setTokenSplit(
+        address token,
+        address[] memory receivers,
+        uint16[] memory proportions,
+        bool distributeBefore
+    ) external override onlySelf {
         if (distributeBefore) {
             _distribute(token);
         }

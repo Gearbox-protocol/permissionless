@@ -111,7 +111,6 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         address ap = instanceManager.addressProvider();
 
         address mcf = IAddressProvider(ap).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
-        address imProxy = IAddressProvider(ap).getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL);
 
         address poolFactory = IAddressProvider(ap).getAddressOrRevert(AP_POOL_FACTORY, 3_10);
 
@@ -152,7 +151,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         assertEq(pool, poolFromMarket);
 
         DeployParams memory accountFactoryParams =
-            DeployParams({postfix: "DEFAULT", salt: 0, constructorParams: abi.encode(imProxy)});
+            DeployParams({postfix: "DEFAULT", salt: 0, constructorParams: abi.encode(ap)});
         CreditManagerParams memory creditManagerParams = CreditManagerParams({
             maxEnabledTokens: 4,
             feeInterest: 10_00,

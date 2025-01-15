@@ -12,7 +12,6 @@ import {IMarketConfiguratorFactory} from "../interfaces/IMarketConfiguratorFacto
 
 import {
     AP_CROSS_CHAIN_GOVERNANCE,
-    AP_GEAR_STAKING,
     AP_MARKET_CONFIGURATOR,
     AP_MARKET_CONFIGURATOR_FACTORY,
     AP_MARKET_CONFIGURATOR_LEGACY,
@@ -97,7 +96,7 @@ contract MarketConfiguratorFactory is DeployerTrait, IMarketConfiguratorFactory 
     ) external override returns (address marketConfigurator) {
         marketConfigurator = _deployLatestPatch({
             contractType: AP_MARKET_CONFIGURATOR,
-            minorVersion: version,
+            minorVersion: 3_10,
             constructorParams: abi.encode(
                 addressProvider, admin, emergencyAdmin, adminFeeTreasury, curatorName, deployGovernor
             ),

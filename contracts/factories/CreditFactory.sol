@@ -265,10 +265,8 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     // --------- //
 
     function _deployAccountFactory(address marketConfigurator, DeployParams memory params) internal returns (address) {
-        address decodedOwner = abi.decode(params.constructorParams, (address));
-        if (decodedOwner != _getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL)) {
-            revert InvalidConstructorParamsException();
-        }
+        address decodedAddressProvider = abi.decode(params.constructorParams, (address));
+        if (decodedAddressProvider != addressProvider) revert InvalidConstructorParamsException();
 
         return _deployLatestPatch({
             contractType: _getContractType(DOMAIN_ACCOUNT_FACTORY, params.postfix),

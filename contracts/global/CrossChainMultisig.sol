@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
+// Gearbox Protocol. Generalized leverage for DeFi protocols
+// (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
@@ -17,9 +19,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 import {ICrossChainMultisig} from "../interfaces/ICrossChainMultisig.sol";
 
 import {AP_CROSS_CHAIN_MULTISIG} from "../libraries/ContractLiterals.sol";
-
-// set FINANCIAL_MULTISIG to 0x3434343 on Chain X
-// Onchain mainnet governance -> CrossChainMultisig.submitProposal()
 
 contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossChainMultisig {
     using EnumerableSet for EnumerableSet.AddressSet;

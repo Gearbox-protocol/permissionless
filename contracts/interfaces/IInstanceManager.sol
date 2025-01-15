@@ -1,4 +1,6 @@
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: MIT
+// Gearbox Protocol. Generalized leverage for DeFi protocols
+// (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
@@ -12,7 +14,7 @@ interface IInstanceManager is IVersion {
     function isActivated() external view returns (bool);
 
     function activate(address _instanceOwner, address _treasury, address _weth, address _gear) external;
-    function deploySystemContract(bytes32 _contractName, uint256 _version) external;
+    function deploySystemContract(bytes32 _contractName, uint256 _version, bool _saveVersion) external;
     function setGlobalAddress(string memory key, address addr, bool saveVersion) external;
     function setLocalAddress(string memory key, address addr, bool saveVersion) external;
     function configureGlobal(address target, bytes calldata data) external;

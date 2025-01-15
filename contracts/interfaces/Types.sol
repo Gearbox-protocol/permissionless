@@ -68,3 +68,15 @@ struct AuditorSignature {
     address auditor;
     bytes signature;
 }
+
+struct Split {
+    bool initialized;
+    address[] receivers;
+    uint16[] proportions;
+}
+
+struct TwoAdminProposal {
+    bytes callData;
+    bool confirmedByAdmin;
+    bool confirmedByTreasuryProxy;
+}

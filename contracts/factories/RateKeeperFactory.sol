@@ -31,9 +31,14 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
     /// @notice Contract type
     bytes32 public constant override contractType = AP_RATE_KEEPER_FACTORY;
 
+    /// @notice Address of the GEAR staking contract
+    address public immutable gearStaking;
+
     /// @notice Constructor
     /// @param addressProvider_ Address provider contract address
-    constructor(address addressProvider_) AbstractFactory(addressProvider_) {}
+    constructor(address addressProvider_) AbstractFactory(addressProvider_) {
+        gearStaking = _getAddressOrRevert(AP_GEAR_STAKING, NO_VERSION_CONTROL);
+    }
 
     // ---------- //
     // DEPLOYMENT //
@@ -47,14 +52,10 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
     {
         if (params.postfix == "GAUGE") {
             (address decodedPool, address decodedGearStaking) = abi.decode(params.constructorParams, (address, address));
-            if (decodedPool != pool || decodedGearStaking != _getAddressOrRevert(AP_GEAR_STAKING, NO_VERSION_CONTROL)) {
-                revert InvalidConstructorParamsException();
-            }
+            if (decodedPool != pool || decodedGearStaking != gearStaking) revert InvalidConstructorParamsException();
         } else if (params.postfix == "TUMBLER") {
             (address decodedPool,) = abi.decode(params.constructorParams, (address, uint256));
-            if (decodedPool != pool) {
-                revert InvalidConstructorParamsException();
-            }
+            if (decodedPool != pool) revert InvalidConstructorParamsException();
         } else {
             _validateDefaultConstructorParams(pool, params.constructorParams);
         }

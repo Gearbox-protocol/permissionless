@@ -21,14 +21,19 @@ import {IPoolFactory} from "../interfaces/factories/IPoolFactory.sol";
 import {IPriceOracleFactory} from "../interfaces/factories/IPriceOracleFactory.sol";
 import {IRateKeeperFactory} from "../interfaces/factories/IRateKeeperFactory.sol";
 
+import {IACL} from "../interfaces/extensions/IACL.sol";
+import {IContractsRegister} from "../interfaces/extensions/IContractsRegister.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
+import {IGovernor} from "../interfaces/IGovernor.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {Call, DeployParams, DeployResult, MarketFactories} from "../interfaces/Types.sol";
 
 import {
-    AP_BYTECODE_REPOSITORY,
+    AP_ACL,
+    AP_CONTRACTS_REGISTER,
     AP_CREDIT_FACTORY,
+    AP_GOVERNOR,
     AP_INTEREST_RATE_MODEL_FACTORY,
     AP_LOSS_POLICY_FACTORY,
     AP_MARKET_CONFIGURATOR,
@@ -36,20 +41,17 @@ import {
     AP_PRICE_ORACLE_FACTORY,
     AP_RATE_KEEPER_FACTORY,
     AP_TREASURY,
+    AP_TREASURY_SPLITTER,
     NO_VERSION_CONTROL,
     ROLE_PAUSABLE_ADMIN,
     ROLE_UNPAUSABLE_ADMIN
 } from "../libraries/ContractLiterals.sol";
 import {Domain} from "../libraries/Domain.sol";
 
-import {ACL} from "./ACL.sol";
-import {ContractsRegister} from "./ContractsRegister.sol";
-import {Governor} from "./Governor.sol";
-import {TimeLock} from "./TimeLock.sol";
-import {TreasurySplitter} from "./TreasurySplitter.sol";
+import {DeployerTrait} from "../traits/DeployerTrait.sol";
 
 /// @title Market configurator
-contract MarketConfigurator is IMarketConfigurator {
+contract MarketConfigurator is DeployerTrait, IMarketConfigurator {
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
     using LibString for string;
@@ -58,9 +60,6 @@ contract MarketConfigurator is IMarketConfigurator {
     // --------------- //
     // STATE VARIABLES //
     // --------------- //
-
-    address public immutable override addressProvider;
-    address public immutable override bytecodeRepository;
 
     address public immutable override admin;
     address public override emergencyAdmin;
@@ -118,29 +117,46 @@ contract MarketConfigurator is IMarketConfigurator {
         address adminFeeTreasury_,
         string memory curatorName_,
         bool deployGovernor_
-    ) {
-        addressProvider = addressProvider_;
-        bytecodeRepository = _getAddressOrRevert(AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL);
-
+    ) DeployerTrait(addressProvider_) {
         if (deployGovernor_) {
-            Governor governor = new Governor(admin_, emergencyAdmin_, 1 days, false);
-            admin = governor.timeLock();
+            address governor = _deployLatestPatch({
+                contractType: AP_GOVERNOR,
+                minorVersion: 3_10,
+                constructorParams: abi.encode(admin_, emergencyAdmin_, 1 days, false),
+                salt: 0
+            });
+            admin = IGovernor(governor).timeLock();
         } else {
             admin = admin_;
         }
         emergencyAdmin = emergencyAdmin_;
         _curatorName = curatorName_.toSmallString();
 
-        acl = address(new ACL());
-        contractsRegister = address(new ContractsRegister(acl));
+        acl = _deployLatestPatch({
+            contractType: AP_ACL,
+            minorVersion: 3_10,
+            constructorParams: abi.encode(address(this)),
+            salt: 0
+        });
+        contractsRegister = _deployLatestPatch({
+            contractType: AP_CONTRACTS_REGISTER,
+            minorVersion: 3_10,
+            constructorParams: abi.encode(acl),
+            salt: 0
+        });
         if (adminFeeTreasury_ != address(0)) {
-            treasury = address(new TreasurySplitter(addressProvider, admin, adminFeeTreasury_));
+            treasury = _deployLatestPatch({
+                contractType: AP_TREASURY_SPLITTER,
+                minorVersion: 3_10,
+                constructorParams: abi.encode(addressProvider, admin, adminFeeTreasury_),
+                salt: 0
+            });
         } else {
             treasury = _getAddressOrRevert(AP_TREASURY, NO_VERSION_CONTROL);
         }
 
-        ACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, address(this));
-        ACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, address(this));
+        IACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, address(this));
+        IACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, address(this));
 
         emit SetEmergencyAdmin(emergencyAdmin_);
         emit GrantRole(ROLE_PAUSABLE_ADMIN, address(this));
@@ -239,7 +255,7 @@ contract MarketConfigurator is IMarketConfigurator {
 
     function shutdownMarket(address pool) external override onlyAdmin onlyRegisteredMarket(pool) {
         _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onShutdownMarket, (pool)));
-        ContractsRegister(contractsRegister).shutdownMarket(pool);
+        IContractsRegister(contractsRegister).shutdownMarket(pool);
         emit ShutdownMarket(pool);
     }
 
@@ -315,7 +331,7 @@ contract MarketConfigurator is IMarketConfigurator {
     {
         address pool = ICreditManagerV3(creditManager).pool();
         _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onShutdownCreditSuite, (creditManager)));
-        ContractsRegister(contractsRegister).shutdownCreditSuite(creditManager);
+        IContractsRegister(contractsRegister).shutdownCreditSuite(creditManager);
         emit ShutdownCreditSuite(creditManager);
     }
 
@@ -359,10 +375,10 @@ contract MarketConfigurator is IMarketConfigurator {
         onlyRegisteredMarket(pool)
         returns (address priceOracle)
     {
-        address oldPriceOracle = ContractsRegister(contractsRegister).getPriceOracle(pool);
+        address oldPriceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
         priceOracle = _deployPriceOracle(_marketFactories[pool].priceOracleFactory, pool);
 
-        ContractsRegister(contractsRegister).setPriceOracle(pool, priceOracle);
+        IContractsRegister(contractsRegister).setPriceOracle(pool, priceOracle);
         _executeMarketHooks(
             pool, abi.encodeCall(IMarketFactory.onUpdatePriceOracle, (pool, priceOracle, oldPriceOracle))
         );
@@ -513,10 +529,10 @@ contract MarketConfigurator is IMarketConfigurator {
         onlyRegisteredMarket(pool)
         returns (address lossPolicy)
     {
-        address oldLossPolicy = ContractsRegister(contractsRegister).getLossPolicy(pool);
+        address oldLossPolicy = IContractsRegister(contractsRegister).getLossPolicy(pool);
         lossPolicy = _deployLossPolicy(_marketFactories[pool].lossPolicyFactory, pool, params);
 
-        ContractsRegister(contractsRegister).setLossPolicy(pool, lossPolicy);
+        IContractsRegister(contractsRegister).setLossPolicy(pool, lossPolicy);
         _executeMarketHooks(pool, abi.encodeCall(IMarketFactory.onUpdateLossPolicy, (pool, lossPolicy, oldLossPolicy)));
 
         address[] memory creditManagers = _registeredCreditManagers(pool);
@@ -698,35 +714,35 @@ contract MarketConfigurator is IMarketConfigurator {
     }
 
     function _ensureRegisteredMarket(address pool) internal view {
-        if (!ContractsRegister(contractsRegister).isPool(pool)) {
+        if (!IContractsRegister(contractsRegister).isPool(pool)) {
             revert MarketNotRegisteredException(pool);
         }
     }
 
     function _ensureRegisteredCreditSuite(address creditManager) internal view {
-        if (!ContractsRegister(contractsRegister).isCreditManager(creditManager)) {
+        if (!IContractsRegister(contractsRegister).isCreditManager(creditManager)) {
             revert CreditSuiteNotRegisteredException(creditManager);
         }
     }
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
     function _grantRole(bytes32 role, address account) internal virtual {
-        ACL(acl).grantRole(role, account);
+        IACL(acl).grantRole(role, account);
     }
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
     function _revokeRole(bytes32 role, address account) internal virtual {
-        ACL(acl).revokeRole(role, account);
+        IACL(acl).revokeRole(role, account);
     }
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
     function _registerMarket(address pool, address priceOracle, address lossPolicy) internal virtual {
-        ContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
+        IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
     }
 
     /// @dev `MarketConfiguratorLegacy` performs additional actions, hence the `virtual` modifier
     function _registerCreditSuite(address creditManager) internal virtual {
-        ContractsRegister(contractsRegister).registerCreditSuite(creditManager);
+        IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
     }
 
     /// @dev `MarketConfiguratorLegacy` performs additional checks, hence the `virtual` modifier
@@ -734,10 +750,6 @@ contract MarketConfigurator is IMarketConfigurator {
         if (target != address(this) && _authorizedFactories[target] != factory) {
             revert UnauthorizedFactoryException(factory, target);
         }
-    }
-
-    function _getAddressOrRevert(bytes32 key, uint256 ver) internal view returns (address) {
-        return IAddressProvider(addressProvider).getAddressOrRevert(key, ver);
     }
 
     function _getLatestPatch(bytes32 key, uint256 minorVersion) internal view returns (address) {
@@ -822,11 +834,11 @@ contract MarketConfigurator is IMarketConfigurator {
     }
 
     function _registeredCreditManagers() internal view returns (address[] memory) {
-        return ContractsRegister(contractsRegister).getCreditManagers();
+        return IContractsRegister(contractsRegister).getCreditManagers();
     }
 
     function _registeredCreditManagers(address pool) internal view returns (address[] memory creditManagers) {
-        return ContractsRegister(contractsRegister).getCreditManagers(pool);
+        return IContractsRegister(contractsRegister).getCreditManagers(pool);
     }
 
     function _quotaKeeper(address pool) internal view returns (address) {
