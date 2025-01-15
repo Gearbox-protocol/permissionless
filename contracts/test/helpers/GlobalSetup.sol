@@ -120,6 +120,8 @@ import {CurveCryptoLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/ora
 import {CurveStableLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveStableLPPriceFeed.sol";
 import {ERC4626PriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/erc4626/ERC4626PriceFeed.sol";
 
+import {console} from "forge-std/console.sol";
+
 struct UploadableContract {
     bytes initCode;
     bytes32 contractType;
@@ -150,6 +152,19 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         _submitProposalAndSign("Add Auditor", calls);
 
+        uint256 len = contractsToUpload.length;
+
+        calls = new CrossChainCall[](1);
+
+        for (uint256 i = 0; i < len; ++i) {
+            bytes32 bytecodeHash = _uploadByteCodeAndSign(
+                contractsToUpload[i].initCode, contractsToUpload[i].contractType, contractsToUpload[i].version
+            );
+            console.log("bytecodeHash");
+            calls[0] = _generateAllowSystemContractCall(bytecodeHash);
+            _submitProposalAndSign("Upload contracts", calls);
+        }
+
         DeploySystemContractCall[10] memory deployCalls = [
             DeploySystemContractCall({contractType: AP_BOT_LIST, version: 3_10, saveVersion: false}),
             DeploySystemContractCall({contractType: AP_GEAR_STAKING, version: 3_10, saveVersion: false}),
@@ -163,20 +178,11 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             DeploySystemContractCall({contractType: AP_LOSS_POLICY_FACTORY, version: 3_10, saveVersion: true})
         ];
 
-        uint256 uploadContractsLen = contractsToUpload.length;
-        uint256 deploySystemContractsLen = deployCalls.length;
+        len = deployCalls.length;
 
-        calls = new CrossChainCall[](uploadContractsLen + deploySystemContractsLen);
-
-        for (uint256 i = 0; i < uploadContractsLen; ++i) {
-            bytes32 bytecodeHash = _uploadByteCodeAndSign(
-                contractsToUpload[i].initCode, contractsToUpload[i].contractType, contractsToUpload[i].version
-            );
-            calls[i] = _generateAllowSystemContractCall(bytecodeHash);
-        }
-
-        for (uint256 i = 0; i < deploySystemContractsLen; ++i) {
-            calls[uploadContractsLen + i] = _generateDeploySystemContractCall(
+        calls = new CrossChainCall[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            calls[i] = _generateDeploySystemContractCall(
                 deployCalls[i].contractType, deployCalls[i].version, deployCalls[i].saveVersion
             );
         }

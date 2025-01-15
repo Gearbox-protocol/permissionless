@@ -24,12 +24,15 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
     address internal instanceOwner;
     InstanceManager internal instanceManager;
 
+    constructor() {
+        instanceOwner = vm.rememberKey(_generatePrivateKey("INSTANCE_OWNER"));
+    }
+
     function _setUpInstanceManager() internal {
         _setUpCCG();
         _setUpBCR();
 
         // Generate random private keys and derive addresses
-        instanceOwner = vm.addr(_generatePrivateKey("INSTANCE_OWNER"));
 
         // Deploy InstanceManager owned by multisig
         instanceManager = new InstanceManager(address(multisig));
@@ -88,18 +91,20 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
     function _allowPriceFeed(address token, address _priceFeed) internal {
         address ap = instanceManager.addressProvider();
         address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
-        vm.prank(instanceOwner);
+        _startPrankOrBroadcast(instanceOwner);
         instanceManager.configureLocal(
             priceFeedStore, abi.encodeCall(IPriceFeedStore.allowPriceFeed, (token, _priceFeed))
         );
+        _stopPrankOrBroadcast();
     }
 
     function _addPriceFeed(address _priceFeed, uint32 _stalenessPeriod) internal {
         address ap = instanceManager.addressProvider();
         address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
-        vm.prank(instanceOwner);
+        _startPrankOrBroadcast(instanceOwner);
         instanceManager.configureLocal(
             priceFeedStore, abi.encodeCall(IPriceFeedStore.addPriceFeed, (_priceFeed, _stalenessPeriod))
         );
+        _stopPrankOrBroadcast();
     }
 }
