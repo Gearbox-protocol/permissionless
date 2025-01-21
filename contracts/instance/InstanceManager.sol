@@ -125,6 +125,12 @@ contract InstanceManager is Ownable, IInstanceManager {
         }
     }
 
+    function setLegacyAddress(string memory key, address addr, bool saveVersion) external onlyCrossChainGovernance {
+        if ((block.chainid == 1 || block.chainid == 10 || block.chainid == 42161) && !isActivated) {
+            IAddressProvider(addressProvider).setAddress(key, addr, saveVersion);
+        }
+    }
+
     function setGlobalAddress(string memory key, address addr, bool saveVersion) external onlyCrossChainGovernance {
         _setAddressWithPrefix(key, "GLOBAL_", addr, saveVersion);
     }

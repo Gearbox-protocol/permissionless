@@ -194,6 +194,23 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         _attachInstanceManager();
     }
 
+    function _fundActors() internal {
+        address[6] memory actors = [instanceOwner, author, dao, auditor, signer1, signer2];
+        for (uint256 i = 0; i < actors.length; ++i) {
+            payable(actors[i]).transfer(10 ether);
+        }
+    }
+
+    function _exportJson() internal {
+         // Store address manager state as JSON
+        string memory json = vm.serializeAddress("addresses", "instanceManager", address(instanceManager));
+        json = vm.serializeAddress("addresses", "bytecodeRepository", address(bytecodeRepository));
+        json = vm.serializeAddress("addresses", "multisig", address(multisig));
+        json = vm.serializeAddress("addresses", "addressProvider", address(instanceManager.addressProvider()));
+
+        vm.writeJson(json, "./addresses.json");
+    }
+
     function _setCoreContracts() internal {
         contractsToUpload.push(
             UploadableContract({initCode: type(PoolFactory).creationCode, contractType: AP_POOL_FACTORY, version: 3_10})

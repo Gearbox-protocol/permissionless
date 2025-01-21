@@ -13,8 +13,6 @@ export default defineConfig({
         "IPriceFeedStore.sol/**.json",
         "IInstanceManager.sol/**.json",
         "IMarketConfiguratorFactory.sol/**.json",
-        "ITokenCompressor.sol/**.json",
-        "IPriceFeedCompressor.sol/**.json",
       ],
     }),
   ],
