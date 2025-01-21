@@ -1339,6 +1339,17 @@ export const iInstanceManagerAbi = [
       { name: 'addr', internalType: 'address', type: 'address' },
       { name: 'saveVersion', internalType: 'bool', type: 'bool' },
     ],
+    name: 'setLegacyAddress',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'key', internalType: 'string', type: 'string' },
+      { name: 'addr', internalType: 'address', type: 'address' },
+      { name: 'saveVersion', internalType: 'bool', type: 'bool' },
+    ],
     name: 'setLocalAddress',
     outputs: [],
     stateMutability: 'nonpayable',
@@ -1524,6 +1535,7 @@ export const iPriceFeedStoreAbi = [
     inputs: [
       { name: 'priceFeed', internalType: 'address', type: 'address' },
       { name: 'stalenessPeriod', internalType: 'uint32', type: 'uint32' },
+      { name: 'name', internalType: 'string', type: 'string' },
     ],
     name: 'addPriceFeed',
     outputs: [],
@@ -1630,6 +1642,26 @@ export const iPriceFeedStoreAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'priceFeed', internalType: 'address', type: 'address' }],
+    name: 'priceFeedInfo',
+    outputs: [
+      {
+        name: '',
+        internalType: 'struct PriceFeedInfo',
+        type: 'tuple',
+        components: [
+          { name: 'author', internalType: 'address', type: 'address' },
+          { name: 'name', internalType: 'string', type: 'string' },
+          { name: 'stalenessPeriod', internalType: 'uint32', type: 'uint32' },
+          { name: 'priceFeedType', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'version', internalType: 'uint256', type: 'uint256' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [
       { name: 'priceFeed', internalType: 'address', type: 'address' },
       { name: 'stalenessPeriod', internalType: 'uint32', type: 'uint32' },
@@ -1653,7 +1685,7 @@ export const iPriceFeedStoreAbi = [
         name: 'priceFeed',
         internalType: 'address',
         type: 'address',
-        indexed: false,
+        indexed: true,
       },
       {
         name: 'stalenessPeriod',
@@ -1661,6 +1693,7 @@ export const iPriceFeedStoreAbi = [
         type: 'uint32',
         indexed: false,
       },
+      { name: 'name', internalType: 'string', type: 'string', indexed: false },
     ],
     name: 'AddPriceFeed',
   },
@@ -1672,13 +1705,13 @@ export const iPriceFeedStoreAbi = [
         name: 'token',
         internalType: 'address',
         type: 'address',
-        indexed: false,
+        indexed: true,
       },
       {
         name: 'priceFeed',
         internalType: 'address',
         type: 'address',
-        indexed: false,
+        indexed: true,
       },
     ],
     name: 'AllowPriceFeed',
@@ -1691,13 +1724,13 @@ export const iPriceFeedStoreAbi = [
         name: 'token',
         internalType: 'address',
         type: 'address',
-        indexed: false,
+        indexed: true,
       },
       {
         name: 'priceFeed',
         internalType: 'address',
         type: 'address',
-        indexed: false,
+        indexed: true,
       },
     ],
     name: 'ForbidPriceFeed',
@@ -1710,7 +1743,7 @@ export const iPriceFeedStoreAbi = [
         name: 'priceFeed',
         internalType: 'address',
         type: 'address',
-        indexed: false,
+        indexed: true,
       },
       {
         name: 'stalenessPeriod',
@@ -1738,6 +1771,11 @@ export const iPriceFeedStoreAbi = [
       { name: 'priceFeed', internalType: 'address', type: 'address' },
     ],
     name: 'PriceFeedIsNotAllowedException',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'priceFeed', internalType: 'address', type: 'address' }],
+    name: 'PriceFeedIsNotOwnedByStore',
   },
   {
     type: 'error',

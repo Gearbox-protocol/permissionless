@@ -43,9 +43,10 @@ contract PriceFeedStoreTest is Test {
     /// @notice Test basic price feed addition flow
     function test_PFS_01_addPriceFeed_works() public {
         uint32 stalenessPeriod = 3600;
+        string memory name = "ETH/USD";
 
         vm.prank(owner);
-        store.addPriceFeed(address(priceFeed), stalenessPeriod);
+        store.addPriceFeed(address(priceFeed), stalenessPeriod, name);
 
         // Verify price feed was added correctly
         assertEq(store.getStalenessPeriod(address(priceFeed)), stalenessPeriod);
@@ -59,6 +60,7 @@ contract PriceFeedStoreTest is Test {
         assertEq(priceFeedInfo.priceFeedType, "MOCK_PRICE_FEED");
         assertEq(priceFeedInfo.stalenessPeriod, stalenessPeriod);
         assertEq(priceFeedInfo.version, 1);
+        assertEq(priceFeedInfo.name, name);
 
         // Verify price feed is in known list
         address[] memory knownPriceFeeds = store.getKnownPriceFeeds();
@@ -71,25 +73,25 @@ contract PriceFeedStoreTest is Test {
         address notOwner = makeAddr("notOwner");
         vm.prank(notOwner);
         vm.expectRevert(abi.encodeWithSignature("CallerIsNotOwnerException(address)", notOwner));
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
     }
 
     /// @notice Test that zero address price feed cannot be added
     function test_PFS_03_addPriceFeed_reverts_on_zero_address() public {
         vm.prank(owner);
         vm.expectRevert(ZeroAddressException.selector);
-        store.addPriceFeed(address(0), 3600);
+        store.addPriceFeed(address(0), 3600, "ETH/USD");
     }
 
     /// @notice Test duplicate price feed addition is prevented
     function test_PFS_04_addPriceFeed_reverts_on_duplicate() public {
         vm.startPrank(owner);
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
 
         vm.expectRevert(
             abi.encodeWithSelector(IPriceFeedStore.PriceFeedAlreadyAddedException.selector, address(priceFeed))
         );
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
         vm.stopPrank();
     }
 
@@ -102,13 +104,13 @@ contract PriceFeedStoreTest is Test {
 
         vm.prank(owner);
         vm.expectRevert(StalePriceException.selector);
-        store.addPriceFeed(address(stalePriceFeed), 3600);
+        store.addPriceFeed(address(stalePriceFeed), 3600, "ETH/USD");
     }
 
     /// @notice Test price feed allowance for tokens
     function test_PFS_06_allowPriceFeed_works() public {
         vm.startPrank(owner);
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
         store.allowPriceFeed(token, address(priceFeed));
         vm.stopPrank();
 
@@ -118,7 +120,7 @@ contract PriceFeedStoreTest is Test {
     /// @notice Test only owner can allow price feeds
     function test_PFS_07_allowPriceFeed_reverts_if_not_owner() public {
         vm.prank(owner);
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
 
         address notOwner = makeAddr("notOwner");
         vm.prank(notOwner);
@@ -136,7 +138,7 @@ contract PriceFeedStoreTest is Test {
     /// @notice Test price feed forbidding
     function test_PFS_09_forbidPriceFeed_works() public {
         vm.startPrank(owner);
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
         store.allowPriceFeed(token, address(priceFeed));
         store.forbidPriceFeed(token, address(priceFeed));
         vm.stopPrank();
@@ -147,7 +149,7 @@ contract PriceFeedStoreTest is Test {
     /// @notice Test only owner can forbid price feeds
     function test_PFS_10_forbidPriceFeed_reverts_if_not_owner() public {
         vm.startPrank(owner);
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
         store.allowPriceFeed(token, address(priceFeed));
         vm.stopPrank();
 
@@ -160,7 +162,7 @@ contract PriceFeedStoreTest is Test {
     /// @notice Test staleness period updates
     function test_PFS_11_setStalenessPeriod_works() public {
         vm.startPrank(owner);
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
         store.setStalenessPeriod(address(priceFeed), 7200);
         vm.stopPrank();
 
@@ -170,7 +172,7 @@ contract PriceFeedStoreTest is Test {
     /// @notice Test staleness period validation on update
     function test_PFS_12_setStalenessPeriod_validates_staleness() public {
         vm.startPrank(owner);
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
 
         priceFeed.setLastUpdateTime(block.timestamp);
         vm.warp(block.timestamp + 7200);
@@ -183,7 +185,7 @@ contract PriceFeedStoreTest is Test {
     /// @notice Test token list management
     function test_PFS_13_maintains_token_list() public {
         vm.startPrank(owner);
-        store.addPriceFeed(address(priceFeed), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD");
         store.allowPriceFeed(token, address(priceFeed));
         vm.stopPrank();
 
@@ -197,8 +199,8 @@ contract PriceFeedStoreTest is Test {
         MockPriceFeed priceFeed2 = new MockPriceFeed();
 
         vm.startPrank(owner);
-        store.addPriceFeed(address(priceFeed), 3600);
-        store.addPriceFeed(address(priceFeed2), 3600);
+        store.addPriceFeed(address(priceFeed), 3600, "ETH/USD Primary");
+        store.addPriceFeed(address(priceFeed2), 3600, "ETH/USD Secondary");
         store.allowPriceFeed(token, address(priceFeed));
         store.allowPriceFeed(token, address(priceFeed2));
         vm.stopPrank();

@@ -18,6 +18,7 @@ interface IInstanceManager is IVersion {
     function deploySystemContract(bytes32 contractType, uint256 version, bool saveVersion) external;
     function setGlobalAddress(string memory key, address addr, bool saveVersion) external;
     function setLocalAddress(string memory key, address addr, bool saveVersion) external;
+    function setLegacyAddress(string memory key, address addr, bool saveVersion) external;
     function configureGlobal(address target, bytes calldata data) external;
     function configureLocal(address target, bytes calldata data) external;
     function configureTreasury(address target, bytes calldata data) external;

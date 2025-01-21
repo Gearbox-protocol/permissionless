@@ -133,12 +133,12 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
         _stopPrankOrBroadcast();
     }
 
-    function _addPriceFeed(address _priceFeed, uint32 _stalenessPeriod) internal {
+    function _addPriceFeed(address _priceFeed, uint32 _stalenessPeriod, string memory _name) internal {
         address ap = instanceManager.addressProvider();
         address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
         _startPrankOrBroadcast(instanceOwner);
         instanceManager.configureLocal(
-            priceFeedStore, abi.encodeCall(IPriceFeedStore.addPriceFeed, (_priceFeed, _stalenessPeriod))
+            priceFeedStore, abi.encodeCall(IPriceFeedStore.addPriceFeed, (_priceFeed, _stalenessPeriod, _name))
         );
         _stopPrankOrBroadcast();
     }

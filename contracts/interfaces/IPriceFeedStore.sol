@@ -5,11 +5,7 @@ pragma solidity ^0.8.23;
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {IImmutableOwnableTrait} from "./base/IImmutableOwnableTrait.sol";
-
-struct ConnectedPriceFeed {
-    address token;
-    address[] priceFeeds;
-}
+import {PriceFeedInfo, ConnectedPriceFeed} from "../interfaces/Types.sol";
 
 interface IPriceFeedStore is IVersion, IImmutableOwnableTrait {
     //
@@ -25,21 +21,24 @@ interface IPriceFeedStore is IVersion, IImmutableOwnableTrait {
     /// @notice Thrown when attempting to remove a price feed that is not allowed for a token
     error PriceFeedIsNotAllowedException(address token, address priceFeed);
 
+    /// @notice Thrown when attempting to add a price feed that is not owned by the store
+    error PriceFeedIsNotOwnedByStore(address priceFeed);
+
     //
     // EVENTS
     //
 
     /// @notice Emitted when a new price feed is added to PriceFeedStore
-    event AddPriceFeed(address priceFeed, uint32 stalenessPeriod);
+    event AddPriceFeed(address indexed priceFeed, uint32 stalenessPeriod, string name);
 
     /// @notice Emitted when the staleness period is changed in an existing price feed
-    event SetStalenessPeriod(address priceFeed, uint32 stalenessPeriod);
+    event SetStalenessPeriod(address indexed priceFeed, uint32 stalenessPeriod);
 
     /// @notice Emitted when a price feed is allowed for a token
-    event AllowPriceFeed(address token, address priceFeed);
+    event AllowPriceFeed(address indexed token, address indexed priceFeed);
 
     /// @notice Emitted when a price feed is forbidden for a token
-    event ForbidPriceFeed(address token, address priceFeed);
+    event ForbidPriceFeed(address indexed token, address indexed priceFeed);
 
     //
     // GETTERS
@@ -51,11 +50,12 @@ interface IPriceFeedStore is IVersion, IImmutableOwnableTrait {
     function getTokenPriceFeedsMap() external view returns (ConnectedPriceFeed[] memory);
     function getKnownTokens() external view returns (address[] memory);
     function getKnownPriceFeeds() external view returns (address[] memory);
+    function priceFeedInfo(address priceFeed) external view returns (PriceFeedInfo memory);
 
     //
     // CONFIGURATION
     //
-    function addPriceFeed(address priceFeed, uint32 stalenessPeriod) external;
+    function addPriceFeed(address priceFeed, uint32 stalenessPeriod, string calldata name) external;
     function setStalenessPeriod(address priceFeed, uint32 stalenessPeriod) external;
     function allowPriceFeed(address token, address priceFeed) external;
     function forbidPriceFeed(address token, address priceFeed) external;

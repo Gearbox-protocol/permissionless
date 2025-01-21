@@ -42,9 +42,15 @@ struct MarketFactories {
 
 struct PriceFeedInfo {
     address author;
+    string name;
     uint32 stalenessPeriod;
     bytes32 priceFeedType;
     uint256 version;
+}
+
+struct ConnectedPriceFeed {
+    address token;
+    address[] priceFeeds;
 }
 
 // The `BytecodeInfoMeta` struct holds metadata about a bytecode in BytecodeRepository

@@ -4,16 +4,23 @@
 pragma solidity ^0.8.23;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 import {SanityCheckTrait} from "@gearbox-protocol/core-v3/contracts/traits/SanityCheckTrait.sol";
 import {PriceFeedValidationTrait} from "@gearbox-protocol/core-v3/contracts/traits/PriceFeedValidationTrait.sol";
 import {IPriceFeed} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IPriceFeed.sol";
 
 import {IPriceFeedStore, ConnectedPriceFeed} from "../interfaces/IPriceFeedStore.sol";
-import {AP_PRICE_FEED_STORE, AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL} from "../libraries/ContractLiterals.sol";
+import {
+    AP_PRICE_FEED_STORE,
+    AP_INSTANCE_MANAGER_PROXY,
+    AP_BYTECODE_REPOSITORY,
+    NO_VERSION_CONTROL
+} from "../libraries/ContractLiterals.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {PriceFeedInfo} from "../interfaces/Types.sol";
 import {ImmutableOwnableTrait} from "../traits/ImmutableOwnableTrait.sol";
+import {IBytecodeRepository} from "../interfaces/IBytecodeRepository.sol";
 
 contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedValidationTrait, IPriceFeedStore {
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -45,11 +52,16 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
     /// @notice Mapping from price feed address to its data
     mapping(address => PriceFeedInfo) internal _priceFeedInfo;
 
+    address immutable bytecodeRepository;
+
     constructor(address _addressProvider)
         ImmutableOwnableTrait(
             IAddressProvider(_addressProvider).getAddressOrRevert(AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL)
         )
-    {}
+    {
+        bytecodeRepository =
+            IAddressProvider(_addressProvider).getAddressOrRevert(AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL);
+    }
 
     /// @notice Returns the list of price feeds available for a token
     function getPriceFeeds(address token) public view returns (address[] memory) {
@@ -98,20 +110,35 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
      * @param stalenessPeriod Staleness period of the new price feed
      * @dev Reverts if the price feed's result is stale based on the staleness period
      */
-    function addPriceFeed(address priceFeed, uint32 stalenessPeriod) external onlyOwner nonZeroAddress(priceFeed) {
+    function addPriceFeed(address priceFeed, uint32 stalenessPeriod, string calldata _name)
+        external
+        onlyOwner
+        nonZeroAddress(priceFeed)
+    {
         if (_knownPriceFeeds.contains(priceFeed)) revert PriceFeedAlreadyAddedException(priceFeed);
 
         _validatePriceFeed(priceFeed, stalenessPeriod);
 
-        bytes32 priceFeedType;
-        uint256 priceFeedVersion;
+        bytes32 priceFeedType = "PRICE_FEED::EXTERNAL";
+        uint256 priceFeedVersion = 0;
 
-        try IPriceFeed(priceFeed).contractType() returns (bytes32 _cType) {
-            priceFeedType = _cType;
-            priceFeedVersion = IPriceFeed(priceFeed).version();
-        } catch {
-            priceFeedType = "PRICE_FEED::EXTERNAL";
-            priceFeedVersion = 0;
+        if (IBytecodeRepository(bytecodeRepository).deployedContracts(priceFeed) != 0) {
+            try Ownable2Step(priceFeed).owner() returns (address owner_) {
+                if (owner_ != address(this)) {
+                    revert PriceFeedIsNotOwnedByStore(priceFeed);
+                }
+
+                try Ownable2Step(priceFeed).pendingOwner() returns (address pendingOwner_) {
+                    if (pendingOwner_ != address(0)) {
+                        revert PriceFeedIsNotOwnedByStore(priceFeed);
+                    }
+                } catch {}
+            } catch {}
+
+            try IPriceFeed(priceFeed).contractType() returns (bytes32 _cType) {
+                priceFeedType = _cType;
+                priceFeedVersion = IPriceFeed(priceFeed).version();
+            } catch {}
         }
 
         _knownPriceFeeds.add(priceFeed);
@@ -119,8 +146,9 @@ contract PriceFeedStore is ImmutableOwnableTrait, SanityCheckTrait, PriceFeedVal
         _priceFeedInfo[priceFeed].priceFeedType = priceFeedType;
         _priceFeedInfo[priceFeed].stalenessPeriod = stalenessPeriod;
         _priceFeedInfo[priceFeed].version = priceFeedVersion;
+        _priceFeedInfo[priceFeed].name = _name;
 
-        emit AddPriceFeed(priceFeed, stalenessPeriod);
+        emit AddPriceFeed(priceFeed, stalenessPeriod, _name);
     }
 
     /**

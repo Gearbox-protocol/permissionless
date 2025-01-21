@@ -103,8 +103,8 @@ contract NewChainDeploySuite is Test, GlobalSetup {
     }
 
     function _setupPriceFeedStore() internal {
-        _addPriceFeed(CHAINLINK_ETH_USD, 1 days);
-        _addPriceFeed(CHAINLINK_USDC_USD, 1 days);
+        _addPriceFeed(CHAINLINK_ETH_USD, 1 days, "ETH/USD");
+        _addPriceFeed(CHAINLINK_USDC_USD, 1 days, "USDC/USD");
 
         _allowPriceFeed(WETH, CHAINLINK_ETH_USD);
         _allowPriceFeed(USDC, CHAINLINK_USDC_USD);
