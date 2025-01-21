@@ -19,14 +19,24 @@ import {IBytecodeRepository} from "../../../contracts/interfaces/IBytecodeReposi
 import {IPriceFeedStore} from "../../../contracts/interfaces/IPriceFeedStore.sol";
 import {IAddressProvider} from "../../../contracts/interfaces/IAddressProvider.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
+import {console} from "forge-std/console.sol";
+import {LibString} from "@solady/utils/LibString.sol";
 
 contract InstanceManagerHelper is BCRHelpers, CCGHelper {
+    using LibString for bytes32;
+    using LibString for uint256;
     // Core contracts
-    address internal instanceOwner;
+
+    uint256 instanceOwnerKey;
+    address instanceOwner;
     InstanceManager internal instanceManager;
 
     constructor() {
-        instanceOwner = vm.rememberKey(_generatePrivateKey("INSTANCE_OWNER"));
+        instanceOwnerKey = _generatePrivateKey("INSTANCE_OWNER");
+        instanceOwner = vm.rememberKey(instanceOwnerKey);
+
+        console.log("Instance owner setup:");
+        console.log("Instance owner:", instanceOwner, "Key:", instanceOwnerKey.toHexString());
     }
 
     function _setUpInstanceManager() internal {
