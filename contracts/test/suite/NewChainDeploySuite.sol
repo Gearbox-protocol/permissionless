@@ -124,7 +124,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         vm.startPrank(riskCurator);
         address mc = MarketConfiguratorFactory(mcf).createMarketConfigurator(
-            riskCurator, riskCurator, riskCurator, "Test Risk Curator", false
+            riskCurator, riskCurator, "Test Risk Curator", false
         );
 
         uint256 gasAfter = gasleft();

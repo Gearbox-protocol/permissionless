@@ -33,7 +33,6 @@ interface IMarketConfiguratorFactory is IVersion, IDeployerTrait {
     function getShutdownMarketConfigurators() external view returns (address[] memory);
 
     function createMarketConfigurator(
-        address admin,
         address emergencyAdmin,
         address adminFeeTreasury,
         string calldata curatorName,

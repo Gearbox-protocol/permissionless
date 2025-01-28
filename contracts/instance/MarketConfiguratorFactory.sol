@@ -88,7 +88,6 @@ contract MarketConfiguratorFactory is DeployerTrait, IMarketConfiguratorFactory 
     }
 
     function createMarketConfigurator(
-        address admin,
         address emergencyAdmin,
         address adminFeeTreasury,
         string calldata curatorName,
@@ -98,7 +97,7 @@ contract MarketConfiguratorFactory is DeployerTrait, IMarketConfiguratorFactory 
             contractType: AP_MARKET_CONFIGURATOR,
             minorVersion: 3_10,
             constructorParams: abi.encode(
-                addressProvider, admin, emergencyAdmin, adminFeeTreasury, curatorName, deployGovernor
+                addressProvider, msg.sender, emergencyAdmin, adminFeeTreasury, curatorName, deployGovernor
             ),
             salt: bytes32(bytes20(msg.sender))
         });

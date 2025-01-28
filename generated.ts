@@ -1371,6 +1371,1161 @@ export const iInstanceManagerAbi = [
 ]
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// IMarketConfigurator
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const iMarketConfiguratorAbi = [
+  {
+    type: 'function',
+    inputs: [],
+    name: 'acl',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'peripheryContract', internalType: 'address', type: 'address' },
+    ],
+    name: 'addPeripheryContract',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'token', internalType: 'address', type: 'address' },
+      { name: 'priceFeed', internalType: 'address', type: 'address' },
+    ],
+    name: 'addToken',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'addressProvider',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'admin',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'factory', internalType: 'address', type: 'address' },
+      { name: 'suite', internalType: 'address', type: 'address' },
+      { name: 'target', internalType: 'address', type: 'address' },
+    ],
+    name: 'authorizeFactory',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'bytecodeRepository',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'creditManager', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'configureCreditSuite',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'configureInterestRateModel',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'configureLossPolicy',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'configurePool',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'configurePriceOracle',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'configureRateKeeper',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'contractType',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'contractsRegister',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'minorVersion', internalType: 'uint256', type: 'uint256' },
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'encdodedParams', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'createCreditSuite',
+    outputs: [
+      { name: 'creditManager', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'minorVersion', internalType: 'uint256', type: 'uint256' },
+      { name: 'underlying', internalType: 'address', type: 'address' },
+      { name: 'name', internalType: 'string', type: 'string' },
+      { name: 'symbol', internalType: 'string', type: 'string' },
+      {
+        name: 'interestRateModelParams',
+        internalType: 'struct DeployParams',
+        type: 'tuple',
+        components: [
+          { name: 'postfix', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'constructorParams', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+      {
+        name: 'rateKeeperParams',
+        internalType: 'struct DeployParams',
+        type: 'tuple',
+        components: [
+          { name: 'postfix', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'constructorParams', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+      {
+        name: 'lossPolicyParams',
+        internalType: 'struct DeployParams',
+        type: 'tuple',
+        components: [
+          { name: 'postfix', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'constructorParams', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+      { name: 'underlyingPriceFeed', internalType: 'address', type: 'address' },
+    ],
+    name: 'createMarket',
+    outputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'curatorName',
+    outputs: [{ name: '', internalType: 'string', type: 'string' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'emergencyAdmin',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'creditManager', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'emergencyConfigureCreditSuite',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'emergencyConfigureInterestRateModel',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'emergencyConfigureLossPolicy',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'emergencyConfigurePool',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'emergencyConfigurePriceOracle',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'data', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'emergencyConfigureRateKeeper',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'account', internalType: 'address', type: 'address' },
+    ],
+    name: 'emergencyRevokeRole',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'target', internalType: 'address', type: 'address' }],
+    name: 'getAuthorizedFactory',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'creditManager', internalType: 'address', type: 'address' },
+    ],
+    name: 'getCreditFactory',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'factory', internalType: 'address', type: 'address' },
+      { name: 'suite', internalType: 'address', type: 'address' },
+    ],
+    name: 'getFactoryTargets',
+    outputs: [{ name: '', internalType: 'address[]', type: 'address[]' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    name: 'getMarketFactories',
+    outputs: [
+      {
+        name: '',
+        internalType: 'struct MarketFactories',
+        type: 'tuple',
+        components: [
+          { name: 'poolFactory', internalType: 'address', type: 'address' },
+          {
+            name: 'priceOracleFactory',
+            internalType: 'address',
+            type: 'address',
+          },
+          {
+            name: 'interestRateModelFactory',
+            internalType: 'address',
+            type: 'address',
+          },
+          {
+            name: 'rateKeeperFactory',
+            internalType: 'address',
+            type: 'address',
+          },
+          {
+            name: 'lossPolicyFactory',
+            internalType: 'address',
+            type: 'address',
+          },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'domain', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'getPeripheryContracts',
+    outputs: [{ name: '', internalType: 'address[]', type: 'address[]' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'account', internalType: 'address', type: 'address' },
+    ],
+    name: 'grantRole',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'domain', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'peripheryContract', internalType: 'address', type: 'address' },
+    ],
+    name: 'isPeripheryContract',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'minorVersion', internalType: 'uint256', type: 'uint256' },
+      { name: 'pool', internalType: 'address', type: 'address' },
+      { name: 'encodedParams', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'previewCreateCreditSuite',
+    outputs: [
+      { name: 'creditManager', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'minorVersion', internalType: 'uint256', type: 'uint256' },
+      { name: 'underlying', internalType: 'address', type: 'address' },
+      { name: 'name', internalType: 'string', type: 'string' },
+      { name: 'symbol', internalType: 'string', type: 'string' },
+    ],
+    name: 'previewCreateMarket',
+    outputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'peripheryContract', internalType: 'address', type: 'address' },
+    ],
+    name: 'removePeripheryContract',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'account', internalType: 'address', type: 'address' },
+    ],
+    name: 'revokeRole',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'newEmergencyAdmin', internalType: 'address', type: 'address' },
+    ],
+    name: 'setEmergencyAdmin',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'creditManager', internalType: 'address', type: 'address' },
+    ],
+    name: 'shutdownCreditSuite',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    name: 'shutdownMarket',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'treasury',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'factory', internalType: 'address', type: 'address' },
+      { name: 'suite', internalType: 'address', type: 'address' },
+      { name: 'target', internalType: 'address', type: 'address' },
+    ],
+    name: 'unauthorizeFactory',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      {
+        name: 'params',
+        internalType: 'struct DeployParams',
+        type: 'tuple',
+        components: [
+          { name: 'postfix', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'constructorParams', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+    ],
+    name: 'updateInterestRateModel',
+    outputs: [{ name: 'irm', internalType: 'address', type: 'address' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      {
+        name: 'params',
+        internalType: 'struct DeployParams',
+        type: 'tuple',
+        components: [
+          { name: 'postfix', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'constructorParams', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+    ],
+    name: 'updateLossPolicy',
+    outputs: [{ name: 'lossPolicy', internalType: 'address', type: 'address' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    name: 'updatePriceOracle',
+    outputs: [
+      { name: 'priceOracle', internalType: 'address', type: 'address' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address' },
+      {
+        name: 'params',
+        internalType: 'struct DeployParams',
+        type: 'tuple',
+        components: [
+          { name: 'postfix', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'salt', internalType: 'bytes32', type: 'bytes32' },
+          { name: 'constructorParams', internalType: 'bytes', type: 'bytes' },
+        ],
+      },
+    ],
+    name: 'updateRateKeeper',
+    outputs: [{ name: 'rateKeeper', internalType: 'address', type: 'address' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'creditManager', internalType: 'address', type: 'address' },
+    ],
+    name: 'upgradeCreditFactory',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    name: 'upgradeInterestRateModelFactory',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    name: 'upgradeLossPolicyFactory',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    name: 'upgradePoolFactory',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    name: 'upgradePriceOracleFactory',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    name: 'upgradeRateKeeperFactory',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'version',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'domain',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'peripheryContract',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'AddPeripheryContract',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'token',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'AddToken',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'factory',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'suite',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'target',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'AuthorizeFactory',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'creditManager',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'ConfigureCreditSuite',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'ConfigureInterestRateModel',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'ConfigureLossPolicy',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'ConfigurePool',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'ConfigurePriceOracle',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'ConfigureRateKeeper',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'creditManager',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'factory',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'CreateCreditSuite',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'priceOracle',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'interestRateModel',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'rateKeeper',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'lossPolicy',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+      {
+        name: 'factories',
+        internalType: 'struct MarketFactories',
+        type: 'tuple',
+        components: [
+          { name: 'poolFactory', internalType: 'address', type: 'address' },
+          {
+            name: 'priceOracleFactory',
+            internalType: 'address',
+            type: 'address',
+          },
+          {
+            name: 'interestRateModelFactory',
+            internalType: 'address',
+            type: 'address',
+          },
+          {
+            name: 'rateKeeperFactory',
+            internalType: 'address',
+            type: 'address',
+          },
+          {
+            name: 'lossPolicyFactory',
+            internalType: 'address',
+            type: 'address',
+          },
+        ],
+        indexed: false,
+      },
+    ],
+    name: 'CreateMarket',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'creditManager',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'EmergencyConfigureCreditSuite',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'EmergencyConfigureInterestRateModel',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'EmergencyConfigureLossPolicy',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'EmergencyConfigurePool',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'EmergencyConfigurePriceOracle',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      { name: 'data', internalType: 'bytes', type: 'bytes', indexed: false },
+    ],
+    name: 'EmergencyConfigureRateKeeper',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32', indexed: true },
+      {
+        name: 'account',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'EmergencyRevokeRole',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'target',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'callData',
+        internalType: 'bytes',
+        type: 'bytes',
+        indexed: false,
+      },
+    ],
+    name: 'ExecuteHook',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32', indexed: true },
+      {
+        name: 'account',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'GrantRole',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'domain',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'peripheryContract',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'RemovePeripheryContract',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'role', internalType: 'bytes32', type: 'bytes32', indexed: true },
+      {
+        name: 'account',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'RevokeRole',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'newEmergencyAdmin',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'SetEmergencyAdmin',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'creditManager',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ShutdownCreditSuite',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+    ],
+    name: 'ShutdownMarket',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'factory',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'suite',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'target',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'UnauthorizeFactory',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'interestRateModel',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpdateInterestRateModel',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'lossPolicy',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpdateLossPolicy',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'priceOracle',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpdatePriceOracle',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'rateKeeper',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpdateRateKeeper',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'creditManager',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'factory',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpgradeCreditFactory',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'factory',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpgradeInterestRateModelFactory',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'factory',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpgradeLossPolicyFactory',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'factory',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpgradePoolFactory',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'factory',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpgradePriceOracleFactory',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'pool', internalType: 'address', type: 'address', indexed: true },
+      {
+        name: 'factory',
+        internalType: 'address',
+        type: 'address',
+        indexed: false,
+      },
+    ],
+    name: 'UpgradeRateKeeperFactory',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'CallerIsNotAdminException',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'CallerIsNotEmergencyAdminException',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'CallerIsNotSelfException',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'creditManager', internalType: 'address', type: 'address' },
+    ],
+    name: 'CreditSuiteNotRegisteredException',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'peripheryContract', internalType: 'address', type: 'address' },
+    ],
+    name: 'IncorrectPeripheryContractException',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'pool', internalType: 'address', type: 'address' }],
+    name: 'MarketNotRegisteredException',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'factory', internalType: 'address', type: 'address' },
+      { name: 'target', internalType: 'address', type: 'address' },
+    ],
+    name: 'UnauthorizedFactoryException',
+  },
+]
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // IMarketConfiguratorFactory
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1408,7 +2563,6 @@ export const iMarketConfiguratorFactoryAbi = [
   {
     type: 'function',
     inputs: [
-      { name: 'admin', internalType: 'address', type: 'address' },
       { name: 'emergencyAdmin', internalType: 'address', type: 'address' },
       { name: 'adminFeeTreasury', internalType: 'address', type: 'address' },
       { name: 'curatorName', internalType: 'string', type: 'string' },
