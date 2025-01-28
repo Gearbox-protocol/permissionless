@@ -9,6 +9,8 @@ import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPr
 import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
 import {IPriceOracleFactory} from "../interfaces/factories/IPriceOracleFactory.sol";
+import {IPriceOracleConfigureActions} from "../interfaces/factories/IPriceOracleConfigureActions.sol";
+import {IPriceOracleEmergencyConfigureActions} from "../interfaces/factories/IPriceOracleEmergencyConfigureActions.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {IPriceFeedStore} from "../interfaces/IPriceFeedStore.sol";
 import {Call, DeployResult} from "../interfaces/Types.sol";
@@ -24,15 +26,6 @@ import {NestedPriceFeeds} from "../libraries/NestedPriceFeeds.sol";
 
 import {AbstractFactory} from "./AbstractFactory.sol";
 import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
-
-interface IConfigureActions {
-    function setPriceFeed(address token, address priceFeed) external;
-    function setReservePriceFeed(address token, address priceFeed) external;
-}
-
-interface IEmergencyConfigureActions {
-    function setPriceFeed(address token, address priceFeed) external;
-}
 
 contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
     using CallBuilder for Call[];
@@ -146,11 +139,11 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         address priceOracle = _priceOracle(pool);
 
         bytes4 selector = bytes4(callData);
-        if (selector == IConfigureActions.setPriceFeed.selector) {
+        if (selector == IPriceOracleConfigureActions.setPriceFeed.selector) {
             (address token, address priceFeed) = abi.decode(callData[4:], (address, address));
             _validatePriceFeed(pool, token, priceFeed, true);
             return _setPriceFeed(priceOracle, token, priceFeed, false);
-        } else if (selector == IConfigureActions.setReservePriceFeed.selector) {
+        } else if (selector == IPriceOracleConfigureActions.setReservePriceFeed.selector) {
             (address token, address priceFeed) = abi.decode(callData[4:], (address, address));
             _validatePriceFeed(pool, token, priceFeed, false);
             return _setPriceFeed(priceOracle, token, priceFeed, true);
@@ -168,7 +161,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         address priceOracle = _priceOracle(pool);
 
         bytes4 selector = bytes4(callData);
-        if (selector == IConfigureActions.setPriceFeed.selector) {
+        if (selector == IPriceOracleConfigureActions.setPriceFeed.selector) {
             (address token, address priceFeed) = abi.decode(callData[4:], (address, address));
             _validatePriceFeed(pool, token, priceFeed, true);
             if (block.timestamp < IPriceFeedStore(priceFeedStore).getAllowanceTimestamp(token, priceFeed) + 1 days) {
