@@ -109,12 +109,13 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
         addresses[key][_version] = value;
         uint256 latestVersion = latestVersions[key];
 
+        // FIXME: we might update a non-latest minor version with a patch and this will be incorrectly skipped
         if (_version > latestVersion) {
             latestVersions[key] = _version;
-            uint256 minorVersion = version / 100 * 100;
-            uint256 patchVersion = version / 10 * 10;
-            latestMinorVersions[key][minorVersion] = _version;
-            latestPatchVersions[key][patchVersion] = _version;
+            uint256 majorVersion = _version / 100 * 100;
+            uint256 minorVersion = _version / 10 * 10;
+            latestMinorVersions[key][majorVersion] = _version;
+            latestPatchVersions[key][minorVersion] = _version;
         }
         contractKeys.push(ContractKey(key, _version));
 

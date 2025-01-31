@@ -111,7 +111,7 @@ contract MarketConfiguratorFactory is DeployerTrait, IMarketConfiguratorFactory 
         override
         onlyMarketConfiguratorAdmin(marketConfigurator)
     {
-        if (_shutdownMarketConfiguratorsSet.add(marketConfigurator)) {
+        if (!_shutdownMarketConfiguratorsSet.add(marketConfigurator)) {
             revert MarketConfiguratorIsAlreadyShutdownException(marketConfigurator);
         }
         address contractsRegister = MarketConfigurator(marketConfigurator).contractsRegister();

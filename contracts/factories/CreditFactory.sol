@@ -173,7 +173,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         } else if (selector == ICreditConfigureActions.forbidAdapter.selector) {
             address adapter = abi.decode(callData[4:], (address));
             return CallBuilder.build(
-                _authorizeFactory(msg.sender, creditManager, adapter),
+                _unauthorizeFactory(msg.sender, creditManager, adapter),
                 _forbidAdapter(_creditConfigurator(creditManager), adapter)
             );
         } else if (selector == ICreditConfigureActions.configureAdapterFor.selector) {

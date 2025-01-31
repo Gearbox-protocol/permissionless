@@ -119,7 +119,7 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
             calls = calls.append(_setFrozenEpoch(oldRateKeeper, true));
         }
         if (type_ == "RATE_KEEPER::GAUGE") {
-            calls = calls.append(_setFrozenEpoch(oldRateKeeper, false));
+            calls = calls.append(_setFrozenEpoch(newRateKeeper, false));
         }
         calls = calls.append(_unauthorizeFactory(msg.sender, pool, oldRateKeeper));
     }

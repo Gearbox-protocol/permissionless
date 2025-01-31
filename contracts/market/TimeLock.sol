@@ -73,7 +73,7 @@ contract TimeLock is ITimeLock {
     {
         bytes32 txHash = keccak256(abi.encode(target, value, signature, data, eta));
         if (!queuedTransactions[txHash]) revert TransactionIsNotQueuedException(txHash);
-        if (block.timestamp > eta) revert TimelockNotSurpassedException();
+        if (block.timestamp < eta) revert TimelockNotSurpassedException();
         if (block.timestamp > eta + GRACE_PERIOD) revert StaleTransactionException(txHash);
 
         queuedTransactions[txHash] = false;

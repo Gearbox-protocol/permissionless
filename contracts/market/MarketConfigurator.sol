@@ -789,11 +789,11 @@ contract MarketConfigurator is DeployerTrait, IMarketConfigurator {
     }
 
     function _migrateFactoryTargets(address oldFactory, address newFactory, address suite) internal {
-        EnumerableSet.AddressSet storage targets = _factoryTargets[oldFactory][suite];
-        uint256 numTargets = targets.length();
+        address[] memory targets = _factoryTargets[oldFactory][suite].values();
+        uint256 numTargets = targets.length;
         for (uint256 i; i < numTargets; ++i) {
-            address target = targets.at(i);
-            targets.remove(target);
+            address target = targets[i];
+            _factoryTargets[oldFactory][suite].remove(target);
             _factoryTargets[newFactory][suite].add(target);
             _authorizedFactories[target] = newFactory;
             emit UnauthorizeFactory(oldFactory, suite, target);
