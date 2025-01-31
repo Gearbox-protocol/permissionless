@@ -204,6 +204,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         view
         returns (Call[] memory)
     {
+        // TODO: add exception for reserve price feed to set zero price feed
         if (!IPriceFeedStore(priceFeedStore).isAllowedPriceFeed(token, priceFeed)) {
             revert PriceFeedNotAllowedException(token, priceFeed);
         }

@@ -17,6 +17,8 @@ export default defineConfig({
         "IPoolConfigureActions.sol/**.json",
         "IPriceOracleConfigureActions.sol/**.json",
         "ICreditConfigureActions.sol/**.json",
+        "ITumblerV3.sol/**.json",
+        "IGaugeV3.sol/**.json",
       ],
     }),
   ],
