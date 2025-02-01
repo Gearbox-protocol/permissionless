@@ -5,10 +5,13 @@ import {PriceFeedInfo} from "../../interfaces/Types.sol";
 
 import {Test} from "forge-std/Test.sol";
 import {PriceFeedStore} from "../../instance/PriceFeedStore.sol";
+import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
 import {IPriceFeedStore} from "../../interfaces/IPriceFeedStore.sol";
 import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
 import {MockPriceFeed} from "../mocks/MockPriceFeed.sol";
-import {AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL} from "../../libraries/ContractLiterals.sol";
+import {
+    AP_BYTECODE_REPOSITORY, AP_INSTANCE_MANAGER_PROXY, NO_VERSION_CONTROL
+} from "../../libraries/ContractLiterals.sol";
 import {ImmutableOwnableTrait} from "../../traits/ImmutableOwnableTrait.sol";
 import {
     ZeroAddressException,
@@ -23,6 +26,7 @@ contract PriceFeedStoreTest is Test {
     address public token;
     MockPriceFeed public priceFeed;
     IAddressProvider public addressProvider;
+    IBytecodeRepository public bytecodeRepository;
 
     function setUp() public {
         owner = makeAddr("owner");
@@ -37,7 +41,19 @@ contract PriceFeedStoreTest is Test {
             abi.encode(owner)
         );
 
+        vm.mockCall(
+            address(addressProvider),
+            abi.encodeWithSignature("getAddressOrRevert(bytes32,uint256)", AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL),
+            abi.encode(address(bytecodeRepository))
+        );
+
         store = new PriceFeedStore(address(addressProvider));
+
+        vm.mockCall(
+            address(bytecodeRepository),
+            abi.encodeWithSignature("deployedContracts(address)", address(priceFeed)),
+            abi.encode(uint256(42))
+        );
     }
 
     /// @notice Test basic price feed addition flow
@@ -197,6 +213,11 @@ contract PriceFeedStoreTest is Test {
     /// @notice Test multiple price feeds per token
     function test_PFS_14_allows_multiple_feeds_per_token() public {
         MockPriceFeed priceFeed2 = new MockPriceFeed();
+        vm.mockCall(
+            address(bytecodeRepository),
+            abi.encodeWithSignature("deployedContracts(address)", address(priceFeed2)),
+            abi.encode(uint256(43))
+        );
 
         vm.startPrank(owner);
         store.addPriceFeed(address(priceFeed), 3600, "ETH/USD Primary");

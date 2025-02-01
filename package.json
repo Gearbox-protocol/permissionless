@@ -18,5 +18,6 @@
     "dependencies": {
         "@redstone-finance/evm-connector": "^0.2.5",
         "tsx": "^4.19.2"
-    }
+    },
+    "packageManager": "pnpm@9.15.4"
 }

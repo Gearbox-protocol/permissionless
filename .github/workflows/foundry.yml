@@ -7,7 +7,6 @@ on:
 env:
   CI: true
   FORK_RPC_URL: ${{ secrets.MAINNET_TESTS_FORK }}
-  TIMELOCK_ADDRESS: "0xa133C9A92Fb8dDB962Af1cbae58b2723A0bdf23b"
 
 jobs:
   check:
@@ -15,14 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Setup Corepack for pnpm
+        run: corepack enable
+
       - name: Setup node.js
         uses: actions/setup-node@v3
         with:
-          cache: "yarn"
+          cache: "pnpm"
           node-version-file: ".nvmrc"
 
       - name: Install node dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
