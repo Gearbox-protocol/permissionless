@@ -4,6 +4,7 @@
 pragma solidity ^0.8.23;
 
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
@@ -21,6 +22,8 @@ import {Call, MarketFactories} from "../../interfaces/Types.sol";
 import {
     AP_MARKET_CONFIGURATOR_LEGACY,
     AP_CROSS_CHAIN_GOVERNANCE_PROXY,
+    DOMAIN_BOT,
+    DOMAIN_ZAPPER,
     NO_VERSION_CONTROL,
     ROLE_EMERGENCY_LIQUIDATOR,
     ROLE_PAUSABLE_ADMIN,
@@ -51,8 +54,24 @@ interface IContractsRegisterLegacy {
     function addCreditManager(address creditManager) external;
 }
 
+interface IZapperRegisterLegacy {
+    function zappers(address pool) external view returns (address[] memory);
+}
+
+struct LegacyParams {
+    address acl;
+    address contractsRegister;
+    address gearStaking;
+    address zapperRegister;
+    address[] pausableAdmins;
+    address[] unpausableAdmins;
+    address[] emergencyLiquidators;
+    address[] bots;
+}
+
 contract MarketConfiguratorLegacy is MarketConfigurator {
     using Address for address;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice Contract version
     uint256 public constant override version = 3_10;
@@ -74,48 +93,47 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     error CreditManagerIsMisconfiguredException(address creditManager);
 
     modifier onlyCrossChainGovernanceProxy() {
-        if (msg.sender != crossChainGovernanceProxy) revert CallerIsNotCrossChainGovernanceProxyException(msg.sender);
+        _ensureCallerIsCrossChainGovernanceProxy();
         _;
     }
 
-    /// @dev There's no way to validate that `pausableAdmins_` and `unpausableAdmins_` are exhaustive
-    ///      because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
+    /// @dev There's no way to validate that `legacyParams_.pausableAdmins` and `legacyParams_.unpausableAdmins` are
+    ///      exhaustive because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
     constructor(
         address addressProvider_,
         address admin_,
         address emergencyAdmin_,
         string memory curatorName_,
         bool deployGovernor_,
-        address aclLegacy_,
-        address contractsRegisterLegacy_,
-        address gearStakingLegacy_,
-        address[] memory pausableAdmins_,
-        address[] memory unpausableAdmins_,
-        address[] memory emergencyLiquidators_
+        LegacyParams memory legacyParams_
     ) MarketConfigurator(addressProvider_, admin_, emergencyAdmin_, address(0), curatorName_, deployGovernor_) {
         crossChainGovernanceProxy = _getAddressOrRevert(AP_CROSS_CHAIN_GOVERNANCE_PROXY, NO_VERSION_CONTROL);
 
-        aclLegacy = aclLegacy_;
-        contractsRegisterLegacy = contractsRegisterLegacy_;
-        gearStakingLegacy = gearStakingLegacy_;
+        aclLegacy = legacyParams_.acl;
+        contractsRegisterLegacy = legacyParams_.contractsRegister;
+        gearStakingLegacy = legacyParams_.gearStaking;
 
-        uint256 num = pausableAdmins_.length;
+        uint256 num = legacyParams_.pausableAdmins.length;
         for (uint256 i; i < num; ++i) {
-            address admin = pausableAdmins_[i];
-            if (!IACLLegacy(aclLegacy).isPausableAdmin(admin)) revert AddressIsNotPausableAdminException(admin);
-            IACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, admin);
-            emit GrantRole(ROLE_PAUSABLE_ADMIN, admin);
+            address pausableAdmin = legacyParams_.pausableAdmins[i];
+            if (!IACLLegacy(aclLegacy).isPausableAdmin(pausableAdmin)) {
+                revert AddressIsNotPausableAdminException(pausableAdmin);
+            }
+            IACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, pausableAdmin);
+            emit GrantRole(ROLE_PAUSABLE_ADMIN, pausableAdmin);
         }
-        num = unpausableAdmins_.length;
+        num = legacyParams_.unpausableAdmins.length;
         for (uint256 i; i < num; ++i) {
-            address admin = unpausableAdmins_[i];
-            if (!IACLLegacy(aclLegacy).isUnpausableAdmin(admin)) revert AddressIsNotUnpausableAdminException(admin);
-            IACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, admin);
-            emit GrantRole(ROLE_UNPAUSABLE_ADMIN, admin);
+            address unpausableAdmin = legacyParams_.unpausableAdmins[i];
+            if (!IACLLegacy(aclLegacy).isUnpausableAdmin(unpausableAdmin)) {
+                revert AddressIsNotUnpausableAdminException(unpausableAdmin);
+            }
+            IACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, unpausableAdmin);
+            emit GrantRole(ROLE_UNPAUSABLE_ADMIN, unpausableAdmin);
         }
-        num = emergencyLiquidators_.length;
+        num = legacyParams_.emergencyLiquidators.length;
         for (uint256 i; i < num; ++i) {
-            address liquidator = emergencyLiquidators_[i];
+            address liquidator = legacyParams_.emergencyLiquidators[i];
             IACL(acl).grantRole(ROLE_EMERGENCY_LIQUIDATOR, liquidator);
             emit GrantRole(ROLE_EMERGENCY_LIQUIDATOR, liquidator);
         }
@@ -145,15 +163,28 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
                 }
 
                 uint256 numTokens = ICreditManagerV3(creditManager).collateralTokensCount();
+                uint256 quotedTokensMask = ICreditManagerV3(creditManager).quotedTokensMask();
                 for (uint256 k = 1; k < numTokens; ++k) {
-                    address token = ICreditManagerV3(creditManager).getTokenByMask(1 << k);
-                    if (!IPoolQuotaKeeperV3(quotaKeeper).isQuotedToken(token)) {
+                    uint256 tokenMask = 1 << k;
+                    address token = ICreditManagerV3(creditManager).getTokenByMask(tokenMask);
+                    if (!IPoolQuotaKeeperV3(quotaKeeper).isQuotedToken(token) || quotedTokensMask & tokenMask == 0) {
                         revert CollateralTokenIsNotQuotedException(creditManager, token);
                     }
                 }
 
                 _createCreditSuite(creditManager);
             }
+
+            address[] memory zappers = IZapperRegisterLegacy(legacyParams_.zapperRegister).zappers(pool);
+            uint256 numZappers = zappers.length;
+            for (uint256 j; j < numZappers; ++j) {
+                _peripheryContracts[DOMAIN_ZAPPER].add(zappers[j]);
+            }
+        }
+
+        uint256 numBots = legacyParams_.bots.length;
+        for (uint256 i; i < numBots; ++i) {
+            _peripheryContracts[DOMAIN_BOT].add(legacyParams_.bots[i]);
         }
     }
 
@@ -166,7 +197,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         address lossPolicy
     ) internal {
         IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
-        MarketFactories memory factories = _getLatestMarketFactories(version);
+        MarketFactories memory factories = _getLatestMarketFactories(3_10);
         _marketFactories[pool] = factories;
         _authorizeFactory(factories.poolFactory, pool, pool);
         _authorizeFactory(factories.poolFactory, pool, quotaKeeper);
@@ -181,7 +212,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     function _createCreditSuite(address creditManager) internal {
         IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
 
-        address factory = _getLatestCreditFactory(version);
+        address factory = _getLatestCreditFactory(3_10);
         _creditFactories[creditManager] = factory;
         address creditConfigurator = ICreditManagerV3(creditManager).creditConfigurator();
         _authorizeFactory(factory, creditManager, creditConfigurator);
@@ -216,6 +247,10 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     // --------- //
     // INTERNALS //
     // --------- //
+
+    function _ensureCallerIsCrossChainGovernanceProxy() internal view {
+        if (msg.sender != crossChainGovernanceProxy) revert CallerIsNotCrossChainGovernanceProxyException(msg.sender);
+    }
 
     function _grantRole(bytes32 role, address account) internal override {
         super._grantRole(role, account);
