@@ -38,4 +38,4 @@ jobs:
         run: forge b
 
       - name: Run tests
-        run: forge test
+        run: forge test --fork-url ${{ secrets.MAINNET_TESTS_FORK }}
