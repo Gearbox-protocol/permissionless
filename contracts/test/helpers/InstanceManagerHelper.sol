@@ -35,8 +35,14 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
         instanceOwnerKey = _generatePrivateKey("INSTANCE_OWNER");
         instanceOwner = vm.rememberKey(instanceOwnerKey);
 
-        console.log("Instance owner setup:");
-        console.log("Instance owner:", instanceOwner, "Key:", instanceOwnerKey.toHexString());
+        if (!_isTestMode()) {
+            console.log("Instance owner setup:");
+            console.log("Instance owner:", instanceOwner, "Key:", instanceOwnerKey.toHexString());
+        }
+    }
+
+    function _isTestMode() internal pure virtual override(CCGHelper, BCRHelpers) returns (bool) {
+        return false;
     }
 
     function _setUpInstanceManager() internal {

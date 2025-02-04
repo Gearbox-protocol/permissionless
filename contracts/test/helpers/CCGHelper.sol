@@ -40,11 +40,17 @@ contract CCGHelper is SignatureHelper {
         signer2 = vm.rememberKey(signer2Key);
         dao = vm.rememberKey(_generatePrivateKey("DAO"));
 
-        // Print debug info
-        console.log("Cross chain multisig setup:");
-        console.log("Signer 1:", signer1, "Key:", signer1Key.toHexString());
-        console.log("Signer 2:", signer2, "Key:", signer2Key.toHexString());
-        console.log("DAO:", dao);
+        if (!_isTestMode()) {
+            // Print debug info
+            console.log("Cross chain multisig setup:");
+            console.log("Signer 1:", signer1, "Key:", signer1Key.toHexString());
+            console.log("Signer 2:", signer2, "Key:", signer2Key.toHexString());
+            console.log("DAO:", dao);
+        }
+    }
+
+    function _isTestMode() internal pure virtual returns (bool) {
+        return false;
     }
 
     function _setUpCCG() internal {
@@ -107,27 +113,32 @@ contract CCGHelper is SignatureHelper {
             )
         );
 
-        console.log("tt");
-        console.logBytes32(structHash);
+        if (!_isTestMode()) {
+            console.log("tt");
+            console.logBytes32(structHash);
+        }
 
         bytes memory signature1 = _sign(signer1Key, ECDSA.toTypedDataHash(_ccmDomainSeparator(), structHash));
 
         multisig.signProposal(proposalHash, signature1);
-
-        console.log("== SIGNER 1 ==");
-        console.log("name", currentProposal.name);
-        console.log("proposalHash");
-        console.logBytes32(proposalHash);
-        console.log("prevHash");
-        console.logBytes32(currentProposal.prevHash);
-        console.log(signature1.toHexString());
+        if (!_isTestMode()) {
+            console.log("== SIGNER 1 ==");
+            console.log("name", currentProposal.name);
+            console.log("proposalHash");
+            console.logBytes32(proposalHash);
+            console.log("prevHash");
+            console.logBytes32(currentProposal.prevHash);
+            console.log(signature1.toHexString());
+        }
 
         bytes memory signature2 = _sign(signer2Key, ECDSA.toTypedDataHash(_ccmDomainSeparator(), structHash));
         multisig.signProposal(proposalHash, signature2);
 
-        console.log("== SIGNER 2==");
-        console.log("name", currentProposal.name);
-        console.log(signature2.toHexString());
+        if (!_isTestMode()) {
+            console.log("== SIGNER 2==");
+            console.log("name", currentProposal.name);
+            console.log(signature2.toHexString());
+        }
 
         prevProposalHash = proposalHash;
     }
