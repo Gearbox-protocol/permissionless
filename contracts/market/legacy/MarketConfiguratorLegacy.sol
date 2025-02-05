@@ -85,12 +85,17 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     address public immutable contractsRegisterLegacy;
     address public immutable gearStakingLegacy;
 
+    error ACLOwnershipNotTransferredException();
     error AddressIsNotPausableAdminException(address admin);
     error AddressIsNotUnpausableAdminException(address admin);
     error CallerIsNotCrossChainGovernanceProxyException(address caller);
     error CallsToLegacyContractsAreForbiddenException();
     error CollateralTokenIsNotQuotedException(address creditManager, address token);
-    error CreditManagerIsMisconfiguredException(address creditManager);
+    error CreditSuiteAlreadyInitializedException(address creditManager);
+    error CreditSuiteIsNotInitializedException(address creditManager);
+    error InconsistentPriceOracleException(address creditManager);
+    error MarketAlreadyInitializedException(address pool);
+    error MarketIsNotInitializedException(address pool);
 
     modifier onlyCrossChainGovernanceProxy() {
         _ensureCallerIsCrossChainGovernanceProxy();
@@ -150,16 +155,15 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
 
             address quotaKeeper = _quotaKeeper(pool);
             address priceOracle = _priceOracle(creditManagers[0]);
-            address interestRateModel = _interestRateModel(pool);
-            address rateKeeper = _rateKeeper(quotaKeeper);
             address lossPolicy = address(new DefaultLossPolicy(acl));
-
-            _createMarket(pool, quotaKeeper, priceOracle, interestRateModel, rateKeeper, lossPolicy);
+            IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
 
             for (uint256 j; j < numCreditManagers; ++j) {
                 address creditManager = creditManagers[j];
-                if (!_isV3Contract(creditManager) || _priceOracle(creditManager) != priceOracle) {
-                    revert CreditManagerIsMisconfiguredException(creditManager);
+                if (!_isV3Contract(creditManager)) continue;
+
+                if (_priceOracle(creditManager) != priceOracle) {
+                    revert InconsistentPriceOracleException(creditManager);
                 }
 
                 uint256 numTokens = ICreditManagerV3(creditManager).collateralTokensCount();
@@ -172,33 +176,35 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
                     }
                 }
 
-                _createCreditSuite(creditManager);
+                IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
             }
 
             address[] memory zappers = IZapperRegisterLegacy(legacyParams_.zapperRegister).zappers(pool);
             uint256 numZappers = zappers.length;
             for (uint256 j; j < numZappers; ++j) {
                 _peripheryContracts[DOMAIN_ZAPPER].add(zappers[j]);
+                emit AddPeripheryContract(DOMAIN_ZAPPER, zappers[j]);
             }
         }
 
         uint256 numBots = legacyParams_.bots.length;
         for (uint256 i; i < numBots; ++i) {
             _peripheryContracts[DOMAIN_BOT].add(legacyParams_.bots[i]);
+            emit AddPeripheryContract(DOMAIN_BOT, legacyParams_.bots[i]);
         }
     }
 
-    function _createMarket(
-        address pool,
-        address quotaKeeper,
-        address priceOracle,
-        address interestRateModel,
-        address rateKeeper,
-        address lossPolicy
-    ) internal {
-        IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
+    function initializeMarket(address pool) external {
+        _ensureRegisteredMarket(pool);
+        if (_marketFactories[pool].poolFactory != address(0)) revert MarketAlreadyInitializedException(pool);
+
         MarketFactories memory factories = _getLatestMarketFactories(3_10);
         _marketFactories[pool] = factories;
+        address quotaKeeper = _quotaKeeper(pool);
+        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
+        address interestRateModel = _interestRateModel(pool);
+        address rateKeeper = _rateKeeper(quotaKeeper);
+        address lossPolicy = IContractsRegister(contractsRegister).getLossPolicy(pool);
         _authorizeFactory(factories.poolFactory, pool, pool);
         _authorizeFactory(factories.poolFactory, pool, quotaKeeper);
         _authorizeFactory(factories.priceOracleFactory, pool, priceOracle);
@@ -209,8 +215,9 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         emit CreateMarket(pool, priceOracle, interestRateModel, rateKeeper, lossPolicy, factories);
     }
 
-    function _createCreditSuite(address creditManager) internal {
-        IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
+    function initializeCreditSuite(address creditManager) external {
+        _ensureRegisteredCreditSuite(creditManager);
+        if (_creditFactories[creditManager] != address(0)) revert CreditSuiteAlreadyInitializedException(creditManager);
 
         address factory = _getLatestCreditFactory(3_10);
         _creditFactories[creditManager] = factory;
@@ -231,10 +238,28 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     // ------------- //
 
     function finalizeMigration() external onlyCrossChainGovernanceProxy {
+        address[] memory pools = IContractsRegister(contractsRegister).getPools();
+        uint256 numPools = pools.length;
+        for (uint256 i; i < numPools; ++i) {
+            if (_marketFactories[pools[i]].poolFactory == address(0)) {
+                revert MarketIsNotInitializedException(pools[i]);
+            }
+        }
+        address[] memory creditManagers = IContractsRegister(contractsRegister).getCreditManagers();
+        uint256 numCreditManagers = creditManagers.length;
+        for (uint256 i; i < numCreditManagers; ++i) {
+            if (_creditFactories[creditManagers[i]] == address(0)) {
+                revert CreditSuiteIsNotInitializedException(creditManagers[i]);
+            }
+        }
+
         // NOTE: on some chains, legacy ACL implements a 2-step ownership transfer
-        try IACLLegacy(aclLegacy).pendingOwner() {
+        try IACLLegacy(aclLegacy).pendingOwner() returns (address pendingOwner) {
+            if (pendingOwner != address(this)) revert ACLOwnershipNotTransferredException();
             IACLLegacy(aclLegacy).claimOwnership();
-        } catch {}
+        } catch {
+            if (IACLLegacy(aclLegacy).owner() != address(this)) revert ACLOwnershipNotTransferredException();
+        }
 
         IACLLegacy(aclLegacy).addPausableAdmin(address(this));
         IACLLegacy(aclLegacy).addUnpausableAdmin(address(this));
