@@ -115,11 +115,6 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         address mcf = IAddressProvider(ap).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
 
-        address poolFactory = IAddressProvider(ap).getAddressOrRevert(AP_POOL_FACTORY, 3_10);
-
-        IWETH(WETH).deposit{value: 1e18}();
-        IERC20(WETH).transfer(poolFactory, 1e18);
-
         uint256 gasBefore = gasleft();
 
         vm.startPrank(riskCurator);
@@ -131,6 +126,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         uint256 used = gasBefore - gasAfter;
         console.log("createMarketConfigurator gasUsed", used);
 
+        deal(WETH, mc, 1e5);
         address pool = MarketConfigurator(mc).previewCreateMarket(3_10, WETH, name, symbol);
 
         DeployParams memory interestRateModelParams = DeployParams({
