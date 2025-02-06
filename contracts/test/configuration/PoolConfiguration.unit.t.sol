@@ -6,13 +6,17 @@ pragma solidity ^0.8.23;
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 
 import {ConfigurationTestHelper} from "./ConfigurationTestHelper.sol";
+import {PoolFactory} from "../../factories/PoolFactory.sol";
+import {IContractsRegister} from "../../interfaces/IContractsRegister.sol";
 import {IPoolConfigureActions} from "../../interfaces/factories/IPoolConfigureActions.sol";
 import {IPoolEmergencyConfigureActions} from "../../interfaces/factories/IPoolEmergencyConfigureActions.sol";
+import {IPriceOracleConfigureActions} from "../../interfaces/factories/IPriceOracleConfigureActions.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {GeneralMock} from "@gearbox-protocol/core-v3/contracts/test/mocks/GeneralMock.sol";
 import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v3/contracts/libraries/Constants.sol";
+import {ZeroPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/ZeroPriceFeed.sol";
 
 contract PoolConfigurationUnitTest is ConfigurationTestHelper {
     address private _target;
@@ -21,7 +25,6 @@ contract PoolConfigurationUnitTest is ConfigurationTestHelper {
     function setUp() public override {
         super.setUp();
 
-        _target = address(new GeneralMock());
         _quotaKeeper = IPoolV3(pool).poolQuotaKeeper();
     }
 
@@ -71,6 +74,16 @@ contract PoolConfigurationUnitTest is ConfigurationTestHelper {
 
         (,,,, uint96 tokenLimit,) = IPoolQuotaKeeperV3(_quotaKeeper).getTokenQuotaParams(token);
         assertEq(tokenLimit, limit, "Incorrect token limit");
+
+        // Test that it reverts when trying to set non-zero limit for token with zero price
+        address priceOracle = IContractsRegister(marketConfigurator.contractsRegister()).getPriceOracle(address(pool));
+        vm.mockCall(priceOracle, abi.encodeCall(IPriceOracleV3.getPrice, (token)), abi.encode(0));
+        vm.expectRevert(abi.encodeWithSelector(PoolFactory.ZeroPriceFeedException.selector, token));
+
+        vm.prank(admin);
+        marketConfigurator.configurePool(
+            address(pool), abi.encodeCall(IPoolConfigureActions.setTokenLimit, (token, limit + 1))
+        );
     }
 
     function test_P_04_setTokenQuotaIncreaseFee() public {
