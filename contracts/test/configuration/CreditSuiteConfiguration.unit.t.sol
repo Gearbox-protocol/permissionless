@@ -18,6 +18,7 @@ import {DeployParams} from "../../interfaces/Types.sol";
 import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
 import {IContractsRegister} from "../../interfaces/IContractsRegister.sol";
 import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
+import {IMarketConfigurator} from "../../interfaces/IMarketConfigurator.sol";
 import {
     NO_VERSION_CONTROL,
     AP_BYTECODE_REPOSITORY,
@@ -39,11 +40,13 @@ import {
 
 contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
     address target;
+    address creditFactory;
 
     function setUp() public override {
         super.setUp();
 
         target = address(new GeneralMock());
+        creditFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_CREDIT_FACTORY, 3_10);
     }
 
     function _uploadCreditConfiguratorPatch() internal {
@@ -68,7 +71,6 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
 
         address bytecodeRepository =
             IAddressProvider(addressProvider).getAddressOrRevert(AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL);
-        address creditFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_CREDIT_FACTORY, 3_10);
 
         address expectedAdapter = IBytecodeRepository(bytecodeRepository).computeAddress(
             "ADAPTER::BALANCER_VAULT",
@@ -78,6 +80,13 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             creditFactory
         );
 
+        // Expect factory authorization and adapter allowance
+        vm.expectCall(
+            address(marketConfigurator),
+            abi.encodeCall(
+                IMarketConfigurator.authorizeFactory, (creditFactory, address(creditManager), expectedAdapter)
+            )
+        );
         vm.expectCall(
             address(creditConfigurator), abi.encodeCall(ICreditConfiguratorV3.allowAdapter, (expectedAdapter))
         );
@@ -87,7 +96,12 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             address(creditManager), abi.encodeCall(ICreditConfigureActions.allowAdapter, (params))
         );
 
+        // Verify adapter is allowed and factory is authorized
         assertEq(ICreditManagerV3(creditManager).adapterToContract(expectedAdapter), target, "Adapter must be allowed");
+        assertTrue(
+            IMarketConfigurator(marketConfigurator).getAuthorizedFactory(expectedAdapter) == creditFactory,
+            "Factory must be authorized"
+        );
     }
 
     function test_CS_02_forbidAdapter() public {
@@ -97,21 +111,32 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             constructorParams: abi.encode(address(creditManager), target)
         });
 
-        vm.startPrank(admin);
+        // First allow adapter
+        vm.prank(admin);
         marketConfigurator.configureCreditSuite(
             address(creditManager), abi.encodeCall(ICreditConfigureActions.allowAdapter, (params))
         );
 
         address adapter = ICreditManagerV3(creditManager).contractToAdapter(target);
 
+        // Expect factory unauthorized and adapter forbidden
+        vm.expectCall(
+            address(marketConfigurator),
+            abi.encodeCall(IMarketConfigurator.unauthorizeFactory, (creditFactory, address(creditManager), adapter))
+        );
         vm.expectCall(address(creditConfigurator), abi.encodeCall(ICreditConfiguratorV3.forbidAdapter, (adapter)));
 
+        vm.prank(admin);
         marketConfigurator.configureCreditSuite(
             address(creditManager), abi.encodeCall(ICreditConfigureActions.forbidAdapter, (adapter))
         );
-        vm.stopPrank();
 
-        assertEq(ICreditManagerV3(creditManager).contractToAdapter(target), address(0), "Adapter must not be allowed");
+        // Verify adapter is forbidden and factory is unauthorized
+        assertEq(ICreditManagerV3(creditManager).contractToAdapter(target), address(0), "Adapter must be forbidden");
+        assertTrue(
+            IMarketConfigurator(marketConfigurator).getAuthorizedFactory(adapter) == address(0),
+            "Factory must be unauthorized"
+        );
     }
 
     function test_CS_03_setFees() public {
@@ -230,7 +255,6 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
 
         address bytecodeRepository =
             IAddressProvider(addressProvider).getAddressOrRevert(AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL);
-        address creditFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_CREDIT_FACTORY, 3_10);
 
         // Compute expected new configurator address
         address expectedNewConfigurator = IBytecodeRepository(bytecodeRepository).computeAddress(
@@ -241,7 +265,20 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             creditFactory
         );
 
-        // Expect call to current configurator to upgrade
+        // Expect factory authorization/unauthorized and configurator upgrade
+        vm.expectCall(
+            address(marketConfigurator),
+            abi.encodeCall(
+                IMarketConfigurator.unauthorizeFactory,
+                (creditFactory, address(creditManager), address(creditConfigurator))
+            )
+        );
+        vm.expectCall(
+            address(marketConfigurator),
+            abi.encodeCall(
+                IMarketConfigurator.authorizeFactory, (creditFactory, address(creditManager), expectedNewConfigurator)
+            )
+        );
         vm.expectCall(
             address(creditConfigurator),
             abi.encodeCall(ICreditConfiguratorV3.upgradeCreditConfigurator, (expectedNewConfigurator))
@@ -252,24 +289,32 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             address(creditManager), abi.encodeCall(ICreditConfigureActions.upgradeCreditConfigurator, ())
         );
 
-        // Verify configurator was upgraded
+        // Verify configurator was upgraded and factory authorization was transferred
         assertEq(
             ICreditManagerV3(creditManager).creditConfigurator(),
             expectedNewConfigurator,
             "Credit configurator must be upgraded"
+        );
+        assertTrue(
+            IMarketConfigurator(marketConfigurator).getAuthorizedFactory(expectedNewConfigurator) == creditFactory,
+            "Factory must be authorized for new configurator"
+        );
+        assertTrue(
+            IMarketConfigurator(marketConfigurator).getAuthorizedFactory(address(creditConfigurator)) == address(0),
+            "Factory must be unauthorized for old configurator"
         );
     }
 
     function test_CS_08_upgradeCreditFacade() public {
         address bytecodeRepository =
             IAddressProvider(addressProvider).getAddressOrRevert(AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL);
-        address creditFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_CREDIT_FACTORY, 3_10);
 
         CreditFacadeParams memory params =
             CreditFacadeParams({degenNFT: address(0), expirable: true, migrateBotList: true});
 
         address contractsRegister = marketConfigurator.contractsRegister();
         address lossPolicy = IContractsRegister(contractsRegister).getLossPolicy(address(pool));
+        address oldFacade = ICreditManagerV3(creditManager).creditFacade();
 
         // Compute expected new facade address
         address expectedNewFacade = IBytecodeRepository(bytecodeRepository).computeAddress(
@@ -279,7 +324,7 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
                 marketConfigurator.acl(),
                 address(creditManager),
                 lossPolicy,
-                ICreditFacadeV3(creditFacade).botList(),
+                ICreditFacadeV3(oldFacade).botList(),
                 WETH,
                 params.degenNFT,
                 params.expirable
@@ -288,7 +333,17 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             creditFactory
         );
 
-        // Expect call to configurator to set new facade
+        // Expect factory authorization/unauthorized and facade upgrade
+        vm.expectCall(
+            address(marketConfigurator),
+            abi.encodeCall(IMarketConfigurator.unauthorizeFactory, (creditFactory, address(creditManager), oldFacade))
+        );
+        vm.expectCall(
+            address(marketConfigurator),
+            abi.encodeCall(
+                IMarketConfigurator.authorizeFactory, (creditFactory, address(creditManager), expectedNewFacade)
+            )
+        );
         vm.expectCall(
             address(creditConfigurator),
             abi.encodeCall(ICreditConfiguratorV3.setCreditFacade, (expectedNewFacade, true))
@@ -299,8 +354,24 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             address(creditManager), abi.encodeCall(ICreditConfigureActions.upgradeCreditFacade, (params))
         );
 
-        // Verify facade was upgraded
+        // Verify facade was upgraded and factory authorization was transferred
         assertEq(ICreditManagerV3(creditManager).creditFacade(), expectedNewFacade, "Credit facade must be upgraded");
+        assertTrue(
+            IMarketConfigurator(marketConfigurator).getAuthorizedFactory(expectedNewFacade) == creditFactory,
+            "Factory must be authorized for new facade"
+        );
+        assertTrue(
+            IMarketConfigurator(marketConfigurator).getAuthorizedFactory(oldFacade) == address(0),
+            "Factory must be unauthorized for old facade"
+        );
+
+        // Verify it reverts when trying to use unregistered degenNFT
+        params.degenNFT = address(1);
+        vm.expectRevert(abi.encodeWithSelector(CreditFactory.DegenNFTIsNotRegisteredException.selector, address(1)));
+        vm.prank(admin);
+        marketConfigurator.configureCreditSuite(
+            address(creditManager), abi.encodeCall(ICreditConfigureActions.upgradeCreditFacade, (params))
+        );
     }
 
     function test_CS_09_configureAdapter() public {
@@ -342,6 +413,20 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
 
         // Verify pool was allowed
         assertTrue(IUniswapV3Adapter(adapter).isPoolAllowed(WETH, USDC, 500), "Pool must be allowed");
+
+        // Verify it reverts when trying to configure non-existent adapter
+        address nonExistentTarget = address(1);
+        vm.expectRevert(
+            abi.encodeWithSelector(CreditFactory.TargetContractIsNotAllowedException.selector, nonExistentTarget)
+        );
+        vm.prank(admin);
+        marketConfigurator.configureCreditSuite(
+            address(creditManager),
+            abi.encodeCall(
+                ICreditConfigureActions.configureAdapterFor,
+                (nonExistentTarget, abi.encodeCall(IUniswapV3Adapter.setPoolStatusBatch, (pools)))
+            )
+        );
     }
 
     function test_CS_10_pause_unpause() public {

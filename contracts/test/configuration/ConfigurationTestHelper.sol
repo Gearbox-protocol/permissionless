@@ -143,7 +143,7 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
 
         IERC20(WETH).transfer(poolFactory, 1e18);
 
-        address _pool = MarketConfigurator(marketConfigurator).previewCreateMarket(3_10, WETH, name, symbol);
+        address _pool = marketConfigurator.previewCreateMarket(3_10, WETH, name, symbol);
 
         DeployParams memory interestRateModelParams = DeployParams({
             postfix: "LINEAR",
@@ -156,7 +156,7 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
             DeployParams({postfix: "DEFAULT", salt: 0, constructorParams: abi.encode(_pool, addressProvider)});
 
         vm.prank(admin);
-        _pool = MarketConfigurator(marketConfigurator).createMarket({
+        _pool = marketConfigurator.createMarket({
             minorVersion: 3_10,
             underlying: WETH,
             name: name,
@@ -193,7 +193,7 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
         bytes memory creditSuiteParams = abi.encode(creditManagerParams, facadeParams);
 
         vm.prank(admin);
-        return MarketConfigurator(marketConfigurator).createCreditSuite(3_10, address(pool), creditSuiteParams);
+        return marketConfigurator.createCreditSuite(3_10, address(pool), creditSuiteParams);
     }
 
     function _addUSDC() internal {

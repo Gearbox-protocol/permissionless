@@ -12,7 +12,7 @@ contract DefaultLossPolicy is ACLTrait {
 
     bool public enabled;
 
-    constructor(address acl_) ACLTrait(acl_) {}
+    constructor(address pool, address) ACLTrait(ACLTrait(pool).acl()) {}
 
     function isLiquidatable(address, address, bytes calldata) external view returns (bool) {
         return enabled;
