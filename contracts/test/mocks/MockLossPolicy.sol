@@ -3,26 +3,23 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {ACLTrait} from "@gearbox-protocol/core-v3/contracts/traits/ACLTrait.sol";
-import {AP_LOSS_POLICY_DEFAULT} from "../libraries/ContractLiterals.sol";
-
-contract DefaultLossPolicy is ACLTrait {
+contract MockLossPolicy {
     uint256 public constant version = 3_10;
-    bytes32 public constant contractType = AP_LOSS_POLICY_DEFAULT;
+    bytes32 public constant contractType = "LOSS_POLICY::MOCK";
 
     bool public enabled;
 
-    constructor(address _acl) ACLTrait(_acl) {}
+    constructor(address pool, address addressProvider) {}
 
     function isLiquidatable(address, address, bytes calldata) external view returns (bool) {
         return enabled;
     }
 
-    function enable() external configuratorOnly {
+    function enable() external {
         enabled = true;
     }
 
-    function disable() external configuratorOnly {
+    function disable() external {
         enabled = false;
     }
 }

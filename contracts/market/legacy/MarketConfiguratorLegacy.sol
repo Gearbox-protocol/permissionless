@@ -152,7 +152,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
             address priceOracle = _priceOracle(creditManagers[0]);
             address interestRateModel = _interestRateModel(pool);
             address rateKeeper = _rateKeeper(quotaKeeper);
-            address lossPolicy = address(new DefaultLossPolicy(pool, address(0)));
+            address lossPolicy = address(new DefaultLossPolicy(acl));
 
             _createMarket(pool, quotaKeeper, priceOracle, interestRateModel, rateKeeper, lossPolicy);
 

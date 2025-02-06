@@ -15,6 +15,7 @@ import {ICreditConfigureActions} from "../../factories/CreditFactory.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC20Mock} from "@gearbox-protocol/core-v3/contracts/test/mocks/token/ERC20Mock.sol";
 import {MockPriceFeed} from "../mocks/MockPriceFeed.sol";
+import {MockLossPolicy} from "../mocks/MockLossPolicy.sol";
 
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
@@ -88,6 +89,8 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
 
         _setupPriceFeedStore();
 
+        _addMockLossPolicy();
+
         admin = makeAddr("admin");
         emergencyAdmin = makeAddr("emergencyAdmin");
 
@@ -138,6 +141,16 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
         _allowPriceFeed(USDC, CHAINLINK_USDC_USD);
     }
 
+    function _addMockLossPolicy() internal {
+        CrossChainCall[] memory calls = new CrossChainCall[](1);
+
+        bytes32 bytecodeHash = _uploadByteCodeAndSign(type(MockLossPolicy).creationCode, "LOSS_POLICY::MOCK", 3_10);
+
+        calls[0] = _generateAllowSystemContractCall(bytecodeHash);
+
+        _submitProposalAndSign("Allow system contracts", calls);
+    }
+
     function _deployTestPool() internal returns (address) {
         address poolFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_POOL_FACTORY, 3_10);
 
@@ -153,7 +166,7 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
         DeployParams memory rateKeeperParams =
             DeployParams({postfix: "TUMBLER", salt: 0, constructorParams: abi.encode(_pool, 7 days)});
         DeployParams memory lossPolicyParams =
-            DeployParams({postfix: "DEFAULT", salt: 0, constructorParams: abi.encode(_pool, addressProvider)});
+            DeployParams({postfix: "MOCK", salt: 0, constructorParams: abi.encode(_pool, addressProvider)});
 
         vm.prank(admin);
         _pool = marketConfigurator.createMarket({
