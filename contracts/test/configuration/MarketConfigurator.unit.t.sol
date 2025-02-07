@@ -1,0 +1,772 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Gearbox Protocol. Generalized leverage for DeFi protocols
+// (c) Gearbox Foundation, 2024.
+pragma solidity ^0.8.23;
+
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ConfigurationTestHelper} from "./ConfigurationTestHelper.sol";
+import {MarketConfigurator} from "../../market/MarketConfigurator.sol";
+import {IMarketConfigurator} from "../../interfaces/IMarketConfigurator.sol";
+import {MarketConfiguratorFactory} from "../../instance/MarketConfiguratorFactory.sol";
+import {IACL} from "../../interfaces/IACL.sol";
+import {IContractsRegister} from "../../interfaces/IContractsRegister.sol";
+import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
+import {IGovernor} from "../../interfaces/IGovernor.sol";
+import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
+import {GeneralMock} from "@gearbox-protocol/core-v3/contracts/test/mocks/GeneralMock.sol";
+import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
+import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
+
+import {
+    AP_ACL,
+    AP_CONTRACTS_REGISTER,
+    AP_GOVERNOR,
+    AP_MARKET_CONFIGURATOR,
+    AP_TREASURY,
+    AP_TREASURY_SPLITTER,
+    AP_BYTECODE_REPOSITORY,
+    AP_MARKET_CONFIGURATOR_FACTORY,
+    NO_VERSION_CONTROL,
+    ROLE_PAUSABLE_ADMIN,
+    ROLE_UNPAUSABLE_ADMIN
+} from "../../libraries/ContractLiterals.sol";
+
+contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
+    address public mcf;
+    address public treasury;
+    string constant CURATOR_NAME = "Test Curator";
+
+    function setUp() public override {
+        super.setUp();
+        mcf = IAddressProvider(addressProvider).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
+    }
+
+    /// @notice Tests constructor deployment with governor, without treasury
+    function test_MC_01_constructor_with_governor() public {
+        // Compute future MC address
+        address expectedMC = IBytecodeRepository(bytecodeRepository).computeAddress(
+            AP_MARKET_CONFIGURATOR,
+            3_10,
+            abi.encode(addressProvider, admin, emergencyAdmin, address(0), CURATOR_NAME, true),
+            bytes32(bytes20(admin)),
+            mcf
+        );
+
+        // Compute future governor address
+        address expectedGovernor = IBytecodeRepository(bytecodeRepository).computeAddress(
+            AP_GOVERNOR, 3_10, abi.encode(admin, emergencyAdmin, 1 days, false), bytes32(0), expectedMC
+        );
+
+        // Compute future ACL address
+        address expectedACL = IBytecodeRepository(bytecodeRepository).computeAddress(
+            AP_ACL, 3_10, abi.encode(expectedMC), bytes32(0), expectedMC
+        );
+
+        // Expect governor deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy,
+                (AP_GOVERNOR, 3_10, abi.encode(admin, emergencyAdmin, 1 days, false), bytes32(0))
+            )
+        );
+
+        // Expect ACL deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(IBytecodeRepository.deploy, (AP_ACL, 3_10, abi.encode(expectedMC), bytes32(0)))
+        );
+
+        // Expect ContractsRegister deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy, (AP_CONTRACTS_REGISTER, 3_10, abi.encode(expectedACL), bytes32(0))
+            )
+        );
+
+        vm.prank(admin);
+        address mc = MarketConfiguratorFactory(mcf).createMarketConfigurator(
+            emergencyAdmin,
+            address(0),
+            CURATOR_NAME,
+            true // deploy governor
+        );
+
+        assertEq(mc, expectedMC, "Incorrect market configurator address");
+
+        // Verify governor and admin setup
+        assertEq(MarketConfigurator(mc).admin(), IGovernor(expectedGovernor).timeLock(), "Incorrect admin");
+        assertEq(MarketConfigurator(mc).emergencyAdmin(), emergencyAdmin, "Incorrect emergency admin");
+
+        // Verify treasury setup
+        assertEq(
+            MarketConfigurator(mc).treasury(),
+            IAddressProvider(addressProvider).getAddressOrRevert(AP_TREASURY, NO_VERSION_CONTROL),
+            "Incorrect treasury"
+        );
+
+        // Verify roles
+        assertTrue(
+            IACL(MarketConfigurator(mc).acl()).hasRole(ROLE_PAUSABLE_ADMIN, mc),
+            "Market configurator must have pausable admin role"
+        );
+        assertTrue(
+            IACL(MarketConfigurator(mc).acl()).hasRole(ROLE_UNPAUSABLE_ADMIN, mc),
+            "Market configurator must have unpausable admin role"
+        );
+    }
+
+    /// @notice Tests constructor deployment without governor, with treasury
+    function test_MC_02_constructor_without_governor() public {
+        address adminFeeTreasury = makeAddr("ADMIN_FEE_TREASURY");
+
+        // Compute future MC address
+        address expectedMC = IBytecodeRepository(bytecodeRepository).computeAddress(
+            AP_MARKET_CONFIGURATOR,
+            3_10,
+            abi.encode(addressProvider, admin, emergencyAdmin, adminFeeTreasury, CURATOR_NAME, false),
+            bytes32(bytes20(admin)),
+            mcf
+        );
+
+        // Compute future ACL address
+        address expectedACL = IBytecodeRepository(bytecodeRepository).computeAddress(
+            AP_ACL, 3_10, abi.encode(expectedMC), bytes32(0), expectedMC
+        );
+
+        // Expect ACL deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(IBytecodeRepository.deploy, (AP_ACL, 3_10, abi.encode(expectedMC), bytes32(0)))
+        );
+
+        // Expect ContractsRegister deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy, (AP_CONTRACTS_REGISTER, 3_10, abi.encode(expectedACL), bytes32(0))
+            )
+        );
+
+        // Expect TreasurySplitter deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy,
+                (AP_TREASURY_SPLITTER, 3_10, abi.encode(addressProvider, admin, adminFeeTreasury), bytes32(0))
+            )
+        );
+
+        vm.prank(admin);
+        address mc = MarketConfiguratorFactory(mcf).createMarketConfigurator(
+            emergencyAdmin,
+            adminFeeTreasury,
+            CURATOR_NAME,
+            false // don't deploy governor
+        );
+
+        assertEq(mc, expectedMC, "Incorrect market configurator address");
+
+        // Verify admin setup
+        assertEq(MarketConfigurator(mc).admin(), admin, "Incorrect admin");
+        assertEq(MarketConfigurator(mc).emergencyAdmin(), emergencyAdmin, "Incorrect emergency admin");
+
+        // Verify treasury deployment
+        address expectedTreasury = MarketConfigurator(mc).treasury();
+        assertTrue(expectedTreasury.code.length > 0, "Treasury must be deployed");
+
+        // Verify roles
+        assertTrue(
+            IACL(MarketConfigurator(mc).acl()).hasRole(ROLE_PAUSABLE_ADMIN, mc),
+            "Market configurator must have pausable admin role"
+        );
+        assertTrue(
+            IACL(MarketConfigurator(mc).acl()).hasRole(ROLE_UNPAUSABLE_ADMIN, mc),
+            "Market configurator must have unpausable admin role"
+        );
+    }
+
+    /// @notice Tests setting emergency admin
+    function test_MC_04_setEmergencyAdmin() public {
+        address newEmergencyAdmin = makeAddr("NEW_EMERGENCY_ADMIN");
+
+        // Test that only admin can set emergency admin
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.setEmergencyAdmin(newEmergencyAdmin);
+
+        // Test successful emergency admin change
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.SetEmergencyAdmin(newEmergencyAdmin);
+        marketConfigurator.setEmergencyAdmin(newEmergencyAdmin);
+
+        assertEq(marketConfigurator.emergencyAdmin(), newEmergencyAdmin, "Emergency admin not updated");
+    }
+
+    /// @notice Tests granting roles
+    function test_MC_05_grantRole() public {
+        bytes32 role = keccak256("TEST_ROLE");
+        address account = makeAddr("ACCOUNT");
+
+        // Test that only admin can grant roles
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.grantRole(role, account);
+
+        // Test successful role grant
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.GrantRole(role, account);
+        marketConfigurator.grantRole(role, account);
+
+        assertTrue(IACL(marketConfigurator.acl()).hasRole(role, account), "Role not granted");
+    }
+
+    /// @notice Tests revoking roles
+    function test_MC_06_revokeRole() public {
+        bytes32 role = keccak256("TEST_ROLE");
+        address account = makeAddr("ACCOUNT");
+
+        // Grant role first
+        vm.prank(admin);
+        marketConfigurator.grantRole(role, account);
+
+        // Test that only admin can revoke roles
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.revokeRole(role, account);
+
+        // Test successful role revocation
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.RevokeRole(role, account);
+        marketConfigurator.revokeRole(role, account);
+
+        assertFalse(IACL(marketConfigurator.acl()).hasRole(role, account), "Role not revoked");
+    }
+
+    /// @notice Tests emergency role revocation
+    function test_MC_07_emergencyRevokeRole() public {
+        bytes32 role = keccak256("TEST_ROLE");
+        address account = makeAddr("ACCOUNT");
+
+        // Grant role first
+        vm.prank(admin);
+        marketConfigurator.grantRole(role, account);
+
+        // Test that only emergency admin can emergency revoke roles
+        vm.expectRevert(
+            abi.encodeWithSelector(IMarketConfigurator.CallerIsNotEmergencyAdminException.selector, address(this))
+        );
+        marketConfigurator.emergencyRevokeRole(role, account);
+
+        // Test successful emergency role revocation
+        vm.prank(emergencyAdmin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.EmergencyRevokeRole(role, account);
+        marketConfigurator.emergencyRevokeRole(role, account);
+
+        assertFalse(IACL(marketConfigurator.acl()).hasRole(role, account), "Role not revoked");
+    }
+
+    /// @notice Tests periphery contract management
+    function test_MC_08_periphery_contracts() public {
+        bytes32 domain = bytes32("TEST_DOMAIN");
+        address peripheryContract = makeAddr("PERIPHERY_CONTRACT");
+
+        // Mock the periphery contract to return correct domain
+        vm.mockCall(
+            peripheryContract,
+            abi.encodeWithSignature("contractType()"),
+            abi.encode(bytes32(abi.encodePacked(domain, bytes16(0))))
+        );
+
+        // Mock bytecode repository to recognize the contract
+        vm.mockCall(
+            bytecodeRepository, abi.encodeWithSignature("deployedContracts(address)", peripheryContract), abi.encode(1)
+        );
+
+        // Test that only admin can add periphery contracts
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.addPeripheryContract(peripheryContract);
+
+        // Test successful periphery contract addition
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AddPeripheryContract(domain, peripheryContract);
+        marketConfigurator.addPeripheryContract(peripheryContract);
+
+        // Verify contract was added
+        assertTrue(marketConfigurator.isPeripheryContract(domain, peripheryContract), "Contract not added");
+        address[] memory contracts = marketConfigurator.getPeripheryContracts(domain);
+        assertEq(contracts.length, 1, "Incorrect number of contracts");
+        assertEq(contracts[0], peripheryContract, "Incorrect contract address");
+
+        // Test adding same contract again (no event)
+        vm.prank(admin);
+        marketConfigurator.addPeripheryContract(peripheryContract);
+
+        // Test that only admin can remove periphery contracts
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.removePeripheryContract(peripheryContract);
+
+        // Test successful periphery contract removal
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.RemovePeripheryContract(domain, peripheryContract);
+        marketConfigurator.removePeripheryContract(peripheryContract);
+
+        // Verify contract was removed
+        assertFalse(marketConfigurator.isPeripheryContract(domain, peripheryContract), "Contract not removed");
+        contracts = marketConfigurator.getPeripheryContracts(domain);
+        assertEq(contracts.length, 0, "Contract list not empty");
+
+        // Test removing non-existent contract (no event)
+        vm.prank(admin);
+        marketConfigurator.removePeripheryContract(peripheryContract);
+
+        // Test adding contract that's not in bytecode repository
+        vm.mockCall(
+            bytecodeRepository, abi.encodeWithSignature("deployedContracts(address)", peripheryContract), abi.encode(0)
+        );
+        vm.prank(admin);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMarketConfigurator.IncorrectPeripheryContractException.selector, peripheryContract)
+        );
+        marketConfigurator.addPeripheryContract(peripheryContract);
+
+        // Test adding contract that doesn't implement IVersion
+        address invalidContract = address(new GeneralMock());
+        vm.mockCall(
+            bytecodeRepository, abi.encodeWithSignature("deployedContracts(address)", invalidContract), abi.encode(1)
+        );
+        vm.prank(admin);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMarketConfigurator.IncorrectPeripheryContractException.selector, invalidContract)
+        );
+        marketConfigurator.addPeripheryContract(invalidContract);
+    }
+
+    /// @notice Tests factory authorization
+    function test_MC_09_authorizeFactory() public {
+        address factory = makeAddr("FACTORY");
+        address suite = makeAddr("SUITE");
+        address target = makeAddr("TARGET");
+
+        // Test that only self can authorize factories
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotSelfException.selector, address(this)));
+        marketConfigurator.authorizeFactory(factory, suite, target);
+
+        // Test successful factory authorization
+        vm.prank(address(marketConfigurator));
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(factory, suite, target);
+        marketConfigurator.authorizeFactory(factory, suite, target);
+
+        // Verify factory was authorized
+        assertEq(marketConfigurator.getAuthorizedFactory(target), factory, "Factory not authorized");
+        address[] memory targets = marketConfigurator.getFactoryTargets(factory, suite);
+        assertEq(targets.length, 1, "Incorrect number of targets");
+        assertEq(targets[0], target, "Incorrect target address");
+
+        // Test authorizing already authorized target
+        vm.prank(address(marketConfigurator));
+        vm.expectRevert(
+            abi.encodeWithSelector(IMarketConfigurator.UnauthorizedFactoryException.selector, factory, target)
+        );
+        marketConfigurator.authorizeFactory(factory, suite, target);
+    }
+
+    /// @notice Tests factory unauthorization
+    function test_MC_10_unauthorizeFactory() public {
+        address factory = makeAddr("FACTORY");
+        address suite = makeAddr("SUITE");
+        address target = makeAddr("TARGET");
+
+        // Authorize factory first
+        vm.prank(address(marketConfigurator));
+        marketConfigurator.authorizeFactory(factory, suite, target);
+
+        // Test that only self can unauthorize factories
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotSelfException.selector, address(this)));
+        marketConfigurator.unauthorizeFactory(factory, suite, target);
+
+        // Test successful factory unauthorized
+        vm.prank(address(marketConfigurator));
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(factory, suite, target);
+        marketConfigurator.unauthorizeFactory(factory, suite, target);
+
+        // Verify factory was unauthorized
+        assertEq(marketConfigurator.getAuthorizedFactory(target), address(0), "Factory not unauthorized");
+        address[] memory targets = marketConfigurator.getFactoryTargets(factory, suite);
+        assertEq(targets.length, 0, "Target list not empty");
+
+        // Test unauthorized by wrong factory
+        address wrongFactory = makeAddr("WRONG_FACTORY");
+        vm.prank(address(marketConfigurator));
+        vm.expectRevert(
+            abi.encodeWithSelector(IMarketConfigurator.UnauthorizedFactoryException.selector, wrongFactory, target)
+        );
+        marketConfigurator.unauthorizeFactory(wrongFactory, suite, target);
+    }
+
+    /// @notice Tests pool factory upgrade function
+    function test_MC_11_upgradePoolFactory() public {
+        // Test that only admin can upgrade factories
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.upgradePoolFactory(address(pool));
+
+        // Test upgrading pool factory
+        address oldFactory = marketConfigurator.getMarketFactories(address(pool)).poolFactory;
+        address newFactory = makeAddr("NEW_FACTORY");
+        address quotaKeeper = IPoolV3(pool).poolQuotaKeeper();
+
+        vm.mockCall(newFactory, abi.encodeWithSignature("version()"), abi.encode(3_11));
+        vm.mockCall(newFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("POOL_FACTORY")));
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(newFactory, true);
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(oldFactory, address(pool), address(pool));
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(newFactory, address(pool), address(pool));
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(oldFactory, address(pool), quotaKeeper);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(newFactory, address(pool), quotaKeeper);
+
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpgradePoolFactory(address(pool), newFactory);
+        marketConfigurator.upgradePoolFactory(address(pool));
+
+        // Verify factory was upgraded and authorizations changed
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).poolFactory, newFactory, "Pool factory not upgraded"
+        );
+        assertEq(
+            marketConfigurator.getAuthorizedFactory(address(pool)), newFactory, "Pool factory authorization not updated"
+        );
+        assertEq(
+            marketConfigurator.getAuthorizedFactory(quotaKeeper),
+            newFactory,
+            "QuotaKeeper factory authorization not updated"
+        );
+
+        // Test upgrading from patch version
+        address patchFactory = makeAddr("PATCH_FACTORY");
+        vm.mockCall(patchFactory, abi.encodeWithSignature("version()"), abi.encode(3_12));
+        vm.mockCall(patchFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("POOL_FACTORY")));
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(patchFactory, true);
+
+        vm.prank(admin);
+        marketConfigurator.upgradePoolFactory(address(pool));
+
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).poolFactory, patchFactory, "Pool factory not upgraded"
+        );
+    }
+
+    /// @notice Tests credit factory upgrade function
+    function test_MC_12_upgradeCreditFactory() public {
+        // Test that only admin can upgrade factories
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.upgradeCreditFactory(address(creditManager));
+
+        // Test upgrading credit factory
+        address oldFactory = marketConfigurator.getCreditFactory(address(creditManager));
+        address newFactory = makeAddr("NEW_FACTORY");
+
+        vm.mockCall(newFactory, abi.encodeWithSignature("version()"), abi.encode(3_11));
+        vm.mockCall(newFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("CREDIT_FACTORY")));
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(newFactory, true);
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(oldFactory, address(creditManager), address(creditConfigurator));
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(newFactory, address(creditManager), address(creditConfigurator));
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(oldFactory, address(creditManager), address(creditFacade));
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(newFactory, address(creditManager), address(creditFacade));
+
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpgradeCreditFactory(address(creditManager), newFactory);
+        marketConfigurator.upgradeCreditFactory(address(creditManager));
+
+        // Verify factory was upgraded and authorizations changed
+        assertEq(marketConfigurator.getCreditFactory(address(creditManager)), newFactory, "Credit factory not upgraded");
+        assertEq(
+            marketConfigurator.getAuthorizedFactory(address(creditConfigurator)),
+            newFactory,
+            "Configurator factory authorization not updated"
+        );
+        assertEq(
+            marketConfigurator.getAuthorizedFactory(address(creditFacade)),
+            newFactory,
+            "Facade factory authorization not updated"
+        );
+
+        // Test upgrading from patch version
+        address patchFactory = makeAddr("PATCH_FACTORY");
+        vm.mockCall(patchFactory, abi.encodeWithSignature("version()"), abi.encode(3_12));
+        vm.mockCall(patchFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("CREDIT_FACTORY")));
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(patchFactory, true);
+
+        vm.prank(admin);
+        marketConfigurator.upgradeCreditFactory(address(creditManager));
+
+        assertEq(
+            marketConfigurator.getCreditFactory(address(creditManager)), patchFactory, "Credit factory not upgraded"
+        );
+    }
+
+    /// @notice Tests price oracle factory upgrade function
+    function test_MC_13_upgradePriceOracleFactory() public {
+        // Test that only admin can upgrade factories
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.upgradePriceOracleFactory(address(pool));
+
+        // Test upgrading price oracle factory
+        address oldFactory = marketConfigurator.getMarketFactories(address(pool)).priceOracleFactory;
+        address newFactory = makeAddr("NEW_FACTORY");
+        address priceOracle = IContractsRegister(marketConfigurator.contractsRegister()).getPriceOracle(address(pool));
+
+        vm.mockCall(newFactory, abi.encodeWithSignature("version()"), abi.encode(3_11));
+        vm.mockCall(newFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("PRICE_ORACLE_FACTORY")));
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(newFactory, true);
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(oldFactory, address(pool), priceOracle);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(newFactory, address(pool), priceOracle);
+
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpgradePriceOracleFactory(address(pool), newFactory);
+        marketConfigurator.upgradePriceOracleFactory(address(pool));
+
+        // Verify factory was upgraded and authorizations changed
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).priceOracleFactory,
+            newFactory,
+            "Price oracle factory not upgraded"
+        );
+        assertEq(
+            marketConfigurator.getAuthorizedFactory(priceOracle),
+            newFactory,
+            "Price oracle factory authorization not updated"
+        );
+
+        // Test upgrading from patch version
+        address patchFactory = makeAddr("PATCH_FACTORY");
+        vm.mockCall(patchFactory, abi.encodeWithSignature("version()"), abi.encode(3_12));
+        vm.mockCall(
+            patchFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("PRICE_ORACLE_FACTORY"))
+        );
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(patchFactory, true);
+
+        vm.prank(admin);
+        marketConfigurator.upgradePriceOracleFactory(address(pool));
+
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).priceOracleFactory,
+            patchFactory,
+            "Price oracle factory not upgraded"
+        );
+    }
+
+    /// @notice Tests interest rate model factory upgrade function
+    function test_MC_14_upgradeInterestRateModelFactory() public {
+        // Test that only admin can upgrade factories
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.upgradeInterestRateModelFactory(address(pool));
+
+        // Test upgrading interest rate model factory
+        address oldFactory = marketConfigurator.getMarketFactories(address(pool)).interestRateModelFactory;
+        address newFactory = makeAddr("NEW_FACTORY");
+        address interestRateModel = IPoolV3(pool).interestRateModel();
+
+        vm.mockCall(newFactory, abi.encodeWithSignature("version()"), abi.encode(3_11));
+        vm.mockCall(
+            newFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("INTEREST_RATE_MODEL_FACTORY"))
+        );
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(newFactory, true);
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(oldFactory, address(pool), interestRateModel);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(newFactory, address(pool), interestRateModel);
+
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpgradeInterestRateModelFactory(address(pool), newFactory);
+        marketConfigurator.upgradeInterestRateModelFactory(address(pool));
+
+        // Verify factory was upgraded and authorizations changed
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).interestRateModelFactory,
+            newFactory,
+            "Interest rate model factory not upgraded"
+        );
+        assertEq(
+            marketConfigurator.getAuthorizedFactory(interestRateModel),
+            newFactory,
+            "Interest rate model factory authorization not updated"
+        );
+
+        // Test upgrading from patch version
+        address patchFactory = makeAddr("PATCH_FACTORY");
+        vm.mockCall(patchFactory, abi.encodeWithSignature("version()"), abi.encode(3_12));
+        vm.mockCall(
+            patchFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("INTEREST_RATE_MODEL_FACTORY"))
+        );
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(patchFactory, true);
+
+        vm.prank(admin);
+        marketConfigurator.upgradeInterestRateModelFactory(address(pool));
+
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).interestRateModelFactory,
+            patchFactory,
+            "Interest rate model factory not upgraded"
+        );
+    }
+
+    /// @notice Tests rate keeper factory upgrade function
+    function test_MC_15_upgradeRateKeeperFactory() public {
+        // Test that only admin can upgrade factories
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.upgradeRateKeeperFactory(address(pool));
+
+        // Test upgrading rate keeper factory
+        address oldFactory = marketConfigurator.getMarketFactories(address(pool)).rateKeeperFactory;
+        address newFactory = makeAddr("NEW_FACTORY");
+        address quotaKeeper = IPoolV3(pool).poolQuotaKeeper();
+        address rateKeeper = IPoolQuotaKeeperV3(quotaKeeper).gauge();
+
+        vm.mockCall(newFactory, abi.encodeWithSignature("version()"), abi.encode(3_11));
+        vm.mockCall(newFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("RATE_KEEPER_FACTORY")));
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(newFactory, true);
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(oldFactory, address(pool), rateKeeper);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(newFactory, address(pool), rateKeeper);
+
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpgradeRateKeeperFactory(address(pool), newFactory);
+        marketConfigurator.upgradeRateKeeperFactory(address(pool));
+
+        // Verify factory was upgraded and authorizations changed
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).rateKeeperFactory,
+            newFactory,
+            "Rate keeper factory not upgraded"
+        );
+        assertEq(
+            marketConfigurator.getAuthorizedFactory(rateKeeper),
+            newFactory,
+            "Rate keeper factory authorization not updated"
+        );
+
+        // Test upgrading from patch version
+        address patchFactory = makeAddr("PATCH_FACTORY");
+        vm.mockCall(patchFactory, abi.encodeWithSignature("version()"), abi.encode(3_12));
+        vm.mockCall(patchFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("RATE_KEEPER_FACTORY")));
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(patchFactory, true);
+
+        vm.prank(admin);
+        marketConfigurator.upgradeRateKeeperFactory(address(pool));
+
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).rateKeeperFactory,
+            patchFactory,
+            "Rate keeper factory not upgraded"
+        );
+    }
+
+    /// @notice Tests loss policy factory upgrade function
+    function test_MC_16_upgradeLossPolicyFactory() public {
+        // Test that only admin can upgrade factories
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.upgradeLossPolicyFactory(address(pool));
+
+        // Test upgrading loss policy factory
+        address oldFactory = marketConfigurator.getMarketFactories(address(pool)).lossPolicyFactory;
+        address newFactory = makeAddr("NEW_FACTORY");
+        address lossPolicy = creditFacade.lossPolicy();
+
+        vm.mockCall(newFactory, abi.encodeWithSignature("version()"), abi.encode(3_11));
+        vm.mockCall(newFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("LOSS_POLICY_FACTORY")));
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(newFactory, true);
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(oldFactory, address(pool), lossPolicy);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(newFactory, address(pool), lossPolicy);
+
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpgradeLossPolicyFactory(address(pool), newFactory);
+        marketConfigurator.upgradeLossPolicyFactory(address(pool));
+
+        // Verify factory was upgraded and authorizations changed
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).lossPolicyFactory,
+            newFactory,
+            "Loss policy factory not upgraded"
+        );
+        assertEq(
+            marketConfigurator.getAuthorizedFactory(lossPolicy),
+            newFactory,
+            "Loss policy factory authorization not updated"
+        );
+
+        // Test upgrading from patch version
+        address patchFactory = makeAddr("PATCH_FACTORY");
+        vm.mockCall(patchFactory, abi.encodeWithSignature("version()"), abi.encode(3_12));
+        vm.mockCall(patchFactory, abi.encodeWithSignature("contractType()"), abi.encode(bytes32("LOSS_POLICY_FACTORY")));
+
+        vm.prank(Ownable(addressProvider).owner());
+        IAddressProvider(addressProvider).setAddress(patchFactory, true);
+
+        vm.prank(admin);
+        marketConfigurator.upgradeLossPolicyFactory(address(pool));
+
+        assertEq(
+            marketConfigurator.getMarketFactories(address(pool)).lossPolicyFactory,
+            patchFactory,
+            "Loss policy factory not upgraded"
+        );
+    }
+}
