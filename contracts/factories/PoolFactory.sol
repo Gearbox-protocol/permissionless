@@ -46,8 +46,8 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     /// @notice Thrown when trying to shutdown a market with non-zero outstanding debt
     error CantShutdownMarketWithNonZeroDebtException(address pool);
 
-    /// @notice Thrown when trying to deploy a pool without funding factory to mint dead shares
-    error InsufficientFundsForDeploymentException();
+    /// @notice Thrown when trying to deploy a pool without funding market configurator to mint dead shares
+    error InsufficientFundsForDeploymentException(address underlying);
 
     /// @notice Thrown when to set non-zero quota limit for a token with zero price feed
     error ZeroPriceFeedException(address token);
@@ -71,8 +71,9 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         address pool = _deployPool(msg.sender, underlying, name, symbol);
         address quotaKeeper = _deployQuotaKeeper(msg.sender, pool);
 
-        // NOTE: should use batching to avoid getting frontrun
-        if (IERC20(underlying).balanceOf(address(this)) < 1e5) revert InsufficientFundsForDeploymentException();
+        // NOTE: mint dead shares to protect against inflation attack
+        if (IERC20(underlying).balanceOf(msg.sender) < 1e5) revert InsufficientFundsForDeploymentException(underlying);
+        IERC20(underlying).safeTransferFrom(msg.sender, address(this), 1e5);
         IERC20(underlying).forceApprove(pool, 1e5);
         IPoolV3(pool).deposit(1e5, address(0xdead));
 

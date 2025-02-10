@@ -15,10 +15,13 @@ struct CreditFacadeParams {
 interface ICreditFactory is IFactory {
     function deployCreditSuite(address pool, bytes calldata encodedParams) external returns (DeployResult memory);
 
-    function computeCreditManagerAddress(address marketConfigurator, address pool, bytes calldata encodedParams)
-        external
-        view
-        returns (address);
+    function computeCreditManagerAddress(
+        address marketConfigurator,
+        address pool,
+        address underlying,
+        address priceOracle,
+        bytes calldata encodedParams
+    ) external view returns (address);
 
     // ------------ //
     // CREDIT HOOKS //

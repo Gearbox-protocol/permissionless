@@ -3,6 +3,8 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
+import {SafeERC20} from "@1inch/solidity-utils/contracts/libraries/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {LibString} from "@solady/utils/LibString.sol";
@@ -56,6 +58,7 @@ contract MarketConfigurator is DeployerTrait, IMarketConfigurator {
     using EnumerableSet for EnumerableSet.AddressSet;
     using LibString for string;
     using LibString for bytes32;
+    using SafeERC20 for IERC20;
 
     // --------------- //
     // STATE VARIABLES //
@@ -234,7 +237,12 @@ contract MarketConfigurator is DeployerTrait, IMarketConfigurator {
         address underlyingPriceFeed
     ) external override onlyAdmin returns (address pool) {
         MarketFactories memory factories = _getLatestMarketFactories(minorVersion);
+
+        // NOTE: some version of pool factory might need underlying to mint dead shares
+        IERC20(underlying).forceApprove(factories.poolFactory, type(uint256).max);
         pool = _deployPool(factories.poolFactory, underlying, name, symbol);
+        IERC20(underlying).forceApprove(factories.poolFactory, 0);
+
         address priceOracle = _deployPriceOracle(factories.priceOracleFactory, pool);
         address interestRateModel =
             _deployInterestRateModel(factories.interestRateModelFactory, pool, interestRateModelParams);
@@ -304,7 +312,32 @@ contract MarketConfigurator is DeployerTrait, IMarketConfigurator {
         returns (address)
     {
         address factory = _getLatestCreditFactory(minorVersion);
-        return ICreditFactory(factory).computeCreditManagerAddress(address(this), pool, encodedParams);
+        return ICreditFactory(factory).computeCreditManagerAddress(
+            address(this),
+            pool,
+            IPoolV3(pool).asset(),
+            IContractsRegister(contractsRegister).getPriceOracle(pool),
+            encodedParams
+        );
+    }
+
+    function previewCreateCreditSuite(
+        uint256 marketMinorVersion,
+        uint256 creditSuiteMinorVersion,
+        address underlying,
+        string calldata name,
+        string calldata symbol,
+        bytes calldata encodedParams
+    ) external view override returns (address) {
+        MarketFactories memory factories = _getLatestMarketFactories(marketMinorVersion);
+        address pool = IPoolFactory(factories.poolFactory).computePoolAddress(address(this), underlying, name, symbol);
+        address priceOracle =
+            IPriceOracleFactory(factories.priceOracleFactory).computePriceOracleAddress(address(this), pool);
+
+        address factory = _getLatestCreditFactory(creditSuiteMinorVersion);
+        return ICreditFactory(factory).computeCreditManagerAddress(
+            address(this), pool, underlying, priceOracle, encodedParams
+        );
     }
 
     function createCreditSuite(uint256 minorVersion, address pool, bytes calldata encodedParams)
