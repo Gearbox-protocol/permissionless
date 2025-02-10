@@ -9,8 +9,12 @@ import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IC
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
-import {ICreditFactory, CreditFacadeParams} from "../interfaces/factories/ICreditFactory.sol";
-import {ICreditConfigureActions} from "../interfaces/factories/ICreditConfigureActions.sol";
+import {ICreditFactory} from "../interfaces/factories/ICreditFactory.sol";
+import {
+    CreditFacadeParams,
+    CreditManagerParams,
+    ICreditConfigureActions
+} from "../interfaces/factories/ICreditConfigureActions.sol";
 import {ICreditEmergencyConfigureActions} from "../interfaces/factories/ICreditEmergencyConfigureActions.sol";
 import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
@@ -34,19 +38,6 @@ import {
 
 import {AbstractFactory} from "./AbstractFactory.sol";
 
-struct CreditManagerParams {
-    uint8 maxEnabledTokens;
-    uint16 feeInterest;
-    uint16 feeLiquidation;
-    uint16 liquidationPremium;
-    uint16 feeLiquidationExpired;
-    uint16 liquidationPremiumExpired;
-    uint128 minDebt;
-    uint128 maxDebt;
-    string name;
-    DeployParams accountFactoryParams;
-}
-
 contract CreditFactory is AbstractFactory, ICreditFactory {
     /// @notice Contract version
     uint256 public constant override version = 3_10;
@@ -57,9 +48,6 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     /// @notice Address of the bot list contract
     address public immutable botList;
 
-    /// @notice Address of the WETH token
-    address public immutable weth;
-
     error DegenNFTIsNotRegisteredException(address degenNFT);
 
     error TargetContractIsNotAllowedException(address targetCotnract);
@@ -68,7 +56,6 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         botList = _getAddressOrRevert(AP_BOT_LIST, NO_VERSION_CONTROL);
-        weth = _tryGetAddress(AP_WETH_TOKEN, NO_VERSION_CONTROL);
     }
 
     // ---------- //
@@ -314,8 +301,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     }
 
     function _deployCreditConfigurator(address marketConfigurator, address creditManager) internal returns (address) {
-        address acl = IMarketConfigurator(marketConfigurator).acl();
-        bytes memory constructorParams = abi.encode(acl, creditManager);
+        bytes memory constructorParams = abi.encode(creditManager);
 
         return _deployLatestPatch({
             contractType: AP_CREDIT_CONFIGURATOR,
@@ -329,7 +315,6 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         internal
         returns (address)
     {
-        address acl = IMarketConfigurator(marketConfigurator).acl();
         address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
         address lossPolicy = IContractsRegister(contractsRegister).getLossPolicy(ICreditManagerV3(creditManager).pool());
 
@@ -346,8 +331,10 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
             botList_ = ICreditFacadeV3(prevCreditFacade).botList();
         }
 
+        address weth = _tryGetAddress(AP_WETH_TOKEN, NO_VERSION_CONTROL);
+
         bytes memory constructorParams =
-            abi.encode(acl, creditManager, lossPolicy, botList_, weth, params.degenNFT, params.expirable);
+            abi.encode(creditManager, lossPolicy, botList_, weth, params.degenNFT, params.expirable);
 
         return _deployLatestPatch({
             contractType: AP_CREDIT_FACADE,

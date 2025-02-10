@@ -502,6 +502,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     /// @param majorVersion Major version number
     /// @return uint256 Latest minor version number
     function getLatestMinorVersion(bytes32 _contractType, uint256 majorVersion) external view returns (uint256) {
+        majorVersion -= majorVersion % 100;
         return latestMinorVersion[_contractType][majorVersion];
     }
 
@@ -510,6 +511,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     /// @param minorVersion Minor version number
     /// @return uint256 Latest patch version number
     function getLatestPatchVersion(bytes32 _contractType, uint256 minorVersion) external view returns (uint256) {
+        minorVersion -= minorVersion % 10;
         return latestPatchVersion[_contractType][minorVersion];
     }
 

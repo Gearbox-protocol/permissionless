@@ -6,7 +6,7 @@ import {CreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/credit/C
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 contract MockCreditConfiguratorPatch is CreditConfiguratorV3, Test {
-    constructor(address _acl, address _creditManager) CreditConfiguratorV3(_acl, _creditManager) {
+    constructor(address _creditManager) CreditConfiguratorV3(_creditManager) {
         vm.mockCall(address(this), abi.encodeCall(IVersion.version, ()), abi.encode(311));
     }
 }

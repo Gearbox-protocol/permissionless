@@ -260,7 +260,7 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
         address expectedNewConfigurator = IBytecodeRepository(bytecodeRepository).computeAddress(
             "CREDIT_CONFIGURATOR",
             3_11,
-            abi.encode(marketConfigurator.acl(), address(creditManager)),
+            abi.encode(address(creditManager)),
             bytes32(bytes20(address(marketConfigurator))),
             creditFactory
         );
@@ -321,7 +321,6 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             "CREDIT_FACADE",
             3_10,
             abi.encode(
-                marketConfigurator.acl(),
                 address(creditManager),
                 lossPolicy,
                 ICreditFacadeV3(oldFacade).botList(),

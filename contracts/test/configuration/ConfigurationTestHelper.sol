@@ -152,8 +152,6 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
     }
 
     function _deployTestPool() internal returns (address) {
-        address poolFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_POOL_FACTORY, 3_10);
-
         IERC20(WETH).transfer(address(marketConfigurator), 1e18);
 
         address _pool = marketConfigurator.previewCreateMarket(3_10, WETH, name, symbol);

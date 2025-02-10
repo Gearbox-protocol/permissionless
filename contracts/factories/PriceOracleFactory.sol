@@ -176,7 +176,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         address priceOracle = _priceOracle(pool);
 
         bytes4 selector = bytes4(callData);
-        if (selector == IPriceOracleConfigureActions.setPriceFeed.selector) {
+        if (selector == IPriceOracleEmergencyConfigureActions.setPriceFeed.selector) {
             (address token, address priceFeed) = abi.decode(callData[4:], (address, address));
             _validatePriceFeed(pool, token, priceFeed, true);
             if (block.timestamp < IPriceFeedStore(priceFeedStore).getAllowanceTimestamp(token, priceFeed) + 1 days) {
@@ -209,6 +209,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
     }
 
     function _getPriceFeed(address priceOracle, address token, bool reserve) internal view returns (address) {
+        // FIXME: doesn't work like that for price oracle v3.0
         return reserve
             ? IPriceOracleV3(priceOracle).reservePriceFeeds(token)
             : IPriceOracleV3(priceOracle).priceFeeds(token);
@@ -227,8 +228,8 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
 
         Call[] memory calls = CallBuilder.build(
             reserve
-                ? _setReservePriceFeed(priceOracle, token, priceFeed, stalenessPeriod)
-                : _setPriceFeed(priceOracle, token, priceFeed, stalenessPeriod)
+                ? _setReservePriceFeedCall(priceOracle, token, priceFeed, stalenessPeriod)
+                : _setPriceFeedCall(priceOracle, token, priceFeed, stalenessPeriod)
         );
         return _addUpdatableFeeds(priceOracle, priceFeed, calls);
     }
@@ -239,7 +240,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         returns (Call[] memory)
     {
         try IUpdatablePriceFeed(priceFeed).updatable() returns (bool updatable) {
-            if (updatable) calls = calls.append(_addUpdatablePriceFeed(priceOracle, priceFeed));
+            if (updatable) calls = calls.append(_addUpdatablePriceFeedCall(priceOracle, priceFeed));
         } catch {}
         address[] memory underlyingFeeds = IPriceFeed(priceFeed).getUnderlyingFeeds();
         uint256 numFeeds = underlyingFeeds.length;
@@ -249,7 +250,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         return calls;
     }
 
-    function _setPriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod)
+    function _setPriceFeedCall(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod)
         internal
         pure
         returns (Call memory)
@@ -257,7 +258,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
         return Call(priceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (token, priceFeed, stalenessPeriod)));
     }
 
-    function _setReservePriceFeed(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod)
+    function _setReservePriceFeedCall(address priceOracle, address token, address priceFeed, uint32 stalenessPeriod)
         internal
         pure
         returns (Call memory)
@@ -266,7 +267,7 @@ contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
             Call(priceOracle, abi.encodeCall(IPriceOracleV3.setReservePriceFeed, (token, priceFeed, stalenessPeriod)));
     }
 
-    function _addUpdatablePriceFeed(address priceOracle, address priceFeed) internal pure returns (Call memory) {
+    function _addUpdatablePriceFeedCall(address priceOracle, address priceFeed) internal pure returns (Call memory) {
         return Call(priceOracle, abi.encodeCall(IPriceOracleV3.addUpdatablePriceFeed, (priceFeed)));
     }
 }

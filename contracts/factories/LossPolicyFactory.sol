@@ -37,12 +37,7 @@ contract LossPolicyFactory is AbstractMarketFactory, ILossPolicyFactory {
         onlyMarketConfigurators
         returns (DeployResult memory)
     {
-        if (params.postfix == "ALIASED") {
-            address decodedPool = abi.decode(params.constructorParams, (address));
-            if (decodedPool != pool) revert InvalidConstructorParamsException();
-        } else {
-            _validateDefaultConstructorParams(pool, params.constructorParams);
-        }
+        _validateDefaultConstructorParams(pool, params.constructorParams);
 
         address lossPolicy = _deployLatestPatch({
             contractType: _getContractType(DOMAIN_LOSS_POLICY, params.postfix),

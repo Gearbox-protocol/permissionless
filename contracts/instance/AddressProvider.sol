@@ -70,12 +70,14 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
     }
 
     function getLatestMinorVersion(string memory key, uint256 majorVersion) external view override returns (uint256) {
+        majorVersion -= majorVersion % 100;
         uint256 latestMinorVersion = latestMinorVersions[key][majorVersion];
         if (latestMinorVersion == 0) revert VersionNotFoundException();
         return latestMinorVersion;
     }
 
     function getLatestPatchVersion(string memory key, uint256 minorVersion) external view override returns (uint256) {
+        minorVersion -= minorVersion % 10;
         uint256 latestPatchVersion = latestPatchVersions[key][minorVersion];
         if (latestPatchVersion == 0) revert VersionNotFoundException();
         return latestPatchVersion;

@@ -10,6 +10,8 @@ contract DefaultIRM is IInterestRateModel {
     uint256 public constant override version = 3_10;
     bytes32 public constant override contractType = AP_INTEREST_RATE_MODEL_DEFAULT;
 
+    function serialize() external pure override returns (bytes memory) {}
+
     function calcBorrowRate(uint256, uint256, bool) external pure override returns (uint256) {
         return 0;
     }

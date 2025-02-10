@@ -51,6 +51,10 @@ contract DefaultDegenNFT is ERC721, IDegenNFT {
         contractsRegister = IMarketConfigurator(marketConfigurator_).contractsRegister();
     }
 
+    function serialize() external view override returns (bytes memory) {
+        return abi.encode(marketConfigurator, minter, name(), symbol(), baseURI, totalSupply);
+    }
+
     function _baseURI() internal view override returns (string memory) {
         return baseURI;
     }

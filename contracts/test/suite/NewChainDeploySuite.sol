@@ -10,7 +10,7 @@ import {PriceFeedStore} from "../../instance/PriceFeedStore.sol";
 import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
 import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
 import {IInstanceManager} from "../../interfaces/IInstanceManager.sol";
-import {ICreditConfigureActions} from "../../factories/CreditFactory.sol";
+import {CreditManagerParams, CreditFacadeParams, ICreditConfigureActions} from "../../factories/CreditFactory.sol";
 
 import {IWETH} from "@gearbox-protocol/core-v3/contracts/interfaces/external/IWETH.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
@@ -67,7 +67,6 @@ import {CreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditF
 import {CreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditConfiguratorV3.sol";
 
 import {DeployParams} from "../../interfaces/Types.sol";
-import {CreditFacadeParams, CreditManagerParams} from "../../factories/CreditFactory.sol";
 
 import {GlobalSetup} from "../../test/helpers/GlobalSetup.sol";
 import {MockLossPolicy} from "../../test/mocks/MockLossPolicy.sol";
