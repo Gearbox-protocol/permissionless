@@ -14,6 +14,8 @@ contract MockPriceFeed is IPriceFeed {
         _price = 1e18; // Default price of 1
     }
 
+    function serialize() external pure override returns (bytes memory) {}
+
     function lastUpdateTime() external view returns (uint256) {
         return _lastUpdateTime;
     }

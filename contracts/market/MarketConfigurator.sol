@@ -796,6 +796,7 @@ contract MarketConfigurator is DeployerTrait, IMarketConfigurator {
     }
 
     function _getLatestMarketFactories(uint256 minorVersion) internal view returns (MarketFactories memory) {
+        if (minorVersion / 100 != 3) revert IncorrectMinorVersionException(minorVersion);
         return MarketFactories({
             poolFactory: _getLatestPatch(AP_POOL_FACTORY, minorVersion),
             priceOracleFactory: _getLatestPatch(AP_PRICE_ORACLE_FACTORY, minorVersion),
@@ -806,6 +807,7 @@ contract MarketConfigurator is DeployerTrait, IMarketConfigurator {
     }
 
     function _getLatestCreditFactory(uint256 minorVersion) internal view returns (address) {
+        if (minorVersion / 100 != 3) revert IncorrectMinorVersionException(minorVersion);
         return _getLatestPatch(AP_CREDIT_FACTORY, minorVersion);
     }
 

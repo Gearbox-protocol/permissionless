@@ -103,6 +103,8 @@ interface IMarketConfigurator is IVersion, IDeployerTrait {
 
     error CreditSuiteNotRegisteredException(address creditManager);
 
+    error IncorrectMinorVersionException(uint256 version);
+
     error IncorrectPeripheryContractException(address peripheryContract);
 
     error MarketNotRegisteredException(address pool);

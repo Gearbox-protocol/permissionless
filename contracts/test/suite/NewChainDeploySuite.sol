@@ -10,7 +10,7 @@ import {PriceFeedStore} from "../../instance/PriceFeedStore.sol";
 import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
 import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
 import {IInstanceManager} from "../../interfaces/IInstanceManager.sol";
-import {ICreditConfigureActions} from "../../factories/CreditFactory.sol";
+import {CreditManagerParams, CreditFacadeParams, ICreditConfigureActions} from "../../factories/CreditFactory.sol";
 
 import {IWETH} from "@gearbox-protocol/core-v3/contracts/interfaces/external/IWETH.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
@@ -67,9 +67,9 @@ import {CreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditF
 import {CreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditConfiguratorV3.sol";
 
 import {DeployParams} from "../../interfaces/Types.sol";
-import {CreditFacadeParams, CreditManagerParams} from "../../factories/CreditFactory.sol";
 
 import {GlobalSetup} from "../../test/helpers/GlobalSetup.sol";
+import {MockLossPolicy} from "../../test/mocks/MockLossPolicy.sol";
 
 contract NewChainDeploySuite is Test, GlobalSetup {
     address internal riskCurator;
@@ -100,6 +100,18 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         // Configure instance
         _setupPriceFeedStore();
         riskCurator = vm.addr(_generatePrivateKey("RISK_CURATOR"));
+
+        _addMockLossPolicy();
+    }
+
+    function _addMockLossPolicy() internal {
+        CrossChainCall[] memory calls = new CrossChainCall[](1);
+
+        bytes32 bytecodeHash = _uploadByteCodeAndSign(type(MockLossPolicy).creationCode, "LOSS_POLICY::MOCK", 3_10);
+
+        calls[0] = _generateAllowSystemContractCall(bytecodeHash);
+
+        _submitProposalAndSign("Allow system contracts", calls);
     }
 
     function _setupPriceFeedStore() internal {
@@ -137,7 +149,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         DeployParams memory rateKeeperParams =
             DeployParams({postfix: "TUMBLER", salt: 0, constructorParams: abi.encode(pool, 7 days)});
         DeployParams memory lossPolicyParams =
-            DeployParams({postfix: "DEFAULT", salt: 0, constructorParams: abi.encode(pool, ap)});
+            DeployParams({postfix: "MOCK", salt: 0, constructorParams: abi.encode(pool, ap)});
 
         gasBefore = gasleft();
 

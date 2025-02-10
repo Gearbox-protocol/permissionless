@@ -27,9 +27,16 @@ contract BCRHelpers is SignatureHelper {
         authorKey = _generatePrivateKey("AUTHOR");
         author = vm.rememberKey(authorKey);
         // Print debug info
-        console.log("BCR setup:");
-        console.log("Auditor:", auditor, "Key:", auditorKey.toHexString());
-        console.log("Author:", author, "Key:", authorKey.toHexString());
+
+        if (!_isTestMode()) {
+            console.log("BCR setup:");
+            console.log("Auditor:", auditor, "Key:", auditorKey.toHexString());
+            console.log("Author:", author, "Key:", authorKey.toHexString());
+        }
+    }
+
+    function _isTestMode() internal pure virtual returns (bool) {
+        return false;
     }
 
     function _uploadByteCode(bytes memory _initCode, bytes32 _contractType, uint256 _version)
