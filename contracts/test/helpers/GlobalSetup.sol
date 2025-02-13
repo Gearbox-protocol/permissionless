@@ -41,7 +41,7 @@ import {
     AP_CREDIT_FACADE,
     AP_CREDIT_CONFIGURATOR
 } from "../../libraries/ContractLiterals.sol";
-import {SignedProposal, Bytecode} from "../../interfaces/Types.sol";
+import {SignedBatch, Bytecode} from "../../interfaces/Types.sol";
 
 import {CreditFactory} from "../../factories/CreditFactory.sol";
 import {InterestRateModelFactory} from "../../factories/InterestRateModelFactory.sol";
@@ -150,7 +150,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
 
-        _submitProposalAndSign("Add Auditor", calls);
+        _submitBatchAndSign("Add Auditor", calls);
 
         uint256 len = contractsToUpload.length;
 
@@ -163,7 +163,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             calls[i] = _generateAllowSystemContractCall(bytecodeHash);
         }
 
-        _submitProposalAndSign("Allow system contracts", calls);
+        _submitBatchAndSign("Allow system contracts", calls);
 
         DeploySystemContractCall[10] memory deployCalls = [
             DeploySystemContractCall({contractType: AP_BOT_LIST, version: 3_10, saveVersion: false}),
@@ -187,7 +187,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             );
         }
 
-        _submitProposalAndSign("System contracts", calls);
+        _submitBatchAndSign("System contracts", calls);
     }
 
     function _attachGlobalContracts() internal {

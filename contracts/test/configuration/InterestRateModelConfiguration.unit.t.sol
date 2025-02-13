@@ -21,7 +21,7 @@ contract InterestRateModelConfigurationUnitTest is ConfigurationTestHelper {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         bytes32 bytecodeHash = _uploadByteCodeAndSign(type(MockIRM).creationCode, "IRM::MOCK", 3_10);
         calls[0] = _generateAllowSystemContractCall(bytecodeHash);
-        _submitProposalAndSign("Allow system contracts", calls);
+        _submitBatchAndSign("Allow system contracts", calls);
 
         vm.prank(admin);
         address newIRM = marketConfigurator.updateInterestRateModel(

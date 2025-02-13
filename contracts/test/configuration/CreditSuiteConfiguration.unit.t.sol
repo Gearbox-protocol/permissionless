@@ -57,7 +57,7 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
 
         calls[0] = _generateAllowSystemContractCall(bytecodeHash);
 
-        _submitProposalAndSign("Allow system contracts", calls);
+        _submitBatchAndSign("Allow system contracts", calls);
     }
 
     /// REGULAR CONFIGURATION TESTS ///

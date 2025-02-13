@@ -14,7 +14,7 @@ struct CrossChainCall {
     bytes callData;
 }
 
-struct SignedProposal {
+struct SignedBatch {
     string name;
     bytes32 prevHash;
     CrossChainCall[] calls;
