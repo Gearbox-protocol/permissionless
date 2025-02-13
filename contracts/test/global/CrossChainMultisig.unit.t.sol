@@ -3,11 +3,12 @@ pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
 import {CrossChainMultisigHarness} from "./CrossChainMultisigHarness.sol";
-import {CrossChainCall, SignedBatch} from "../../interfaces/ICrossChainMultisig.sol";
+import {CrossChainCall, SignedBatch, SignedRecoveryModeMessage} from "../../interfaces/ICrossChainMultisig.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ICrossChainMultisig} from "../../interfaces/ICrossChainMultisig.sol";
 import {console} from "forge-std/console.sol";
 import {SignatureHelper} from "../helpers/SignatureHelper.sol";
+import {GeneralMock} from "@gearbox-protocol/core-v3/contracts/test/mocks/GeneralMock.sol";
 
 contract CrossChainMultisigTest is Test, SignatureHelper {
     CrossChainMultisigHarness multisig;
@@ -19,6 +20,7 @@ contract CrossChainMultisigTest is Test, SignatureHelper {
     address owner;
 
     bytes32 BATCH_TYPEHASH = keccak256("Batch(string name,bytes32 batchHash,bytes32 prevHash)");
+    bytes32 RECOVERY_MODE_TYPEHASH = keccak256("RecoveryMode(bytes32 startingBatchHash)");
 
     function setUp() public {
         // Setup initial signers
@@ -440,5 +442,197 @@ contract CrossChainMultisigTest is Test, SignatureHelper {
 
         vm.expectRevert("ECDSA: invalid signature length");
         multisig.exposed_verifySignatures(signatures, batchHash);
+    }
+
+    /// @dev U:[SM-22]: Recovery mode can be enabled with valid signatures
+    function test_CCG_22_EnableRecoveryMode() public {
+        vm.chainId(5); // Set to non-mainnet chain
+
+        address payable calledContract = payable(new GeneralMock());
+
+        CrossChainCall[] memory calls = new CrossChainCall[](1);
+        calls[0] = CrossChainCall({chainId: 5, target: calledContract, callData: hex"1234"});
+
+        SignedBatch memory batch =
+            SignedBatch({name: "test", calls: calls, prevHash: bytes32(0), signatures: new bytes[](2)});
+
+        bytes32 batchHash = multisig.hashBatch("test", calls, bytes32(0));
+        bytes32 structHash = keccak256(abi.encode(BATCH_TYPEHASH, keccak256(bytes("test")), batchHash, bytes32(0)));
+
+        batch.signatures[0] = _signBatchHash(signer0PrivateKey, structHash);
+        batch.signatures[1] = _signBatchHash(signer1PrivateKey, structHash);
+
+        multisig.executeBatch(batch);
+
+        bytes32 recoveryHash = keccak256(abi.encode(RECOVERY_MODE_TYPEHASH, batchHash));
+
+        bytes[] memory signatures = new bytes[](2);
+        signatures[0] = _signBatchHash(signer0PrivateKey, recoveryHash);
+        signatures[1] = _signBatchHash(signer1PrivateKey, recoveryHash);
+
+        vm.expectEmit(true, false, false, false);
+        emit ICrossChainMultisig.EnableRecoveryMode(batchHash);
+
+        multisig.enableRecoveryMode(SignedRecoveryModeMessage({startingBatchHash: batchHash, signatures: signatures}));
+
+        assertTrue(multisig.recoveryModeEnabled());
+    }
+
+    /// @dev U:[SM-23]: Recovery mode skips batch execution except for lastBatchHash update
+    function test_CCG_23_RecoveryModeSkipsExecution() public {
+        vm.chainId(5); // Set to non-mainnet chain
+
+        address payable calledContract = payable(new GeneralMock());
+
+        // First submit and execute a batch to have non-zero lastBatchHash
+        CrossChainCall[] memory calls = new CrossChainCall[](1);
+        calls[0] = CrossChainCall({chainId: 5, target: calledContract, callData: hex"1234"});
+
+        SignedBatch memory batch =
+            SignedBatch({name: "test", calls: calls, prevHash: bytes32(0), signatures: new bytes[](2)});
+
+        bytes32 batchHash = multisig.hashBatch("test", calls, bytes32(0));
+        bytes32 structHash = keccak256(abi.encode(BATCH_TYPEHASH, keccak256(bytes("test")), batchHash, bytes32(0)));
+
+        batch.signatures[0] = _signBatchHash(signer0PrivateKey, structHash);
+        batch.signatures[1] = _signBatchHash(signer1PrivateKey, structHash);
+
+        multisig.executeBatch(batch);
+
+        // Enable recovery mode
+        bytes32 recoveryHash = keccak256(abi.encode(RECOVERY_MODE_TYPEHASH, batchHash));
+        bytes[] memory signatures = new bytes[](2);
+        signatures[0] = _signBatchHash(signer0PrivateKey, recoveryHash);
+        signatures[1] = _signBatchHash(signer1PrivateKey, recoveryHash);
+
+        multisig.enableRecoveryMode(SignedRecoveryModeMessage({startingBatchHash: batchHash, signatures: signatures}));
+
+        calledContract = payable(new GeneralMock());
+
+        CrossChainCall[] memory calls2 = new CrossChainCall[](1);
+        calls2[0] = CrossChainCall({chainId: 5, target: calledContract, callData: hex"5678"});
+
+        SignedBatch memory batch2 =
+            SignedBatch({name: "test2", calls: calls2, prevHash: batchHash, signatures: new bytes[](2)});
+
+        bytes32 batchHash2 = multisig.hashBatch("test2", calls2, batchHash);
+        bytes32 structHash2 = keccak256(abi.encode(BATCH_TYPEHASH, keccak256(bytes("test2")), batchHash2, batchHash));
+
+        batch2.signatures[0] = _signBatchHash(signer0PrivateKey, structHash2);
+        batch2.signatures[1] = _signBatchHash(signer1PrivateKey, structHash2);
+
+        multisig.executeBatch(batch2);
+
+        // Verify lastBatchHash was updated but call wasn't executed
+        assertEq(multisig.lastBatchHash(), batchHash2);
+        assertTrue(multisig.recoveryModeEnabled());
+        assertEq(GeneralMock(calledContract).data().length, 0);
+    }
+
+    /// @dev U:[SM-24]: Recovery mode can be disabled through a batch with correct first call
+    function test_CCG_24_DisableRecoveryMode() public {
+        vm.chainId(5); // Set to non-mainnet chain
+
+        address payable calledContract = payable(new GeneralMock());
+
+        // First submit and execute a batch to have non-zero lastBatchHash
+        CrossChainCall[] memory calls = new CrossChainCall[](1);
+        calls[0] = CrossChainCall({chainId: 5, target: calledContract, callData: hex"1234"});
+
+        SignedBatch memory batch =
+            SignedBatch({name: "test", calls: calls, prevHash: bytes32(0), signatures: new bytes[](2)});
+
+        bytes32 batchHash = multisig.hashBatch("test", calls, bytes32(0));
+        bytes32 structHash = keccak256(abi.encode(BATCH_TYPEHASH, keccak256(bytes("test")), batchHash, bytes32(0)));
+
+        batch.signatures[0] = _signBatchHash(signer0PrivateKey, structHash);
+        batch.signatures[1] = _signBatchHash(signer1PrivateKey, structHash);
+
+        multisig.executeBatch(batch);
+
+        // Enable recovery mode
+        bytes32 recoveryHash = keccak256(abi.encode(RECOVERY_MODE_TYPEHASH, batchHash));
+        bytes[] memory signatures = new bytes[](2);
+        signatures[0] = _signBatchHash(signer0PrivateKey, recoveryHash);
+        signatures[1] = _signBatchHash(signer1PrivateKey, recoveryHash);
+
+        multisig.enableRecoveryMode(SignedRecoveryModeMessage({startingBatchHash: batchHash, signatures: signatures}));
+
+        calledContract = payable(new GeneralMock());
+
+        // Now submit a batch that disables recovery mode
+        CrossChainCall[] memory calls2 = new CrossChainCall[](2);
+        calls2[0] = CrossChainCall({
+            chainId: 0,
+            target: address(multisig),
+            callData: abi.encodeWithSelector(ICrossChainMultisig.disableRecoveryMode.selector)
+        });
+        calls2[1] = CrossChainCall({chainId: 5, target: calledContract, callData: hex"1234"}); 
+
+        SignedBatch memory batch2 =
+            SignedBatch({name: "test2", calls: calls2, prevHash: batchHash, signatures: new bytes[](2)});
+
+        bytes32 batchHash2 = multisig.hashBatch("test2", calls2, batchHash);
+        bytes32 structHash2 = keccak256(abi.encode(BATCH_TYPEHASH, keccak256(bytes("test2")), batchHash2, batchHash));
+
+        batch2.signatures[0] = _signBatchHash(signer0PrivateKey, structHash2);
+        batch2.signatures[1] = _signBatchHash(signer1PrivateKey, structHash2);
+
+        vm.expectEmit(false, false, false, true);
+        emit ICrossChainMultisig.DisableRecoveryMode();
+
+        multisig.executeBatch(batch2);
+
+        // Verify recovery mode was disabled and both calls were executed
+        assertFalse(multisig.recoveryModeEnabled());
+        assertEq(multisig.lastBatchHash(), batchHash2);
+        assertEq(GeneralMock(calledContract).data(), hex"1234");
+    }
+
+    /// @dev U:[SM-25]: Recovery mode cannot be enabled with invalid starting batch hash
+    function test_CCG_25_EnableRecoveryModeInvalidStartingHash() public {
+        vm.chainId(5); // Set to non-mainnet chain
+
+        // Try to enable recovery mode with wrong starting hash
+        bytes32 wrongHash = keccak256("wrong");
+        bytes32 recoveryHash = keccak256(abi.encode(RECOVERY_MODE_TYPEHASH, wrongHash));
+
+        bytes[] memory signatures = new bytes[](2);
+        signatures[0] = _signBatchHash(signer0PrivateKey, recoveryHash);
+        signatures[1] = _signBatchHash(signer1PrivateKey, recoveryHash);
+
+        vm.expectRevert(ICrossChainMultisig.InvalidRecoveryModeMessageException.selector);
+        multisig.enableRecoveryMode(SignedRecoveryModeMessage({startingBatchHash: wrongHash, signatures: signatures}));
+    }
+
+    /// @dev U:[SM-26]: Recovery mode cannot be enabled with insufficient signatures
+    function test_CCG_26_EnableRecoveryModeInsufficientSignatures() public {
+        vm.chainId(5); // Set to non-mainnet chain
+
+        address payable calledContract = payable(new GeneralMock());
+
+        // First submit and execute a batch to have non-zero lastBatchHash
+        CrossChainCall[] memory calls = new CrossChainCall[](1);
+        calls[0] = CrossChainCall({chainId: 5, target: calledContract, callData: hex"1234"});
+
+        SignedBatch memory batch =
+            SignedBatch({name: "test", calls: calls, prevHash: bytes32(0), signatures: new bytes[](2)});
+
+        bytes32 batchHash = multisig.hashBatch("test", calls, bytes32(0));
+        bytes32 structHash = keccak256(abi.encode(BATCH_TYPEHASH, keccak256(bytes("test")), batchHash, bytes32(0)));
+
+        batch.signatures[0] = _signBatchHash(signer0PrivateKey, structHash);
+        batch.signatures[1] = _signBatchHash(signer1PrivateKey, structHash);
+
+        multisig.executeBatch(batch);
+
+        // Try to enable recovery mode with only one signature
+        bytes32 recoveryHash = keccak256(abi.encode(RECOVERY_MODE_TYPEHASH, batchHash));
+
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = _signBatchHash(signer0PrivateKey, recoveryHash);
+
+        vm.expectRevert(ICrossChainMultisig.NotEnoughSignaturesException.selector);
+        multisig.enableRecoveryMode(SignedRecoveryModeMessage({startingBatchHash: batchHash, signatures: signatures}));
     }
 }

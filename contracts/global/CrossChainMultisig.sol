@@ -9,7 +9,7 @@ import {LibString} from "@solady/utils/LibString.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {SignedBatch, CrossChainCall} from "../interfaces/ICrossChainMultisig.sol";
+import {SignedBatch, CrossChainCall, SignedRecoveryModeMessage} from "../interfaces/ICrossChainMultisig.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 import {LibString} from "@solady/utils/LibString.sol";
@@ -35,6 +35,7 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
     bytes32 public constant CROSS_CHAIN_CALL_TYPEHASH =
         keccak256("CrossChainCall(uint256 chainId,address target,bytes callData)");
     bytes32 public constant BATCH_TYPEHASH = keccak256("Batch(string name,bytes32 batchHash,bytes32 prevHash)");
+    bytes32 public constant RECOVERY_MODE_TYPEHASH = keccak256("RecoveryMode(bytes32 startingBatchHash)");
 
     uint8 public confirmationThreshold;
 
@@ -46,6 +47,8 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
 
     mapping(bytes32 => EnumerableSet.Bytes32Set) internal _connectedBatchHashes;
     mapping(bytes32 => SignedBatch) internal _signedBatches;
+
+    bool public recoveryModeEnabled = false;
 
     modifier onlyOnMainnet() {
         if (block.chainid != 1) revert CantBeExecutedOnCurrentChainException();
@@ -151,6 +154,21 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
         _executeBatch({calls: signedBatch.calls, batchHash: batchHash});
     }
 
+    // @dev: Enable recovery mode
+    function enableRecoveryMode(SignedRecoveryModeMessage memory message) external onlyOnNotMainnet nonReentrant {
+        bytes32 digest = _hashTypedDataV4(computeRecoveryModeHash(message.startingBatchHash));
+
+        if (message.startingBatchHash != lastBatchHash) {
+            revert InvalidRecoveryModeMessageException();
+        }
+
+        uint256 validSignatures = _verifySignatures({signatures: message.signatures, digest: digest});
+        if (validSignatures < confirmationThreshold) revert NotEnoughSignaturesException();
+
+        recoveryModeEnabled = true;
+        emit EnableRecoveryMode(message.startingBatchHash);
+    }
+
     function _verifyBatch(CrossChainCall[] memory calls, bytes32 prevHash) internal view {
         if (prevHash != lastBatchHash) revert InvalidPrevHashException();
         if (calls.length == 0) revert NoCallsInProposalException();
@@ -195,15 +213,16 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
     // @param: calls - Array of cross-chain calls to execute
     // @param: proposalHash - Hash of the proposal being executed
     function _executeBatch(CrossChainCall[] memory calls, bytes32 batchHash) internal {
-        // Execute each call in the batch
-        uint256 len = calls.length;
-        for (uint256 i = 0; i < len; ++i) {
-            CrossChainCall memory call = calls[i];
-            uint256 chainId = call.chainId;
+        if (!_isRecovery(calls[0])) {
+            // Execute each call in the batch
+            uint256 len = calls.length;
+            for (uint256 i = 0; i < len; ++i) {
+                CrossChainCall memory call = calls[i];
+                uint256 chainId = call.chainId;
 
-            if (chainId == 0 || chainId == block.chainid) {
-                // QUESTION: add try{} catch{} to achieve 100% execution
-                Address.functionCall(call.target, call.callData, "Call execution failed");
+                if (chainId == 0 || chainId == block.chainid) {
+                    Address.functionCall(call.target, call.callData, "Call execution failed");
+                }
             }
         }
 
@@ -211,6 +230,16 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
         lastBatchHash = batchHash;
 
         emit ExecuteBatch(batchHash);
+    }
+
+    // @dev: Check whether the batch needs to be skipped due to recovery mode
+    function _isRecovery(CrossChainCall memory call0) internal view returns (bool) {
+        if (!recoveryModeEnabled) return false;
+
+        return !(
+            (call0.chainId == 0) && (call0.target == address(this))
+                && (bytes4(call0.callData) == ICrossChainMultisig.disableRecoveryMode.selector)
+        );
     }
 
     //
@@ -249,6 +278,13 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
         emit SetConfirmationThreshold(newConfirmationThreshold); // U:[SM-1]
     }
 
+    function disableRecoveryMode() external onlySelf {
+        if (recoveryModeEnabled) {
+            recoveryModeEnabled = false;
+            emit DisableRecoveryMode();
+        }
+    }
+
     //
     // HELPERS
     //
@@ -273,6 +309,10 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
         returns (bytes32)
     {
         return keccak256(abi.encode(BATCH_TYPEHASH, keccak256(bytes(name)), batchHash, prevHash));
+    }
+
+    function computeRecoveryModeHash(bytes32 startingBatchHash) public pure returns (bytes32) {
+        return keccak256(abi.encode(RECOVERY_MODE_TYPEHASH, startingBatchHash));
     }
 
     //

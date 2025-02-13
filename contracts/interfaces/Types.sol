@@ -21,6 +21,11 @@ struct SignedBatch {
     bytes[] signatures;
 }
 
+struct SignedRecoveryModeMessage {
+    bytes32 startingBatchHash;
+    bytes[] signatures;
+}
+
 struct DeployParams {
     bytes32 postfix;
     bytes32 salt;

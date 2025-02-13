@@ -3,7 +3,7 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {CrossChainCall, SignedBatch} from "./Types.sol";
+import {CrossChainCall, SignedBatch, SignedRecoveryModeMessage} from "./Types.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 interface ICrossChainMultisig is IVersion {
@@ -34,6 +34,13 @@ interface ICrossChainMultisig is IVersion {
     /// @notice Emitted when a batch is successfully executed
     /// @param batchHash Hash of the executed batch
     event ExecuteBatch(bytes32 indexed batchHash);
+
+    /// @notice Emitted when recovery mode is enabled
+    /// @param startingBatchHash Hash of the starting batch
+    event EnableRecoveryMode(bytes32 indexed startingBatchHash);
+
+    /// @notice Emitted when recovery mode is disabled
+    event DisableRecoveryMode();
 
     // Errors
 
@@ -73,6 +80,9 @@ interface ICrossChainMultisig is IVersion {
     /// @notice Thrown when setting an invalid confirmation threshold value
     error InvalidConfirmationThresholdValueException();
 
+    /// @notice Thrown when attempting to start recovery mode with an incorrect starting batch hash
+    error InvalidRecoveryModeMessageException();
+
     /// @notice Submits a new batch to the multisig
     /// @param calls Array of cross-chain calls to be executed
     /// @param prevHash Hash of the previous batch (for ordering)
@@ -87,6 +97,10 @@ interface ICrossChainMultisig is IVersion {
     /// @param batch The signed batch to execute
     function executeBatch(SignedBatch calldata batch) external;
 
+    /// @notice Enables recovery mode
+    /// @param message Recover mode message with starting batch hash and signatures
+    function enableRecoveryMode(SignedRecoveryModeMessage memory message) external;
+
     /// @notice Adds a new signer to the multisig
     /// @param signer Address of the signer to add
     function addSigner(address signer) external;
@@ -98,6 +112,9 @@ interface ICrossChainMultisig is IVersion {
     /// @notice Sets a new confirmation threshold
     /// @param newThreshold New threshold value
     function setConfirmationThreshold(uint8 newThreshold) external;
+
+    /// @notice Disables recovery mode
+    function disableRecoveryMode() external;
 
     /// @notice Hashes a batch according to EIP-712
     /// @param name Name of the batch
