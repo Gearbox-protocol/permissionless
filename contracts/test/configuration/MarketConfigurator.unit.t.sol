@@ -3,10 +3,11 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ConfigurationTestHelper} from "./ConfigurationTestHelper.sol";
 import {MarketConfigurator} from "../../market/MarketConfigurator.sol";
-import {IMarketConfigurator} from "../../interfaces/IMarketConfigurator.sol";
+import {IMarketConfigurator, DeployParams, MarketFactories} from "../../interfaces/IMarketConfigurator.sol";
 import {MarketConfiguratorFactory} from "../../instance/MarketConfiguratorFactory.sol";
 import {IACL} from "../../interfaces/IACL.sol";
 import {IContractsRegister} from "../../interfaces/IContractsRegister.sol";
@@ -16,6 +17,8 @@ import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
 import {GeneralMock} from "@gearbox-protocol/core-v3/contracts/test/mocks/GeneralMock.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
+import {PoolFactory} from "../../factories/PoolFactory.sol";
+import {IMarketFactory} from "../../interfaces/factories/IMarketFactory.sol";
 
 import {
     AP_ACL,
@@ -26,6 +29,11 @@ import {
     AP_TREASURY_SPLITTER,
     AP_BYTECODE_REPOSITORY,
     AP_MARKET_CONFIGURATOR_FACTORY,
+    AP_PRICE_ORACLE_FACTORY,
+    AP_POOL_FACTORY,
+    AP_INTEREST_RATE_MODEL_FACTORY,
+    AP_RATE_KEEPER_FACTORY,
+    AP_LOSS_POLICY_FACTORY,
     NO_VERSION_CONTROL,
     ROLE_PAUSABLE_ADMIN,
     ROLE_UNPAUSABLE_ADMIN
@@ -36,9 +44,21 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
     address public treasury;
     string constant CURATOR_NAME = "Test Curator";
 
+    address poolFactory;
+    address priceOracleFactory;
+    address interestRateModelFactory;
+    address rateKeeperFactory;
+    address lossPolicyFactory;
+
     function setUp() public override {
         super.setUp();
         mcf = IAddressProvider(addressProvider).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
+        poolFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_POOL_FACTORY, 3_10);
+        priceOracleFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_PRICE_ORACLE_FACTORY, 3_10);
+        interestRateModelFactory =
+            IAddressProvider(addressProvider).getAddressOrRevert(AP_INTEREST_RATE_MODEL_FACTORY, 3_10);
+        rateKeeperFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_RATE_KEEPER_FACTORY, 3_10);
+        lossPolicyFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_LOSS_POLICY_FACTORY, 3_10);
     }
 
     /// @notice Tests constructor deployment with governor, without treasury
@@ -768,5 +788,366 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
             patchFactory,
             "Loss policy factory not upgraded"
         );
+    }
+
+    /// @notice Tests market creation
+    function test_MC_17_createMarket() public {
+        IERC20(USDC).transfer(address(marketConfigurator), 1e6);
+
+        // Test that only admin can create markets
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.createMarket(
+            3_10,
+            USDC,
+            "TEST",
+            "TEST",
+            DeployParams({
+                postfix: "LINEAR",
+                salt: bytes32(0),
+                constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
+            }),
+            DeployParams({postfix: "TUMBLER", salt: bytes32(0), constructorParams: abi.encode(address(0), 7 days)}),
+            DeployParams({postfix: "MOCK", salt: bytes32(0), constructorParams: abi.encode(address(0), addressProvider)}),
+            CHAINLINK_USDC_USD
+        );
+
+        // Compute expected addresses
+        address expectedPool = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "POOL",
+            3_10,
+            abi.encode(
+                marketConfigurator.acl(),
+                marketConfigurator.contractsRegister(),
+                USDC,
+                marketConfigurator.treasury(),
+                PoolFactory(poolFactory).defaultInterestRateModel(),
+                type(uint256).max,
+                "TEST",
+                "TEST"
+            ),
+            bytes32(bytes20(address(marketConfigurator))),
+            poolFactory
+        );
+
+        address expectedQuotaKeeper = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "POOL_QUOTA_KEEPER",
+            3_10,
+            abi.encode(expectedPool),
+            bytes32(bytes20(address(marketConfigurator))),
+            poolFactory
+        );
+
+        address expectedPriceOracle = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "PRICE_ORACLE",
+            3_10,
+            abi.encode(marketConfigurator.acl()),
+            bytes32(bytes20(expectedPool)),
+            priceOracleFactory
+        );
+
+        address expectedIRM = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "IRM::LINEAR",
+            3_10,
+            abi.encode(100, 200, 100, 100, 200, 300, false),
+            keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator)),
+            interestRateModelFactory
+        );
+
+        address expectedRateKeeper = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "RATE_KEEPER::TUMBLER",
+            3_10,
+            abi.encode(expectedPool, 7 days),
+            keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator)),
+            rateKeeperFactory
+        );
+
+        address expectedLossPolicy = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "LOSS_POLICY::MOCK",
+            3_10,
+            abi.encode(expectedPool, addressProvider),
+            keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator)),
+            lossPolicyFactory
+        );
+        {
+            bytes memory poolParams = abi.encode(
+                marketConfigurator.acl(),
+                marketConfigurator.contractsRegister(),
+                USDC,
+                marketConfigurator.treasury(),
+                PoolFactory(poolFactory).defaultInterestRateModel(),
+                type(uint256).max,
+                "TEST",
+                "TEST"
+            );
+
+            address acl = marketConfigurator.acl();
+
+            // Expect contract deployments
+            vm.expectCall(
+                bytecodeRepository,
+                abi.encodeCall(
+                    IBytecodeRepository.deploy,
+                    ("POOL", 3_10, poolParams, bytes32(bytes20(address(marketConfigurator))))
+                )
+            );
+
+            vm.expectCall(
+                bytecodeRepository,
+                abi.encodeCall(
+                    IBytecodeRepository.deploy,
+                    ("POOL_QUOTA_KEEPER", 3_10, abi.encode(expectedPool), bytes32(bytes20(address(marketConfigurator))))
+                )
+            );
+
+            vm.expectCall(
+                bytecodeRepository,
+                abi.encodeCall(
+                    IBytecodeRepository.deploy, ("PRICE_ORACLE", 3_10, abi.encode(acl), bytes32(bytes20(expectedPool)))
+                )
+            );
+        }
+
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy,
+                (
+                    "IRM::LINEAR",
+                    3_10,
+                    abi.encode(100, 200, 100, 100, 200, 300, false),
+                    keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator))
+                )
+            )
+        );
+
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy,
+                (
+                    "RATE_KEEPER::TUMBLER",
+                    3_10,
+                    abi.encode(expectedPool, 7 days),
+                    keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator))
+                )
+            )
+        );
+
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy,
+                (
+                    "LOSS_POLICY::MOCK",
+                    3_10,
+                    abi.encode(expectedPool, addressProvider),
+                    keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator))
+                )
+            )
+        );
+
+        // Expect factory hooks
+        vm.expectCall(
+            poolFactory,
+            abi.encodeWithSignature(
+                "onCreateMarket(address,address,address,address,address,address)",
+                expectedPool,
+                expectedPriceOracle,
+                expectedIRM,
+                expectedRateKeeper,
+                expectedLossPolicy,
+                CHAINLINK_USDC_USD
+            )
+        );
+        vm.expectCall(
+            priceOracleFactory,
+            abi.encodeWithSignature(
+                "onCreateMarket(address,address,address,address,address,address)",
+                expectedPool,
+                expectedPriceOracle,
+                expectedIRM,
+                expectedRateKeeper,
+                expectedLossPolicy,
+                CHAINLINK_USDC_USD
+            )
+        );
+        vm.expectCall(
+            interestRateModelFactory,
+            abi.encodeWithSignature(
+                "onCreateMarket(address,address,address,address,address,address)",
+                expectedPool,
+                expectedPriceOracle,
+                expectedIRM,
+                expectedRateKeeper,
+                expectedLossPolicy,
+                CHAINLINK_USDC_USD
+            )
+        );
+        vm.expectCall(
+            rateKeeperFactory,
+            abi.encodeWithSignature(
+                "onCreateMarket(address,address,address,address,address,address)",
+                expectedPool,
+                expectedPriceOracle,
+                expectedIRM,
+                expectedRateKeeper,
+                expectedLossPolicy,
+                CHAINLINK_USDC_USD
+            )
+        );
+        vm.expectCall(
+            lossPolicyFactory,
+            abi.encodeWithSignature(
+                "onCreateMarket(address,address,address,address,address,address)",
+                expectedPool,
+                expectedPriceOracle,
+                expectedIRM,
+                expectedRateKeeper,
+                expectedLossPolicy,
+                CHAINLINK_USDC_USD
+            )
+        );
+
+        // Expect factory authorizations
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(poolFactory, expectedPool, expectedPool);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(poolFactory, expectedPool, expectedQuotaKeeper);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(priceOracleFactory, expectedPool, expectedPriceOracle);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(interestRateModelFactory, expectedPool, expectedIRM);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(rateKeeperFactory, expectedPool, expectedRateKeeper);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(lossPolicyFactory, expectedPool, expectedLossPolicy);
+
+        // Create market
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.CreateMarket(
+            expectedPool,
+            expectedPriceOracle,
+            expectedIRM,
+            expectedRateKeeper,
+            expectedLossPolicy,
+            MarketFactories({
+                poolFactory: poolFactory,
+                priceOracleFactory: priceOracleFactory,
+                interestRateModelFactory: interestRateModelFactory,
+                rateKeeperFactory: rateKeeperFactory,
+                lossPolicyFactory: lossPolicyFactory
+            })
+        );
+        address newPool = marketConfigurator.createMarket(
+            3_10,
+            USDC,
+            "TEST",
+            "TEST",
+            DeployParams({
+                postfix: "LINEAR",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
+            }),
+            DeployParams({
+                postfix: "TUMBLER",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(expectedPool, 7 days)
+            }),
+            DeployParams({
+                postfix: "MOCK",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(expectedPool, addressProvider)
+            }),
+            CHAINLINK_USDC_USD
+        );
+
+        assertEq(newPool, expectedPool, "Incorrect pool address");
+    }
+
+    /// @notice Tests market shutdown
+    function test_MC_18_shutdownMarket() public {
+        IERC20(USDC).transfer(address(marketConfigurator), 1e6);
+
+        address expectedPool = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "POOL",
+            3_10,
+            abi.encode(
+                marketConfigurator.acl(),
+                marketConfigurator.contractsRegister(),
+                USDC,
+                marketConfigurator.treasury(),
+                PoolFactory(poolFactory).defaultInterestRateModel(),
+                type(uint256).max,
+                "TEST",
+                "TEST"
+            ),
+            bytes32(bytes20(address(marketConfigurator))),
+            poolFactory
+        );
+
+        vm.prank(admin);
+        address newPool = marketConfigurator.createMarket(
+            3_10,
+            USDC,
+            "TEST",
+            "TEST",
+            DeployParams({
+                postfix: "LINEAR",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
+            }),
+            DeployParams({
+                postfix: "TUMBLER",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(expectedPool, 7 days)
+            }),
+            DeployParams({
+                postfix: "MOCK",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(expectedPool, addressProvider)
+            }),
+            CHAINLINK_USDC_USD
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.shutdownMarket(address(newPool));
+
+        vm.expectCall(
+            poolFactory,
+            abi.encodeCall(IMarketFactory.onShutdownMarket, (address(newPool)))
+        );
+
+        vm.expectCall(
+            priceOracleFactory,
+            abi.encodeCall(IMarketFactory.onShutdownMarket, (address(newPool)))
+        );
+
+        vm.expectCall(
+            interestRateModelFactory,
+            abi.encodeCall(IMarketFactory.onShutdownMarket, (address(newPool)))
+        );
+
+        vm.expectCall(
+            rateKeeperFactory,
+            abi.encodeCall(IMarketFactory.onShutdownMarket, (address(newPool)))
+        );
+
+        vm.expectCall(
+            lossPolicyFactory,
+            abi.encodeCall(IMarketFactory.onShutdownMarket, (address(newPool)))
+        );
+
+        vm.expectCall(
+            marketConfigurator.contractsRegister(),
+            abi.encodeCall(IContractsRegister.shutdownMarket, (address(newPool)))
+        );
+
+        vm.expectCall(newPool, abi.encodeCall(IPoolV3.setTotalDebtLimit, (0)));
+
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.ShutdownMarket(address(newPool));
+        marketConfigurator.shutdownMarket(address(newPool));
     }
 }
