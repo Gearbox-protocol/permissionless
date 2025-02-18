@@ -30,6 +30,10 @@ import {CreditManagerParams, CreditFacadeParams} from "../../interfaces/factorie
 import {CreditFactory} from "../../factories/CreditFactory.sol";
 import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
+import {IPriceOracleFactory} from "../../interfaces/factories/IPriceOracleFactory.sol";
+import {IPriceFeedStore} from "../../interfaces/IPriceFeedStore.sol";
+import {MockPriceOraclePatch} from "../mocks/MockPriceOraclePatch.sol";
+import {CrossChainCall} from "../helpers/GlobalSetup.sol";
 
 import {
     AP_ACL,
@@ -46,6 +50,7 @@ import {
     AP_INTEREST_RATE_MODEL_FACTORY,
     AP_RATE_KEEPER_FACTORY,
     AP_LOSS_POLICY_FACTORY,
+    AP_PRICE_ORACLE,
     NO_VERSION_CONTROL,
     ROLE_PAUSABLE_ADMIN,
     ROLE_UNPAUSABLE_ADMIN
@@ -1300,9 +1305,7 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
         expectedCreditFacade = IBytecodeRepository(bytecodeRepository).computeAddress(
             "CREDIT_FACADE",
             3_10,
-            abi.encode(
-                expectedCreditManager, lossPolicy, botList, WETH, facadeParams.degenNFT, facadeParams.expirable
-            ),
+            abi.encode(expectedCreditManager, lossPolicy, botList, WETH, facadeParams.degenNFT, facadeParams.expirable),
             bytes32(bytes20(address(marketConfigurator))),
             creditFactory
         );
@@ -1353,12 +1356,7 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
                     "CREDIT_FACADE",
                     3_10,
                     abi.encode(
-                        expectedCreditManager,
-                        lossPolicy,
-                        botList,
-                        WETH,
-                        facadeParams.degenNFT,
-                        facadeParams.expirable
+                        expectedCreditManager, lossPolicy, botList, WETH, facadeParams.degenNFT, facadeParams.expirable
                     ),
                     bytes32(bytes20(address(marketConfigurator)))
                 )
@@ -1421,5 +1419,350 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
         address newCreditManager = marketConfigurator.createCreditSuite(3_10, address(pool), creditSuiteParams);
 
         assertEq(newCreditManager, expectedCreditManager, "Incorrect credit manager address");
+    }
+
+    /// @notice Tests credit suite shutdown
+    function test_MC_21_shutdownCreditSuite() public {
+        address contractsRegister = marketConfigurator.contractsRegister();
+
+        // Test that only admin can shutdown credit suites
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.shutdownCreditSuite(address(creditManager));
+
+        // Test that credit suite with non-zero debt cannot be shutdown
+        vm.mockCall(
+            address(pool), abi.encodeCall(IPoolV3.creditManagerBorrowed, (address(creditManager))), abi.encode(1)
+        );
+        vm.prank(admin);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PoolFactory.CantShutdownCreditSuiteWithNonZeroDebtException.selector, address(creditManager)
+            )
+        );
+        marketConfigurator.shutdownCreditSuite(address(creditManager));
+        vm.clearMockedCalls();
+
+        // Expect factory hooks
+        vm.expectCall(poolFactory, abi.encodeCall(IMarketFactory.onShutdownCreditSuite, (address(creditManager))));
+        vm.expectCall(
+            priceOracleFactory, abi.encodeCall(IMarketFactory.onShutdownCreditSuite, (address(creditManager)))
+        );
+        vm.expectCall(
+            interestRateModelFactory, abi.encodeCall(IMarketFactory.onShutdownCreditSuite, (address(creditManager)))
+        );
+        vm.expectCall(rateKeeperFactory, abi.encodeCall(IMarketFactory.onShutdownCreditSuite, (address(creditManager))));
+        vm.expectCall(lossPolicyFactory, abi.encodeCall(IMarketFactory.onShutdownCreditSuite, (address(creditManager))));
+
+        // Expect hook calls from PoolFactory
+        vm.expectCall(address(pool), abi.encodeCall(IPoolV3.setCreditManagerDebtLimit, (address(creditManager), 0)));
+
+        // Expect call to ContractsRegister
+        vm.expectCall(
+            contractsRegister, abi.encodeCall(IContractsRegister.shutdownCreditSuite, (address(creditManager)))
+        );
+
+        // Shutdown credit suite
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.ShutdownCreditSuite(address(creditManager));
+        marketConfigurator.shutdownCreditSuite(address(creditManager));
+    }
+
+    function _uploadPriceOraclePatch() internal {
+        CrossChainCall[] memory calls = new CrossChainCall[](1);
+
+        bytes32 bytecodeHash = _uploadByteCodeAndSign(type(MockPriceOraclePatch).creationCode, AP_PRICE_ORACLE, 3_11);
+
+        calls[0] = _generateAllowSystemContractCall(bytecodeHash);
+
+        _submitBatchAndSign("Allow system contracts", calls);
+    }
+
+    /// @notice Tests price oracle update
+    function test_MC_22_updatePriceOracle() public {
+        _uploadPriceOraclePatch();
+
+        // Add USDC to the pool to have multiple tokens with price feeds
+        _addUSDC();
+
+        // Test that only admin can update price oracle
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.updatePriceOracle(address(pool));
+
+        // Deploy new price oracle
+        address newPriceOracle = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "PRICE_ORACLE",
+            3_11,
+            abi.encode(marketConfigurator.acl()),
+            bytes32(bytes20(address(pool))),
+            priceOracleFactory
+        );
+
+        // Expect contract deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy,
+                ("PRICE_ORACLE", 3_11, abi.encode(marketConfigurator.acl()), bytes32(bytes20(address(pool))))
+            )
+        );
+
+        // Expect factory hooks
+        vm.expectCall(
+            priceOracleFactory,
+            abi.encodeCall(IMarketFactory.onUpdatePriceOracle, (address(pool), newPriceOracle, priceOracle))
+        );
+        vm.expectCall(
+            creditFactory,
+            abi.encodeCall(IMarketFactory.onUpdatePriceOracle, (address(creditManager), newPriceOracle, priceOracle))
+        );
+
+        // Expect price feed transfers
+        vm.expectCall(newPriceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (WETH, CHAINLINK_ETH_USD, 1 days)));
+        vm.expectCall(newPriceOracle, abi.encodeCall(IPriceOracleV3.setPriceFeed, (USDC, CHAINLINK_USDC_USD, 1 days)));
+
+        // Expect credit manager update
+        vm.expectCall(
+            address(creditConfigurator), abi.encodeCall(ICreditConfiguratorV3.setPriceOracle, (newPriceOracle))
+        );
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(priceOracleFactory, address(pool), newPriceOracle);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(priceOracleFactory, address(pool), priceOracle);
+
+        // Update price oracle
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpdatePriceOracle(address(pool), newPriceOracle);
+        marketConfigurator.updatePriceOracle(address(pool));
+    }
+
+    /// @notice Tests interest rate model update
+    function test_MC_23_updateInterestRateModel() public {
+        // Test that only admin can update interest rate model
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.updateInterestRateModel(
+            address(pool),
+            DeployParams({
+                postfix: "LINEAR",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
+            })
+        );
+
+        address oldInterestRateModel = IPoolV3(pool).interestRateModel();
+
+        // Deploy new interest rate model
+        address newInterestRateModel = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "IRM::LINEAR",
+            3_10,
+            abi.encode(100, 200, 100, 100, 200, 300, false),
+            keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator)),
+            interestRateModelFactory
+        );
+
+        // Expect contract deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy,
+                (
+                    "IRM::LINEAR",
+                    3_10,
+                    abi.encode(100, 200, 100, 100, 200, 300, false),
+                    keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator))
+                )
+            )
+        );
+
+        // Expect factory hooks
+        vm.expectCall(
+            poolFactory,
+            abi.encodeCall(
+                IMarketFactory.onUpdateInterestRateModel, (address(pool), newInterestRateModel, oldInterestRateModel)
+            )
+        );
+        vm.expectCall(
+            interestRateModelFactory,
+            abi.encodeCall(
+                IMarketFactory.onUpdateInterestRateModel, (address(pool), newInterestRateModel, oldInterestRateModel)
+            )
+        );
+
+        // Expect hook calls from PoolFactory
+        vm.expectCall(address(pool), abi.encodeCall(IPoolV3.setInterestRateModel, (newInterestRateModel)));
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(interestRateModelFactory, address(pool), newInterestRateModel);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(interestRateModelFactory, address(pool), oldInterestRateModel);
+
+        // Update interest rate model
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpdateInterestRateModel(address(pool), newInterestRateModel);
+        marketConfigurator.updateInterestRateModel(
+            address(pool),
+            DeployParams({
+                postfix: "LINEAR",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
+            })
+        );
+    }
+
+    /// @notice Tests rate keeper update
+    function test_MC_24_updateRateKeeper() public {
+        // Test that only admin can update rate keeper
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.updateRateKeeper(
+            address(pool),
+            DeployParams({
+                postfix: "GAUGE",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(address(pool), gearStaking)
+            })
+        );
+
+        address quotaKeeper = IPoolV3(pool).poolQuotaKeeper();
+        address oldRateKeeper = IPoolQuotaKeeperV3(quotaKeeper).gauge();
+
+        // Deploy new rate keeper
+        address newRateKeeper = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "RATE_KEEPER::GAUGE",
+            3_10,
+            abi.encode(address(pool), gearStaking),
+            keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator)),
+            rateKeeperFactory
+        );
+
+        // Expect contract deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy,
+                (
+                    "RATE_KEEPER::GAUGE",
+                    3_10,
+                    abi.encode(address(pool), gearStaking),
+                    keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator))
+                )
+            )
+        );
+
+        // Expect factory hooks
+        vm.expectCall(
+            poolFactory,
+            abi.encodeCall(IMarketFactory.onUpdateRateKeeper, (address(pool), newRateKeeper, oldRateKeeper))
+        );
+        vm.expectCall(
+            rateKeeperFactory,
+            abi.encodeCall(IMarketFactory.onUpdateRateKeeper, (address(pool), newRateKeeper, oldRateKeeper))
+        );
+
+        // Expect hook calls from PoolFactory
+        vm.expectCall(quotaKeeper, abi.encodeCall(IPoolQuotaKeeperV3.setGauge, (newRateKeeper)));
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(rateKeeperFactory, address(pool), newRateKeeper);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(rateKeeperFactory, address(pool), oldRateKeeper);
+
+        // Update rate keeper
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpdateRateKeeper(address(pool), newRateKeeper);
+        marketConfigurator.updateRateKeeper(
+            address(pool),
+            DeployParams({
+                postfix: "GAUGE",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(address(pool), gearStaking)
+            })
+        );
+    }
+
+    /// @notice Tests loss policy update
+    function test_MC_25_updateLossPolicy() public {
+
+        address contractsRegister = marketConfigurator.contractsRegister();
+
+        // Test that only admin can update loss policy
+        vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotAdminException.selector, address(this)));
+        marketConfigurator.updateLossPolicy(
+            address(pool),
+            DeployParams({
+                postfix: "MOCK",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(address(pool), addressProvider)
+            })
+        );
+
+        address oldLossPolicy = IContractsRegister(marketConfigurator.contractsRegister()).getLossPolicy(address(pool));
+
+        // Deploy new loss policy
+        address newLossPolicy = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "LOSS_POLICY::MOCK",
+            3_10,
+            abi.encode(address(pool), addressProvider),
+            keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator)),
+            lossPolicyFactory
+        );
+
+        // Expect contract deployment
+        vm.expectCall(
+            bytecodeRepository,
+            abi.encodeCall(
+                IBytecodeRepository.deploy,
+                (
+                    "LOSS_POLICY::MOCK",
+                    3_10,
+                    abi.encode(address(pool), addressProvider),
+                    keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator))
+                )
+            )
+        );
+
+        // Expect factory hooks
+        vm.expectCall(
+            poolFactory,
+            abi.encodeCall(IMarketFactory.onUpdateLossPolicy, (address(pool), newLossPolicy, oldLossPolicy))
+        );
+        vm.expectCall(
+            lossPolicyFactory,
+            abi.encodeCall(IMarketFactory.onUpdateLossPolicy, (address(pool), newLossPolicy, oldLossPolicy))
+        );
+        vm.expectCall(
+            creditFactory,
+            abi.encodeCall(IMarketFactory.onUpdateLossPolicy, (address(creditManager), newLossPolicy, oldLossPolicy))
+        );
+
+        // Expect hook calls from CreditFactory
+        vm.expectCall(address(creditConfigurator), abi.encodeCall(ICreditConfiguratorV3.setLossPolicy, (newLossPolicy)));
+
+        vm.expectCall(contractsRegister, abi.encodeCall(IContractsRegister.setLossPolicy, (address(pool), newLossPolicy)));
+
+        // Expect factory authorization changes
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.AuthorizeFactory(lossPolicyFactory, address(pool), newLossPolicy);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UnauthorizeFactory(lossPolicyFactory, address(pool), oldLossPolicy);
+
+        // Update loss policy
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true);
+        emit IMarketConfigurator.UpdateLossPolicy(address(pool), newLossPolicy);
+        marketConfigurator.updateLossPolicy(
+            address(pool),
+            DeployParams({
+                postfix: "MOCK",
+                salt: bytes32(uint256(1)),
+                constructorParams: abi.encode(address(pool), addressProvider)
+            })
+        );
     }
 }
