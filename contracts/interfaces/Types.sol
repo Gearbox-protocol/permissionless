@@ -14,10 +14,15 @@ struct CrossChainCall {
     bytes callData;
 }
 
-struct SignedProposal {
+struct SignedBatch {
     string name;
     bytes32 prevHash;
     CrossChainCall[] calls;
+    bytes[] signatures;
+}
+
+struct SignedRecoveryModeMessage {
+    bytes32 startingBatchHash;
     bytes[] signatures;
 }
 

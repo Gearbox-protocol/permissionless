@@ -9,7 +9,7 @@ import {LibString} from "@solady/utils/LibString.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {SignedProposal, CrossChainCall} from "../interfaces/ICrossChainMultisig.sol";
+import {SignedBatch, CrossChainCall, SignedRecoveryModeMessage} from "../interfaces/ICrossChainMultisig.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
 import {LibString} from "@solady/utils/LibString.sol";
@@ -34,18 +34,21 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
     // EIP-712 type hash for Proposal only
     bytes32 public constant CROSS_CHAIN_CALL_TYPEHASH =
         keccak256("CrossChainCall(uint256 chainId,address target,bytes callData)");
-    bytes32 public constant PROPOSAL_TYPEHASH = keccak256("Proposal(string name,bytes32 proposalHash,bytes32 prevHash)");
+    bytes32 public constant BATCH_TYPEHASH = keccak256("Batch(string name,bytes32 batchHash,bytes32 prevHash)");
+    bytes32 public constant RECOVERY_MODE_TYPEHASH = keccak256("RecoveryMode(bytes32 startingBatchHash)");
 
     uint8 public confirmationThreshold;
 
-    bytes32 public lastProposalHash;
+    bytes32 public lastBatchHash;
 
     EnumerableSet.AddressSet internal _signers;
 
-    bytes32[] internal _executedProposalHashes;
+    bytes32[] internal _executedBatchHashes;
 
-    mapping(bytes32 => EnumerableSet.Bytes32Set) internal _connectedProposalHashes;
-    mapping(bytes32 => SignedProposal) internal _signedProposals;
+    mapping(bytes32 => EnumerableSet.Bytes32Set) internal _connectedBatchHashes;
+    mapping(bytes32 => SignedBatch) internal _signedBatches;
+
+    bool public recoveryModeEnabled = false;
 
     modifier onlyOnMainnet() {
         if (block.chainid != 1) revert CantBeExecutedOnCurrentChainException();
@@ -85,77 +88,89 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
     // Executed by Gearbox DAO on Mainnet
     // @param: calls - Array of CrossChainCall structs
     // @param: prevHash - Hash of the previous proposal (zero if first proposal)
-    function submitProposal(string calldata name, CrossChainCall[] calldata calls, bytes32 prevHash)
+    function submitBatch(string calldata name, CrossChainCall[] calldata calls, bytes32 prevHash)
         external
         onlyOwner
         onlyOnMainnet
         nonReentrant
     {
-        _verifyProposal({calls: calls, prevHash: prevHash});
+        _verifyBatch({calls: calls, prevHash: prevHash});
 
-        bytes32 proposalHash = hashProposal({name: name, calls: calls, prevHash: prevHash});
+        bytes32 batchHash = hashBatch({name: name, calls: calls, prevHash: prevHash});
 
-        // Copy proposal to storage
-        SignedProposal storage signedProposal = _signedProposals[proposalHash];
+        // Copy batch to storage
+        SignedBatch storage signedBatch = _signedBatches[batchHash];
 
         uint256 len = calls.length;
         for (uint256 i = 0; i < len; ++i) {
-            signedProposal.calls.push(calls[i]);
+            signedBatch.calls.push(calls[i]);
         }
-        signedProposal.prevHash = prevHash;
-        signedProposal.name = name;
+        signedBatch.prevHash = prevHash;
+        signedBatch.name = name;
 
-        _connectedProposalHashes[lastProposalHash].add(proposalHash);
+        _connectedBatchHashes[lastBatchHash].add(batchHash);
 
-        emit SubmitProposal(proposalHash);
+        emit SubmitBatch(batchHash);
     }
 
     // @dev: Sign a proposal
     // Executed by any signer to make cross-chain distribution possible
     // @param: proposalHash - Hash of the proposal to sign
     // @param: signature - Signature of the proposal
-    function signProposal(bytes32 proposalHash, bytes calldata signature) external onlyOnMainnet nonReentrant {
-        SignedProposal storage signedProposal = _signedProposals[proposalHash];
-        if (signedProposal.prevHash != lastProposalHash) {
+    function signBatch(bytes32 batchHash, bytes calldata signature) external onlyOnMainnet nonReentrant {
+        SignedBatch storage signedBatch = _signedBatches[batchHash];
+        if (signedBatch.prevHash != lastBatchHash) {
             revert InvalidPrevHashException();
         }
-        bytes32 digest =
-            _hashTypedDataV4(computeSignProposalHash(signedProposal.name, proposalHash, signedProposal.prevHash));
+        bytes32 digest = _hashTypedDataV4(computeSignBatchHash(signedBatch.name, batchHash, signedBatch.prevHash));
 
         address signer = ECDSA.recover(digest, signature);
         if (!_signers.contains(signer)) revert SignerDoesNotExistException();
 
-        signedProposal.signatures.push(signature);
+        signedBatch.signatures.push(signature);
 
-        uint256 validSignatures = _verifySignatures({signatures: signedProposal.signatures, digest: digest});
+        uint256 validSignatures = _verifySignatures({signatures: signedBatch.signatures, digest: digest});
 
-        emit SignProposal(proposalHash, signer);
+        emit SignBatch(batchHash, signer);
 
         if (validSignatures >= confirmationThreshold) {
-            _verifyProposal({calls: signedProposal.calls, prevHash: signedProposal.prevHash});
-            _executeProposal({calls: signedProposal.calls, proposalHash: proposalHash});
+            _verifyBatch({calls: signedBatch.calls, prevHash: signedBatch.prevHash});
+            _executeBatch({calls: signedBatch.calls, batchHash: batchHash});
         }
     }
 
     // @dev: Execute a proposal on other chain permissionlessly
-    function executeProposal(SignedProposal calldata signedProposal) external onlyOnNotMainnet nonReentrant {
-        bytes32 proposalHash = hashProposal(signedProposal.name, signedProposal.calls, signedProposal.prevHash);
+    function executeBatch(SignedBatch calldata signedBatch) external onlyOnNotMainnet nonReentrant {
+        bytes32 batchHash = hashBatch(signedBatch.name, signedBatch.calls, signedBatch.prevHash);
 
-        // Check proposal is valid
-        _verifyProposal({calls: signedProposal.calls, prevHash: signedProposal.prevHash});
+        // Check batch is valid
+        _verifyBatch({calls: signedBatch.calls, prevHash: signedBatch.prevHash});
 
-        bytes32 digest =
-            _hashTypedDataV4(computeSignProposalHash(signedProposal.name, proposalHash, signedProposal.prevHash));
+        bytes32 digest = _hashTypedDataV4(computeSignBatchHash(signedBatch.name, batchHash, signedBatch.prevHash));
 
-        // Check if enough signatures are valid
-        uint256 validSignatures = _verifySignatures({signatures: signedProposal.signatures, digest: digest});
+        uint256 validSignatures = _verifySignatures({signatures: signedBatch.signatures, digest: digest});
         if (validSignatures < confirmationThreshold) revert NotEnoughSignaturesException();
 
-        _executeProposal({calls: signedProposal.calls, proposalHash: proposalHash});
+        _executeBatch({calls: signedBatch.calls, batchHash: batchHash});
     }
 
-    function _verifyProposal(CrossChainCall[] memory calls, bytes32 prevHash) internal view {
-        if (prevHash != lastProposalHash) revert InvalidPrevHashException();
+    // @dev: Enable recovery mode
+    function enableRecoveryMode(SignedRecoveryModeMessage memory message) external onlyOnNotMainnet nonReentrant {
+        bytes32 digest = _hashTypedDataV4(computeRecoveryModeHash(message.startingBatchHash));
+
+        if (message.startingBatchHash != lastBatchHash) {
+            revert InvalidRecoveryModeMessageException();
+        }
+
+        uint256 validSignatures = _verifySignatures({signatures: message.signatures, digest: digest});
+        if (validSignatures < confirmationThreshold) revert NotEnoughSignaturesException();
+
+        recoveryModeEnabled = true;
+        emit EnableRecoveryMode(message.startingBatchHash);
+    }
+
+    function _verifyBatch(CrossChainCall[] memory calls, bytes32 prevHash) internal view {
+        if (prevHash != lastBatchHash) revert InvalidPrevHashException();
         if (calls.length == 0) revert NoCallsInProposalException();
 
         uint256 len = calls.length;
@@ -197,23 +212,34 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
     // @dev: Execute proposal calls and update state
     // @param: calls - Array of cross-chain calls to execute
     // @param: proposalHash - Hash of the proposal being executed
-    function _executeProposal(CrossChainCall[] memory calls, bytes32 proposalHash) internal {
-        // Execute each call in the proposal
-        uint256 len = calls.length;
-        for (uint256 i = 0; i < len; ++i) {
-            CrossChainCall memory call = calls[i];
-            uint256 chainId = call.chainId;
+    function _executeBatch(CrossChainCall[] memory calls, bytes32 batchHash) internal {
+        if (!_isRecovery(calls[0])) {
+            // Execute each call in the batch
+            uint256 len = calls.length;
+            for (uint256 i = 0; i < len; ++i) {
+                CrossChainCall memory call = calls[i];
+                uint256 chainId = call.chainId;
 
-            if (chainId == 0 || chainId == block.chainid) {
-                // QUESTION: add try{} catch{} to achieve 100% execution
-                Address.functionCall(call.target, call.callData, "Call execution failed");
+                if (chainId == 0 || chainId == block.chainid) {
+                    Address.functionCall(call.target, call.callData, "Call execution failed");
+                }
             }
         }
 
-        _executedProposalHashes.push(proposalHash);
-        lastProposalHash = proposalHash;
+        _executedBatchHashes.push(batchHash);
+        lastBatchHash = batchHash;
 
-        emit ExecuteProposal(proposalHash);
+        emit ExecuteBatch(batchHash);
+    }
+
+    // @dev: Check whether the batch needs to be skipped due to recovery mode
+    function _isRecovery(CrossChainCall memory call0) internal view returns (bool) {
+        if (!recoveryModeEnabled) return false;
+
+        return !(
+            (call0.chainId == 0) && (call0.target == address(this))
+                && (bytes4(call0.callData) == ICrossChainMultisig.disableRecoveryMode.selector)
+        );
     }
 
     //
@@ -252,10 +278,17 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
         emit SetConfirmationThreshold(newConfirmationThreshold); // U:[SM-1]
     }
 
+    function disableRecoveryMode() external onlySelf {
+        if (recoveryModeEnabled) {
+            recoveryModeEnabled = false;
+            emit DisableRecoveryMode();
+        }
+    }
+
     //
     // HELPERS
     //
-    function hashProposal(string calldata name, CrossChainCall[] calldata calls, bytes32 prevHash)
+    function hashBatch(string calldata name, CrossChainCall[] calldata calls, bytes32 prevHash)
         public
         pure
         returns (bytes32)
@@ -270,12 +303,16 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
         return keccak256(abi.encode(keccak256(bytes(name)), keccak256(abi.encodePacked(callsHash)), prevHash));
     }
 
-    function computeSignProposalHash(string memory name, bytes32 proposalHash, bytes32 prevHash)
+    function computeSignBatchHash(string memory name, bytes32 batchHash, bytes32 prevHash)
         public
         pure
         returns (bytes32)
     {
-        return keccak256(abi.encode(PROPOSAL_TYPEHASH, keccak256(bytes(name)), proposalHash, prevHash));
+        return keccak256(abi.encode(BATCH_TYPEHASH, keccak256(bytes(name)), batchHash, prevHash));
+    }
+
+    function computeRecoveryModeHash(bytes32 startingBatchHash) public pure returns (bytes32) {
+        return keccak256(abi.encode(RECOVERY_MODE_TYPEHASH, startingBatchHash));
     }
 
     //
@@ -285,16 +322,16 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
         return _signers.values();
     }
 
-    function getProposal(bytes32 proposalHash) external view returns (SignedProposal memory result) {
-        return _signedProposals[proposalHash];
+    function getBatch(bytes32 batchHash) external view returns (SignedBatch memory result) {
+        return _signedBatches[batchHash];
     }
 
-    function getCurrentProposalHashes() external view returns (bytes32[] memory) {
-        return _connectedProposalHashes[lastProposalHash].values();
+    function getCurrentBatchHashes() external view returns (bytes32[] memory) {
+        return _connectedBatchHashes[lastBatchHash].values();
     }
 
-    function getExecutedProposalHashes() external view returns (bytes32[] memory) {
-        return _executedProposalHashes;
+    function getExecutedBatchHashes() external view returns (bytes32[] memory) {
+        return _executedBatchHashes;
     }
 
     function isSigner(address account) external view returns (bool) {

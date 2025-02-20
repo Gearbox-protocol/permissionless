@@ -5,7 +5,7 @@ pragma solidity ^0.8.23;
 
 import {SignatureHelper} from "./SignatureHelper.sol";
 import {CrossChainMultisig} from "../../../contracts/global/CrossChainMultisig.sol";
-import {CrossChainCall, SignedProposal} from "../../../contracts/interfaces/ICrossChainMultisig.sol";
+import {CrossChainCall, SignedBatch} from "../../../contracts/interfaces/ICrossChainMultisig.sol";
 
 import {console} from "forge-std/console.sol";
 import {LibString} from "@solady/utils/LibString.sol";
@@ -19,7 +19,7 @@ contract CCGHelper is SignatureHelper {
     using LibString for uint256;
     // Core contracts
 
-    bytes32 constant PROPOSAL_TYPEHASH = keccak256("Proposal(string name,bytes32 proposalHash,bytes32 prevHash)");
+    bytes32 constant BATCH_TYPEHASH = keccak256("Batch(string name,bytes32 batchHash,bytes32 prevHash)");
 
     CrossChainMultisig internal multisig;
 
@@ -31,7 +31,7 @@ contract CCGHelper is SignatureHelper {
 
     address internal dao;
 
-    bytes32 prevProposalHash;
+    bytes32 prevBatchHash;
 
     constructor() {
         signer1Key = _generatePrivateKey("SIGNER_1");
@@ -66,7 +66,7 @@ contract CCGHelper is SignatureHelper {
             dao
         );
 
-        prevProposalHash = 0;
+        prevBatchHash = 0;
     }
 
     function _attachCCG() internal {
@@ -77,7 +77,7 @@ contract CCGHelper is SignatureHelper {
         }
         multisig = CrossChainMultisig(ccg);
 
-        prevProposalHash = multisig.lastProposalHash();
+        prevBatchHash = multisig.lastBatchHash();
     }
 
     function computeCCGAddress() internal view returns (address) {
@@ -93,25 +93,21 @@ contract CCGHelper is SignatureHelper {
         );
     }
 
-    function _submitProposal(string memory name, CrossChainCall[] memory calls) internal {
+    function _submitBatch(string memory name, CrossChainCall[] memory calls) internal {
         _startPrankOrBroadcast(dao);
-        multisig.submitProposal(name, calls, prevProposalHash);
+        multisig.submitBatch(name, calls, prevBatchHash);
         _stopPrankOrBroadcast();
     }
 
-    function _signCurrentProposal() internal {
-        bytes32[] memory currentProposalHashes = multisig.getCurrentProposalHashes();
+    function _signCurrentBatch() internal {
+        bytes32[] memory currentBatchHashes = multisig.getCurrentBatchHashes();
 
-        SignedProposal memory currentProposal = multisig.getProposal(currentProposalHashes[0]);
+        SignedBatch memory currentBatch = multisig.getBatch(currentBatchHashes[0]);
 
-        bytes32 proposalHash =
-            multisig.hashProposal(currentProposal.name, currentProposal.calls, currentProposal.prevHash);
+        bytes32 batchHash = multisig.hashBatch(currentBatch.name, currentBatch.calls, currentBatch.prevHash);
 
-        bytes32 structHash = keccak256(
-            abi.encode(
-                PROPOSAL_TYPEHASH, keccak256(bytes(currentProposal.name)), proposalHash, currentProposal.prevHash
-            )
-        );
+        bytes32 structHash =
+            keccak256(abi.encode(BATCH_TYPEHASH, keccak256(bytes(currentBatch.name)), batchHash, currentBatch.prevHash));
 
         if (!_isTestMode()) {
             console.log("tt");
@@ -120,32 +116,32 @@ contract CCGHelper is SignatureHelper {
 
         bytes memory signature1 = _sign(signer1Key, ECDSA.toTypedDataHash(_ccmDomainSeparator(), structHash));
 
-        multisig.signProposal(proposalHash, signature1);
+        multisig.signBatch(batchHash, signature1);
         if (!_isTestMode()) {
             console.log("== SIGNER 1 ==");
-            console.log("name", currentProposal.name);
-            console.log("proposalHash");
-            console.logBytes32(proposalHash);
+            console.log("name", currentBatch.name);
+            console.log("batchHash");
+            console.logBytes32(batchHash);
             console.log("prevHash");
-            console.logBytes32(currentProposal.prevHash);
+            console.logBytes32(currentBatch.prevHash);
             console.log(signature1.toHexString());
         }
 
         bytes memory signature2 = _sign(signer2Key, ECDSA.toTypedDataHash(_ccmDomainSeparator(), structHash));
-        multisig.signProposal(proposalHash, signature2);
+        multisig.signBatch(batchHash, signature2);
 
         if (!_isTestMode()) {
             console.log("== SIGNER 2==");
-            console.log("name", currentProposal.name);
+            console.log("name", currentBatch.name);
             console.log(signature2.toHexString());
         }
 
-        prevProposalHash = proposalHash;
+        prevBatchHash = batchHash;
     }
 
-    function _submitProposalAndSign(string memory name, CrossChainCall[] memory calls) internal {
-        _submitProposal(name, calls);
-        _signCurrentProposal();
+    function _submitBatchAndSign(string memory name, CrossChainCall[] memory calls) internal {
+        _submitBatch(name, calls);
+        _signCurrentBatch();
     }
 
     function _ccmDomainSeparator() internal view returns (bytes32) {

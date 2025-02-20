@@ -40,7 +40,7 @@ import {
     AP_CREDIT_CONFIGURATOR,
     NO_VERSION_CONTROL
 } from "../../libraries/ContractLiterals.sol";
-import {SignedProposal, Bytecode} from "../../interfaces/Types.sol";
+import {SignedBatch, Bytecode} from "../../interfaces/Types.sol";
 
 import {CreditFactory} from "../../factories/CreditFactory.sol";
 import {InterestRateModelFactory} from "../../factories/InterestRateModelFactory.sol";
@@ -95,7 +95,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         // activate instance
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateActivateCall(1, instanceOwner, TREASURY, WETH, GEAR);
-        _submitProposalAndSign("Activate instance", calls);
+        _submitBatchAndSign("Activate instance", calls);
 
         // Configure instance
         _setupPriceFeedStore();
@@ -111,7 +111,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         calls[0] = _generateAllowSystemContractCall(bytecodeHash);
 
-        _submitProposalAndSign("Allow system contracts", calls);
+        _submitBatchAndSign("Allow system contracts", calls);
     }
 
     function _setupPriceFeedStore() internal {

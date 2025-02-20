@@ -18,6 +18,6 @@ contract CCGTestScript is Script, GlobalSetup {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateDeploySystemContractCall(AP_POOL_FACTORY, 3_10, true);
 
-        _submitProposal("Testtt", calls);
+        _submitBatch("Testtt", calls);
     }
 }

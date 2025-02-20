@@ -85,7 +85,7 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
 
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateActivateCall(1, instanceOwner, makeAddr("TREASURY"), WETH, GEAR);
-        _submitProposalAndSign("Activate instance", calls);
+        _submitBatchAndSign("Activate instance", calls);
 
         _setupPriceFeedStore();
 
@@ -148,7 +148,7 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
 
         calls[0] = _generateAllowSystemContractCall(bytecodeHash);
 
-        _submitProposalAndSign("Allow system contracts", calls);
+        _submitBatchAndSign("Allow system contracts", calls);
     }
 
     function _deployTestPool() internal returns (address) {
