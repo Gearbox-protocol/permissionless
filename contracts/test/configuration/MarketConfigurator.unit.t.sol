@@ -1305,7 +1305,15 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
         expectedCreditFacade = IBytecodeRepository(bytecodeRepository).computeAddress(
             "CREDIT_FACADE",
             3_10,
-            abi.encode(expectedCreditManager, lossPolicy, botList, WETH, facadeParams.degenNFT, facadeParams.expirable),
+            abi.encode(
+                addressProvider,
+                expectedCreditManager,
+                lossPolicy,
+                botList,
+                WETH,
+                facadeParams.degenNFT,
+                facadeParams.expirable
+            ),
             bytes32(bytes20(address(marketConfigurator))),
             creditFactory
         );
@@ -1356,7 +1364,13 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
                     "CREDIT_FACADE",
                     3_10,
                     abi.encode(
-                        expectedCreditManager, lossPolicy, botList, WETH, facadeParams.degenNFT, facadeParams.expirable
+                        addressProvider,
+                        expectedCreditManager,
+                        lossPolicy,
+                        botList,
+                        WETH,
+                        facadeParams.degenNFT,
+                        facadeParams.expirable
                     ),
                     bytes32(bytes20(address(marketConfigurator)))
                 )
@@ -1688,7 +1702,6 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
 
     /// @notice Tests loss policy update
     function test_MC_25_updateLossPolicy() public {
-
         address contractsRegister = marketConfigurator.contractsRegister();
 
         // Test that only admin can update loss policy
@@ -1744,7 +1757,9 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
         // Expect hook calls from CreditFactory
         vm.expectCall(address(creditConfigurator), abi.encodeCall(ICreditConfiguratorV3.setLossPolicy, (newLossPolicy)));
 
-        vm.expectCall(contractsRegister, abi.encodeCall(IContractsRegister.setLossPolicy, (address(pool), newLossPolicy)));
+        vm.expectCall(
+            contractsRegister, abi.encodeCall(IContractsRegister.setLossPolicy, (address(pool), newLossPolicy))
+        );
 
         // Expect factory authorization changes
         vm.expectEmit(true, true, true, true);
