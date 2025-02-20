@@ -3,8 +3,6 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
-import {AP_INSTANCE_MANAGER} from "./ContractLiterals.sol";
 import {LibString} from "@solady/utils/LibString.sol";
 
 library Domain {

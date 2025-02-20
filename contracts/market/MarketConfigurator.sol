@@ -238,7 +238,7 @@ contract MarketConfigurator is DeployerTrait, IMarketConfigurator {
     ) external override onlyAdmin returns (address pool) {
         MarketFactories memory factories = _getLatestMarketFactories(minorVersion);
 
-        // NOTE: some version of pool factory might need underlying to mint dead shares
+        // NOTE: some implementations of pool factory might need underlying to mint dead shares
         IERC20(underlying).forceApprove(factories.poolFactory, type(uint256).max);
         pool = _deployPool(factories.poolFactory, underlying, name, symbol);
         IERC20(underlying).forceApprove(factories.poolFactory, 0);
