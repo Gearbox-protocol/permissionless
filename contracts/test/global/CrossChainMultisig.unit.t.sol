@@ -567,7 +567,7 @@ contract CrossChainMultisigTest is Test, SignatureHelper {
             target: address(multisig),
             callData: abi.encodeWithSelector(ICrossChainMultisig.disableRecoveryMode.selector)
         });
-        calls2[1] = CrossChainCall({chainId: 5, target: calledContract, callData: hex"1234"}); 
+        calls2[1] = CrossChainCall({chainId: 5, target: calledContract, callData: hex"1234"});
 
         SignedBatch memory batch2 =
             SignedBatch({name: "test2", calls: calls2, prevHash: batchHash, signatures: new bytes[](2)});
@@ -634,5 +634,14 @@ contract CrossChainMultisigTest is Test, SignatureHelper {
 
         vm.expectRevert(ICrossChainMultisig.NotEnoughSignaturesException.selector);
         multisig.enableRecoveryMode(SignedRecoveryModeMessage({startingBatchHash: batchHash, signatures: signatures}));
+    }
+
+    function test_CCG_27_cannot_reduce_signers_below_threshold() public {
+        vm.prank(address(multisig));
+        multisig.removeSigner(signers[0]);
+
+        vm.expectRevert(ICrossChainMultisig.InvalidConfirmationThresholdValueException.selector);
+        vm.prank(address(multisig));
+        multisig.removeSigner(signers[1]);
     }
 }

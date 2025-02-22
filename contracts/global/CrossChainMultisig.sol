@@ -261,6 +261,7 @@ contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossCh
     // @param: signer - Address of the signer to remove
     function removeSigner(address signer) external onlySelf {
         if (!_signers.remove(signer)) revert SignerDoesNotExistException();
+        if (_signers.length() < confirmationThreshold) revert InvalidConfirmationThresholdValueException();
         emit RemoveSigner(signer);
     }
 
