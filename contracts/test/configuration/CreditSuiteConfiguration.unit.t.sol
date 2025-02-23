@@ -102,6 +102,65 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             IMarketConfigurator(marketConfigurator).getAuthorizedFactory(expectedAdapter) == creditFactory,
             "Factory must be authorized"
         );
+
+        // Now deploy second adapter with different salt
+        DeployParams memory params2 = DeployParams({
+            postfix: "BALANCER_VAULT",
+            salt: bytes32(uint256(1)),
+            constructorParams: abi.encode(address(creditManager), target)
+        });
+
+        address expectedAdapter2 = IBytecodeRepository(bytecodeRepository).computeAddress(
+            "ADAPTER::BALANCER_VAULT",
+            3_10,
+            params2.constructorParams,
+            keccak256(abi.encode(uint256(1), address(marketConfigurator))),
+            creditFactory
+        );
+
+        // Expect first adapter to be unauthorized
+        vm.expectCall(
+            address(marketConfigurator),
+            abi.encodeCall(
+                IMarketConfigurator.unauthorizeFactory, (creditFactory, address(creditManager), expectedAdapter)
+            )
+        );
+        vm.expectCall(
+            address(marketConfigurator),
+            abi.encodeCall(
+                IMarketConfigurator.authorizeFactory, (creditFactory, address(creditManager), expectedAdapter2)
+            )
+        );
+        vm.expectCall(
+            address(creditConfigurator), abi.encodeCall(ICreditConfiguratorV3.allowAdapter, (expectedAdapter2))
+        );
+
+        vm.prank(admin);
+        marketConfigurator.configureCreditSuite(
+            address(creditManager), abi.encodeCall(ICreditConfigureActions.allowAdapter, (params2))
+        );
+
+        // Verify first adapter is forbidden and factory is unauthorized
+        assertEq(
+            ICreditManagerV3(creditManager).adapterToContract(expectedAdapter),
+            address(0),
+            "First adapter must be forbidden"
+        );
+        assertTrue(
+            IMarketConfigurator(marketConfigurator).getAuthorizedFactory(expectedAdapter) == address(0),
+            "Factory must be unauthorized for first adapter"
+        );
+
+        // Verify second adapter is allowed and factory is authorized
+        assertEq(
+            ICreditManagerV3(creditManager).adapterToContract(expectedAdapter2),
+            target,
+            "Second adapter must be allowed"
+        );
+        assertTrue(
+            IMarketConfigurator(marketConfigurator).getAuthorizedFactory(expectedAdapter2) == creditFactory,
+            "Factory must be authorized for second adapter"
+        );
     }
 
     function test_CS_02_forbidAdapter() public {
@@ -283,6 +342,7 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             address(creditConfigurator),
             abi.encodeCall(ICreditConfiguratorV3.upgradeCreditConfigurator, (expectedNewConfigurator))
         );
+        vm.expectCall(address(expectedNewConfigurator), abi.encodeCall(ICreditConfiguratorV3.makeAllTokensQuoted, ()));
 
         vm.prank(admin);
         marketConfigurator.configureCreditSuite(

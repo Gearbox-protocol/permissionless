@@ -414,12 +414,17 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
         assertEq(targets.length, 1, "Incorrect number of targets");
         assertEq(targets[0], target, "Incorrect target address");
 
-        // Test authorizing already authorized target
+        // Test no-op authorizing already authorized target
+        vm.prank(address(marketConfigurator));
+        marketConfigurator.authorizeFactory(factory, suite, target);
+
+        // Test authorizing already authorized target by wrong factory
+        address wrongFactory = makeAddr("WRONG_FACTORY");
         vm.prank(address(marketConfigurator));
         vm.expectRevert(
-            abi.encodeWithSelector(IMarketConfigurator.UnauthorizedFactoryException.selector, factory, target)
+            abi.encodeWithSelector(IMarketConfigurator.UnauthorizedFactoryException.selector, wrongFactory, target)
         );
-        marketConfigurator.authorizeFactory(factory, suite, target);
+        marketConfigurator.authorizeFactory(wrongFactory, suite, target);
     }
 
     /// @notice Tests factory unauthorization
@@ -436,6 +441,14 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
         vm.expectRevert(abi.encodeWithSelector(IMarketConfigurator.CallerIsNotSelfException.selector, address(this)));
         marketConfigurator.unauthorizeFactory(factory, suite, target);
 
+        // Test unauthorizing target by wrong factory
+        address wrongFactory = makeAddr("WRONG_FACTORY");
+        vm.prank(address(marketConfigurator));
+        vm.expectRevert(
+            abi.encodeWithSelector(IMarketConfigurator.UnauthorizedFactoryException.selector, wrongFactory, target)
+        );
+        marketConfigurator.unauthorizeFactory(wrongFactory, suite, target);
+
         // Test successful factory unauthorized
         vm.prank(address(marketConfigurator));
         vm.expectEmit(true, true, true, true);
@@ -447,13 +460,9 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
         address[] memory targets = marketConfigurator.getFactoryTargets(factory, suite);
         assertEq(targets.length, 0, "Target list not empty");
 
-        // Test unauthorized by wrong factory
-        address wrongFactory = makeAddr("WRONG_FACTORY");
+        // Test no-op unauthorizing already unauthorized target
         vm.prank(address(marketConfigurator));
-        vm.expectRevert(
-            abi.encodeWithSelector(IMarketConfigurator.UnauthorizedFactoryException.selector, wrongFactory, target)
-        );
-        marketConfigurator.unauthorizeFactory(wrongFactory, suite, target);
+        marketConfigurator.unauthorizeFactory(factory, suite, target);
     }
 
     /// @notice Tests pool factory upgrade function

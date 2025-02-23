@@ -630,11 +630,13 @@ contract MarketConfigurator is DeployerTrait, IMarketConfigurator {
     }
 
     function authorizeFactory(address factory, address suite, address target) external override onlySelf {
+        if (_authorizedFactories[target] == factory) return;
         if (_authorizedFactories[target] != address(0)) revert UnauthorizedFactoryException(factory, target);
         _authorizeFactory(factory, suite, target);
     }
 
     function unauthorizeFactory(address factory, address suite, address target) external override onlySelf {
+        if (_authorizedFactories[target] == address(0)) return;
         if (_authorizedFactories[target] != factory) revert UnauthorizedFactoryException(factory, target);
         _unauthorizeFactory(factory, suite, target);
     }

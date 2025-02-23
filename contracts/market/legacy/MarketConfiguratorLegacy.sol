@@ -7,8 +7,6 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
-import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
-import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
@@ -66,6 +64,7 @@ struct LegacyParams {
     address acl;
     address contractsRegister;
     address gearStaking;
+    address priceOracle;
     address zapperRegister;
     address[] pausableAdmins;
     address[] unpausableAdmins;
@@ -158,15 +157,14 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
             if (numCreditManagers == 0) continue;
 
             address quotaKeeper = _quotaKeeper(pool);
-            address priceOracle = _priceOracle(creditManagers[0]);
             address lossPolicy = address(new DefaultLossPolicy(acl));
-            IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
+            IContractsRegister(contractsRegister).registerMarket(pool, legacyParams_.priceOracle, lossPolicy);
 
             for (uint256 j; j < numCreditManagers; ++j) {
                 address creditManager = creditManagers[j];
                 if (!_isV3Contract(creditManager)) continue;
 
-                if (_priceOracle(creditManager) != priceOracle) {
+                if (ICreditManagerV3(creditManager).priceOracle() != legacyParams_.priceOracle) {
                     revert InconsistentPriceOracleException(creditManager);
                 }
 
@@ -210,9 +208,11 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         address interestRateModel = _interestRateModel(pool);
         address rateKeeper = _rateKeeper(quotaKeeper);
         address lossPolicy = IContractsRegister(contractsRegister).getLossPolicy(pool);
+
+        // NOTE: authorize factories for contracts that might be used after the migration;
+        // legacy price oracle is left unauthorized since it's not gonna be used after the migration
         _authorizeFactory(factories.poolFactory, pool, pool);
         _authorizeFactory(factories.poolFactory, pool, quotaKeeper);
-        _authorizeFactory(factories.priceOracleFactory, pool, priceOracle);
         _authorizeFactory(factories.interestRateModelFactory, pool, interestRateModel);
         _authorizeFactory(factories.rateKeeperFactory, pool, rateKeeper);
         _authorizeFactory(factories.lossPolicyFactory, pool, lossPolicy);
@@ -226,14 +226,10 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
 
         address factory = _getLatestCreditFactory(3_10);
         _creditFactories[creditManager] = factory;
-        address creditConfigurator = ICreditManagerV3(creditManager).creditConfigurator();
-        _authorizeFactory(factory, creditManager, creditConfigurator);
-        _authorizeFactory(factory, creditManager, ICreditManagerV3(creditManager).creditFacade());
-        address[] memory adapters = ICreditConfiguratorV3(creditConfigurator).allowedAdapters();
-        uint256 numAdapters = adapters.length;
-        for (uint256 k; k < numAdapters; ++k) {
-            _authorizeFactory(factory, creditManager, adapters[k]);
-        }
+
+        // NOTE: authorizing credit factory for legacy configurator is required since it's used to update to the new one;
+        // legacy facade and adapters are left unauthorized since they're not gonna be used after the migration
+        _authorizeFactory(factory, creditManager, ICreditManagerV3(creditManager).creditConfigurator());
 
         emit CreateCreditSuite(creditManager, factory);
     }
@@ -323,9 +319,5 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         } catch {
             return false;
         }
-    }
-
-    function _priceOracle(address creditManager) internal view returns (address) {
-        return ICreditManagerV3(creditManager).priceOracle();
     }
 }

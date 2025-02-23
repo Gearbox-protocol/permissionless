@@ -4,6 +4,7 @@
 pragma solidity ^0.8.23;
 
 import {IAccountFactory} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IAccountFactory.sol";
+import {IAdapter} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IAdapter.sol";
 import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
@@ -140,7 +141,8 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
             return CallBuilder.build(
                 _upgradeCreditConfigurator(creditConfigurator, newCreditConfigurator),
                 _unauthorizeFactory(msg.sender, creditManager, creditConfigurator),
-                _authorizeFactory(msg.sender, creditManager, newCreditConfigurator)
+                _authorizeFactory(msg.sender, creditManager, newCreditConfigurator),
+                _makeAllTokensQuoted(newCreditConfigurator)
             );
         } else if (selector == ICreditConfigureActions.upgradeCreditFacade.selector) {
             CreditFacadeParams memory params = abi.decode(callData[4:], (CreditFacadeParams));
@@ -154,10 +156,13 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         } else if (selector == ICreditConfigureActions.allowAdapter.selector) {
             DeployParams memory params = abi.decode(callData[4:], (DeployParams));
             address adapter = _deployAdapter(msg.sender, creditManager, params);
-            return CallBuilder.build(
-                _authorizeFactory(msg.sender, creditManager, adapter),
-                _allowAdapter(_creditConfigurator(creditManager), adapter)
-            );
+            address oldAdapter = ICreditManagerV3(creditManager).contractToAdapter(IAdapter(adapter).targetContract());
+            Call memory unauthorizeCall = _unauthorizeFactory(msg.sender, creditManager, oldAdapter);
+            Call memory authorizeCall = _authorizeFactory(msg.sender, creditManager, adapter);
+            Call memory allowCall = _allowAdapter(_creditConfigurator(creditManager), adapter);
+            return oldAdapter != address(0)
+                ? CallBuilder.build(unauthorizeCall, authorizeCall, allowCall)
+                : CallBuilder.build(authorizeCall, allowCall);
         } else if (selector == ICreditConfigureActions.forbidAdapter.selector) {
             address adapter = abi.decode(callData[4:], (address));
             return CallBuilder.build(
@@ -409,5 +414,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         returns (Call memory)
     {
         return Call(creditConfigurator, abi.encodeCall(ICreditConfiguratorV3.setDebtLimits, (minDebt, maxDebt)));
+    }
+
+    function _makeAllTokensQuoted(address creditConfigurator) internal pure returns (Call memory) {
+        return Call(creditConfigurator, abi.encodeCall(ICreditConfiguratorV3.makeAllTokensQuoted, ()));
     }
 }
