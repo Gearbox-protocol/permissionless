@@ -32,32 +32,17 @@ interface IPriceOracleLegacy {
 }
 
 contract PriceOracleFactory is AbstractMarketFactory, IPriceOracleFactory {
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_PRICE_ORACLE_FACTORY;
 
-    /// @notice Address of the price feed store contract
     address public immutable priceFeedStore;
-
-    /// @notice Address of the zero price feed
     address public immutable zeroPriceFeed;
 
-    /// @notice Thrown when trying to set price feed for a token that is not allowed in the price feed store
     error PriceFeedNotAllowedException(address token, address priceFeed);
-
-    /// @notice Thrown when trying to set a price feed that was allowed too recently
     error PriceFeedAllowedTooRecentlyException(address token, address priceFeed);
-
-    /// @notice Thrown when trying to set price feed for a token that has not been added to the market
     error TokenIsNotAddedException(address token);
-
-    /// @notice Thrown when trying to set zero price feed for pool's underlying or a token with non-zero quota
     error ZeroPriceFeedException(address token);
 
-    /// @notice Constructor
-    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         priceFeedStore = _getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
         zeroPriceFeed = IPriceFeedStore(priceFeedStore).zeroPriceFeed();

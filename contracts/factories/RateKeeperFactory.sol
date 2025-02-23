@@ -25,17 +25,11 @@ import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
     using CallBuilder for Call[];
 
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_RATE_KEEPER_FACTORY;
 
-    /// @notice Address of the GEAR staking contract
     address public immutable gearStaking;
 
-    /// @notice Constructor
-    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         gearStaking = _getAddressOrRevert(AP_GEAR_STAKING, NO_VERSION_CONTROL);
     }

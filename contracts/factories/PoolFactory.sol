@@ -31,29 +31,16 @@ import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     using SafeERC20 for IERC20;
 
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_POOL_FACTORY;
 
-    /// @notice Address of the default IRM
     address public immutable defaultInterestRateModel;
 
-    /// @notice Thrown when trying to shutdown a credit suite with non-zero outstanding debt
     error CantShutdownCreditSuiteWithNonZeroDebtException(address creditManager);
-
-    /// @notice Thrown when trying to shutdown a market with non-zero outstanding debt
     error CantShutdownMarketWithNonZeroDebtException(address pool);
-
-    /// @notice Thrown when trying to deploy a pool without funding market configurator to mint dead shares
     error InsufficientFundsForDeploymentException(address underlying);
-
-    /// @notice Thrown when to set non-zero quota limit for a token with zero price feed
     error ZeroPriceFeedException(address token);
 
-    /// @notice Constructor
-    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         defaultInterestRateModel = address(new DefaultIRM());
     }

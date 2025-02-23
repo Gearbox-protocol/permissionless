@@ -40,21 +40,14 @@ import {
 import {AbstractFactory} from "./AbstractFactory.sol";
 
 contract CreditFactory is AbstractFactory, ICreditFactory {
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_CREDIT_FACTORY;
 
-    /// @notice Address of the bot list contract
     address public immutable botList;
 
     error DegenNFTIsNotRegisteredException(address degenNFT);
-
     error TargetContractIsNotAllowedException(address targetCotnract);
 
-    /// @notice Constructor
-    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         botList = _getAddressOrRevert(AP_BOT_LIST, NO_VERSION_CONTROL);
     }

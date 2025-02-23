@@ -76,10 +76,7 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_MARKET_CONFIGURATOR_LEGACY;
 
     address public immutable crossChainGovernanceProxy;
@@ -105,8 +102,6 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         _;
     }
 
-    /// @dev There's no way to validate that `legacyParams_.pausableAdmins` and `legacyParams_.unpausableAdmins` are
-    ///      exhaustive because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
     constructor(
         address addressProvider_,
         address admin_,
@@ -121,6 +116,8 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         contractsRegisterLegacy = legacyParams_.contractsRegister;
         gearStakingLegacy = legacyParams_.gearStaking;
 
+        // NOTE: there's no way to validate that `legacyParams_.pausableAdmins` and `legacyParams_.unpausableAdmins`
+        // are exhaustive because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
         uint256 num = legacyParams_.pausableAdmins.length;
         for (uint256 i; i < num; ++i) {
             address pausableAdmin = legacyParams_.pausableAdmins[i];

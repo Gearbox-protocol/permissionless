@@ -15,10 +15,7 @@ abstract contract DeployerTrait is IDeployerTrait {
     using LibString for string;
     using LibString for bytes32;
 
-    /// @notice Address of the address provider
     address public immutable override addressProvider;
-
-    /// @notice Address of the bytecode repository
     address public immutable override bytecodeRepository;
 
     constructor(address addressProvider_) {

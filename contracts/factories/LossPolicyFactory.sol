@@ -17,14 +17,9 @@ import {AbstractFactory} from "./AbstractFactory.sol";
 import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
 contract LossPolicyFactory is AbstractMarketFactory, ILossPolicyFactory {
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_LOSS_POLICY_FACTORY;
 
-    /// @notice Constructor
-    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {}
 
     // ---------- //
