@@ -13,8 +13,6 @@ contract DefaultLossPolicy is ILossPolicy, ACLTrait {
     AccessMode public override accessMode = AccessMode.Permissioned;
     bool public override checksEnabled = false;
 
-    // QUESTION: shouldn't it take pool address and AP so that it can be used with loss policy factory?
-    // that would make it hard to use in legacy market configurator
     constructor(address acl_) ACLTrait(acl_) {}
 
     function serialize() external view override returns (bytes memory) {

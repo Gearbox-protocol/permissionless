@@ -537,6 +537,15 @@ contract GovernorUnitTest is Test {
         assertTrue(governor.isPermissionlessExecutionAllowed(), "Permissionless execution is forbidden");
     }
 
+    function test_GOV_20_renounceOwnership_reverts() public {
+        vm.expectRevert(IGovernor.CannotRenounceOwnershipException.selector);
+        vm.prank(owner);
+        governor.renounceOwnership();
+
+        vm.expectRevert(IGovernor.CannotRenounceOwnershipException.selector);
+        governor.renounceOwnership();
+    }
+
     // ----- //
     // UTILS //
     // ----- //

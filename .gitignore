@@ -136,3 +136,4 @@ broadcast
 .DS_Store
 .env
 addresses.json
+generated.ts

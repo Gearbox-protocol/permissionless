@@ -69,7 +69,6 @@ import {PriceOracleV3} from "@gearbox-protocol/core-v3/contracts/core/PriceOracl
 import {LinearInterestRateModelV3} from "@gearbox-protocol/core-v3/contracts/pool/LinearInterestRateModelV3.sol";
 import {TumblerV3} from "@gearbox-protocol/core-v3/contracts/pool/TumblerV3.sol";
 import {GaugeV3} from "@gearbox-protocol/core-v3/contracts/pool/GaugeV3.sol";
-import {DefaultLossPolicy} from "../../helpers/DefaultLossPolicy.sol";
 import {CreditManagerV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditManagerV3.sol";
 import {CreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditFacadeV3.sol";
 import {CreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditConfiguratorV3.sol";
@@ -334,14 +333,6 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             UploadableContract({
                 initCode: type(PriceOracleV3).creationCode,
                 contractType: AP_PRICE_ORACLE,
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(DefaultLossPolicy).creationCode,
-                contractType: AP_LOSS_POLICY_DEFAULT,
                 version: 3_10
             })
         );

@@ -60,6 +60,7 @@ contract TimeLock is ITimeLock {
         onlyAdmin
     {
         bytes32 txHash = keccak256(abi.encode(target, value, signature, data, eta));
+        if (!queuedTransactions[txHash]) return;
         queuedTransactions[txHash] = false;
 
         emit CancelTransaction(txHash, target, value, signature, data, eta);
