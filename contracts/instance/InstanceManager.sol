@@ -216,7 +216,7 @@ contract InstanceManager is Ownable, IInstanceManager {
 
     /// @dev Whether there is a legacy instance on this chain
     function _isLegacyChain() internal view returns (bool) {
-        return block.chainid == 1 || block.chainid == 10 || block.chainid == 42161;
+        return block.chainid == 1 || block.chainid == 10 || block.chainid == 146 || block.chainid == 42161;
     }
 
     /// @dev Returns the address of the legacy GEAR staking contract on this chain
@@ -225,6 +225,8 @@ contract InstanceManager is Ownable, IInstanceManager {
             return 0x2fcbD02d5B1D52FC78d4c02890D7f4f47a459c33;
         } else if (block.chainid == 10) {
             return 0x8D2622f1CA3B42b637e2ff6753E6b69D3ab9Adfd;
+        } else if (block.chainid == 146) {
+            return 0xe88846b6C85AA67688e453c7eaeeeb40F51e1F0a;
         } else if (block.chainid == 42161) {
             return 0xf3599BEfe8E79169Afd5f0b7eb0A1aA322F193D9;
         }

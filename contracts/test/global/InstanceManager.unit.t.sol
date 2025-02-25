@@ -303,15 +303,17 @@ contract InstanceManagerTest is Test {
     /// @notice Test legacy GEAR staking deployment
     function test_U_IM_07_deploy_legacy_gear_staking() public {
         // Test on legacy chains
-        uint256[] memory legacyChains = new uint256[](3);
+        uint256[] memory legacyChains = new uint256[](4);
         legacyChains[0] = 1; // Mainnet
         legacyChains[1] = 10; // Optimism
-        legacyChains[2] = 42161; // Arbitrum
+        legacyChains[2] = 146; // Sonic
+        legacyChains[3] = 42161; // Arbitrum
 
-        address[] memory expectedAddresses = new address[](3);
+        address[] memory expectedAddresses = new address[](4);
         expectedAddresses[0] = 0x2fcbD02d5B1D52FC78d4c02890D7f4f47a459c33;
         expectedAddresses[1] = 0x8D2622f1CA3B42b637e2ff6753E6b69D3ab9Adfd;
-        expectedAddresses[2] = 0xf3599BEfe8E79169Afd5f0b7eb0A1aA322F193D9;
+        expectedAddresses[2] = 0xe88846b6C85AA67688e453c7eaeeeb40F51e1F0a;
+        expectedAddresses[3] = 0xf3599BEfe8E79169Afd5f0b7eb0A1aA322F193D9;
 
         for (uint256 i = 0; i < legacyChains.length; i++) {
             vm.chainId(legacyChains[i]);

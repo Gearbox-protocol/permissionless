@@ -162,6 +162,7 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
         return ver - ver % 10;
     }
 
+    /// @dev Reverts if `ver` is less than `100`
     function _validateVersion(bytes32 key, uint256 ver) internal pure {
         if (ver < 100) revert InvalidVersionException(key, ver);
     }
