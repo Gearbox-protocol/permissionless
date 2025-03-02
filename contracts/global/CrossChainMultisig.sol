@@ -3,325 +3,386 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
-import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {LibString} from "@solady/utils/LibString.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {SignedProposal, CrossChainCall} from "../interfaces/ICrossChainMultisig.sol";
-import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {LibString} from "@solady/utils/LibString.sol";
+
+import {CrossChainCall, ICrossChainMultisig} from "../interfaces/ICrossChainMultisig.sol";
+import {SignedBatch, SignedRecoveryModeMessage} from "../interfaces/Types.sol";
 import {EIP712Mainnet} from "../helpers/EIP712Mainnet.sol";
-
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {ICrossChainMultisig} from "../interfaces/ICrossChainMultisig.sol";
-
 import {AP_CROSS_CHAIN_MULTISIG} from "../libraries/ContractLiterals.sol";
 
+/// @title Cross-chain multisig
 contract CrossChainMultisig is EIP712Mainnet, Ownable, ReentrancyGuard, ICrossChainMultisig {
+    using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
     using LibString for bytes32;
-    using LibString for string;
     using LibString for uint256;
 
-    /// @notice Meta info about contract type & version
+    /// @notice Contract version
     uint256 public constant override version = 3_10;
+
+    /// @notice Contract type
     bytes32 public constant override contractType = AP_CROSS_CHAIN_MULTISIG;
 
-    // EIP-712 type hash for Proposal only
-    bytes32 public constant CROSS_CHAIN_CALL_TYPEHASH =
+    /// @notice Cross-chain call typehash
+    bytes32 public constant override CROSS_CHAIN_CALL_TYPEHASH =
         keccak256("CrossChainCall(uint256 chainId,address target,bytes callData)");
-    bytes32 public constant PROPOSAL_TYPEHASH = keccak256("Proposal(string name,bytes32 proposalHash,bytes32 prevHash)");
 
-    uint8 public confirmationThreshold;
+    /// @notice Batch typehash
+    /// @dev This typehash is used to identify batches
+    bytes32 public constant override BATCH_TYPEHASH =
+        keccak256("Batch(string name,CrossChainCall[] calls,bytes32 prevHash)");
 
-    bytes32 public lastProposalHash;
+    /// @notice Compact batch typehash
+    /// @dev This typehash is used for signing to avoid cluttering the message with calls
+    bytes32 public constant override COMPACT_BATCH_TYPEHASH =
+        keccak256("CompactBatch(string name,bytes32 batchHash,bytes32 prevHash)");
 
-    EnumerableSet.AddressSet internal _signers;
+    /// @notice Recovery mode typehash
+    bytes32 public constant override RECOVERY_MODE_TYPEHASH =
+        keccak256("RecoveryMode(uint256 chainId,bytes32 startingBatchHash)");
 
-    bytes32[] internal _executedProposalHashes;
+    /// @notice Confirmation threshold
+    uint8 public override confirmationThreshold;
 
-    mapping(bytes32 => EnumerableSet.Bytes32Set) internal _connectedProposalHashes;
-    mapping(bytes32 => SignedProposal) internal _signedProposals;
+    /// @notice Whether recovery mode is enabled
+    bool public override isRecoveryModeEnabled = false;
 
+    /// @dev Set of approved signers
+    EnumerableSet.AddressSet internal _signersSet;
+
+    /// @dev List of executed batch hashes
+    bytes32[] internal _executedBatchHashes;
+
+    /// @dev Mapping from `batchHash` to the set of connected batch hashes
+    mapping(bytes32 batchHash => EnumerableSet.Bytes32Set) internal _connectedBatchHashes;
+
+    /// @dev Mapping from `batchHash` to signed batch
+    mapping(bytes32 batchHash => SignedBatch) internal _signedBatches;
+
+    /// @dev Ensures that function can only be called on Ethereum Mainnet
     modifier onlyOnMainnet() {
         if (block.chainid != 1) revert CantBeExecutedOnCurrentChainException();
         _;
     }
 
-    modifier onlyOnNotMainnet() {
+    /// @dev Ensures that function can only be called outside Ethereum Mainnet
+    modifier onlyNotOnMainnet() {
         if (block.chainid == 1) revert CantBeExecutedOnCurrentChainException();
         _;
     }
 
+    /// @dev Ensures that function can only be called by the contract itself
     modifier onlySelf() {
-        if (msg.sender != address(this)) revert OnlySelfException();
+        if (msg.sender != address(this)) revert CallerIsNotSelfException(msg.sender);
         _;
     }
 
-    // It's deployed with the same set of parameters on all chains, so it's qddress should be the same
-    // @param: initialSigners - Array of initial signers
-    // @param: _confirmationThreshold - Confirmation threshold
-    // @param: _owner - Owner of the contract. used on Mainnet only, however, it should be same on all chains
-    // to make CREATE2 address the same on all chains
-    constructor(address[] memory initialSigners, uint8 _confirmationThreshold, address _owner)
+    /// @notice Constructor
+    /// @param signers_ Array of initial signers
+    /// @param confirmationThreshold_ Confirmation threshold
+    /// @param owner_ Owner of the contract, assumed to be Gearbox DAO
+    constructor(address[] memory signers_, uint8 confirmationThreshold_, address owner_)
         EIP712Mainnet(contractType.fromSmallString(), version.toString())
-        Ownable()
     {
-        uint256 len = initialSigners.length;
-
-        for (uint256 i = 0; i < len; ++i) {
-            _addSigner(initialSigners[i]); // U:[SM-1]
+        uint256 len = signers_.length;
+        for (uint256 i; i < len; ++i) {
+            _addSigner(signers_[i]);
         }
-
-        _setConfirmationThreshold(_confirmationThreshold); // U:[SM-1]
-        _transferOwnership(_owner); // U:[SM-1]
+        _setConfirmationThreshold(confirmationThreshold_);
+        _transferOwnership(owner_);
     }
 
-    // @dev: Submit a new proposal
-    // Executed by Gearbox DAO on Mainnet
-    // @param: calls - Array of CrossChainCall structs
-    // @param: prevHash - Hash of the previous proposal (zero if first proposal)
-    function submitProposal(string calldata name, CrossChainCall[] calldata calls, bytes32 prevHash)
+    // --------------- //
+    // EIP-712 GETTERS //
+    // --------------- //
+
+    /// @notice Returns the domain separator
+    function domainSeparatorV4() external view override returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+
+    /// @notice Computes struct hash for cross-chain call
+    function computeCrossChainCallHash(CrossChainCall calldata call) public pure override returns (bytes32) {
+        return keccak256(abi.encode(CROSS_CHAIN_CALL_TYPEHASH, call.chainId, call.target, keccak256(call.callData)));
+    }
+
+    /// @notice Computes struct hash for batch
+    function computeBatchHash(string calldata name, CrossChainCall[] calldata calls, bytes32 prevHash)
+        public
+        pure
+        returns (bytes32)
+    {
+        uint256 len = calls.length;
+        bytes32[] memory callHashes = new bytes32[](len);
+        for (uint256 i; i < len; ++i) {
+            callHashes[i] = computeCrossChainCallHash(calls[i]);
+        }
+        return keccak256(
+            abi.encode(BATCH_TYPEHASH, keccak256(bytes(name)), keccak256(abi.encodePacked(callHashes)), prevHash)
+        );
+    }
+
+    /// @notice Computes struct hash for compact batch
+    function computeCompactBatchHash(string memory name, bytes32 batchHash, bytes32 prevHash)
+        public
+        pure
+        override
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(COMPACT_BATCH_TYPEHASH, keccak256(bytes(name)), batchHash, prevHash));
+    }
+
+    /// @notice Computes struct hash for recovery mode
+    function computeRecoveryModeHash(uint256 chainId, bytes32 startingBatchHash)
+        public
+        pure
+        override
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(RECOVERY_MODE_TYPEHASH, chainId, startingBatchHash));
+    }
+
+    // ---------- //
+    // GOVERNANCE //
+    // ---------- //
+
+    /// @notice Returns the hash of the last executed batch
+    function lastBatchHash() public view override returns (bytes32) {
+        uint256 len = _executedBatchHashes.length;
+        return len == 0 ? bytes32(0) : _executedBatchHashes[len - 1];
+    }
+
+    /// @notice Returns list of executed batch hashes
+    function getExecutedBatchHashes() external view returns (bytes32[] memory) {
+        return _executedBatchHashes;
+    }
+
+    /// @notice Returns list of batch hashes connected to the last executed batch
+    function getCurrentBatchHashes() external view returns (bytes32[] memory) {
+        return _connectedBatchHashes[lastBatchHash()].values();
+    }
+
+    /// @notice Returns list of batch hashes connected to a batch with `batchHash`
+    function getConnectedBatchHashes(bytes32 batchHash) external view override returns (bytes32[] memory) {
+        return _connectedBatchHashes[batchHash].values();
+    }
+
+    /// @notice Returns batch by hash
+    function getBatch(bytes32 batchHash) external view returns (SignedBatch memory result) {
+        return _signedBatches[batchHash];
+    }
+
+    /// @notice Allows Gearbox DAO to submit a new batch on Ethereum Mainnet
+    /// @dev Can only be executed by Gearbox DAO on Ethereum Mainnet
+    /// @dev If batch contains `disableRecoveryMode` self-call, it must be its only call
+    /// @dev Reverts if `prevHash` is not the hash of the last executed batch
+    /// @dev Reverts if `calls` is empty or contains local self-calls
+    function submitBatch(string calldata name, CrossChainCall[] calldata calls, bytes32 prevHash)
         external
+        override
         onlyOwner
         onlyOnMainnet
         nonReentrant
     {
-        _verifyProposal({calls: calls, prevHash: prevHash});
+        bytes32 batchHash = computeBatchHash(name, calls, prevHash);
+        if (!_connectedBatchHashes[lastBatchHash()].add(batchHash)) return;
 
-        bytes32 proposalHash = hashProposal({name: name, calls: calls, prevHash: prevHash});
+        _verifyBatch(calls, prevHash);
 
-        // Copy proposal to storage
-        SignedProposal storage signedProposal = _signedProposals[proposalHash];
-
+        SignedBatch storage signedBatch = _signedBatches[batchHash];
+        signedBatch.name = name;
+        signedBatch.prevHash = prevHash;
         uint256 len = calls.length;
-        for (uint256 i = 0; i < len; ++i) {
-            signedProposal.calls.push(calls[i]);
+        for (uint256 i; i < len; ++i) {
+            signedBatch.calls.push(calls[i]);
         }
-        signedProposal.prevHash = prevHash;
-        signedProposal.name = name;
 
-        _connectedProposalHashes[lastProposalHash].add(proposalHash);
-
-        emit SubmitProposal(proposalHash);
+        emit SubmitBatch(batchHash);
     }
 
-    // @dev: Sign a proposal
-    // Executed by any signer to make cross-chain distribution possible
-    // @param: proposalHash - Hash of the proposal to sign
-    // @param: signature - Signature of the proposal
-    function signProposal(bytes32 proposalHash, bytes calldata signature) external onlyOnMainnet nonReentrant {
-        SignedProposal storage signedProposal = _signedProposals[proposalHash];
-        if (signedProposal.prevHash != lastProposalHash) {
-            revert InvalidPrevHashException();
-        }
-        bytes32 digest =
-            _hashTypedDataV4(computeSignProposalHash(signedProposal.name, proposalHash, signedProposal.prevHash));
+    /// @notice Submits a signature for a compact batch message for a batch with `batchHash`.
+    ///         If the number of signatures reaches confirmation threshold, the batch is executed.
+    /// @dev Can only be executed on Ethereum Mainnet (though permissionlessly to ease signers' life)
+    /// @dev Reverts if batch with `batchHash` hasn't been submitted or is not connected to the last executed batch
+    /// @dev Reverts if signer is not approved or their signature has already been submitted
+    function signBatch(bytes32 batchHash, bytes calldata signature) external override onlyOnMainnet nonReentrant {
+        SignedBatch storage signedBatch = _signedBatches[batchHash];
+        if (signedBatch.calls.length == 0) revert BatchIsNotSubmittedException(batchHash);
+        if (signedBatch.prevHash != lastBatchHash()) revert InvalidPrevHashException();
 
+        bytes32 digest = _hashTypedDataV4(computeCompactBatchHash(signedBatch.name, batchHash, signedBatch.prevHash));
         address signer = ECDSA.recover(digest, signature);
-        if (!_signers.contains(signer)) revert SignerDoesNotExistException();
+        if (!_signersSet.contains(signer)) revert SignerIsNotApprovedException(signer);
 
-        signedProposal.signatures.push(signature);
+        signedBatch.signatures.push(signature);
+        emit SignBatch(batchHash, signer);
 
-        uint256 validSignatures = _verifySignatures({signatures: signedProposal.signatures, digest: digest});
-
-        emit SignProposal(proposalHash, signer);
-
-        if (validSignatures >= confirmationThreshold) {
-            _verifyProposal({calls: signedProposal.calls, prevHash: signedProposal.prevHash});
-            _executeProposal({calls: signedProposal.calls, proposalHash: proposalHash});
-        }
+        uint256 validSignatures = _verifySignatures(signedBatch.signatures, digest);
+        if (validSignatures >= confirmationThreshold) _executeBatch(signedBatch.calls, batchHash);
     }
 
-    // @dev: Execute a proposal on other chain permissionlessly
-    function executeProposal(SignedProposal calldata signedProposal) external onlyOnNotMainnet nonReentrant {
-        bytes32 proposalHash = hashProposal(signedProposal.name, signedProposal.calls, signedProposal.prevHash);
+    /// @notice Executes a proposal outside Ethereum Mainnet permissionlessly
+    /// @dev In the current implementation, signers are trusted not to deviate and only sign batches
+    ///      submitted by Gearbox DAO on Ethereum Mainnet. In future versions, DAO decisions will be
+    ///      propagated to other chains using bridges or `L1SLOAD`.
+    /// @dev If batch contains `disableRecoveryMode` self-call, it must be its only call
+    /// @dev Reverts if batch's `prevHash` is not the hash of the last executed batch
+    /// @dev Reverts if batch is empty or contains local self-calls
+    /// @dev Reverts if signatures have duplicates or the number of valid signatures is insufficient
+    function executeBatch(SignedBatch calldata signedBatch) external override onlyNotOnMainnet nonReentrant {
+        _verifyBatch(signedBatch.calls, signedBatch.prevHash);
 
-        // Check proposal is valid
-        _verifyProposal({calls: signedProposal.calls, prevHash: signedProposal.prevHash});
+        bytes32 batchHash = computeBatchHash(signedBatch.name, signedBatch.calls, signedBatch.prevHash);
 
-        bytes32 digest =
-            _hashTypedDataV4(computeSignProposalHash(signedProposal.name, proposalHash, signedProposal.prevHash));
+        bytes32 digest = _hashTypedDataV4(computeCompactBatchHash(signedBatch.name, batchHash, signedBatch.prevHash));
+        uint256 validSignatures = _verifySignatures(signedBatch.signatures, digest);
+        if (validSignatures < confirmationThreshold) revert InsufficientNumberOfSignaturesException();
 
-        // Check if enough signatures are valid
-        uint256 validSignatures = _verifySignatures({signatures: signedProposal.signatures, digest: digest});
-        if (validSignatures < confirmationThreshold) revert NotEnoughSignaturesException();
-
-        _executeProposal({calls: signedProposal.calls, proposalHash: proposalHash});
+        _executeBatch(signedBatch.calls, batchHash);
     }
 
-    function _verifyProposal(CrossChainCall[] memory calls, bytes32 prevHash) internal view {
-        if (prevHash != lastProposalHash) revert InvalidPrevHashException();
-        if (calls.length == 0) revert NoCallsInProposalException();
+    /// @dev Ensures that batch is connected to the last executed batch, is non-empty and contains no local self-calls
+    /// @dev If batch contains `disableRecoveryMode` self-call, it must be its only call
+    function _verifyBatch(CrossChainCall[] memory calls, bytes32 prevHash) internal view {
+        if (prevHash != lastBatchHash()) revert InvalidPrevHashException();
 
         uint256 len = calls.length;
-        for (uint256 i = 0; i < len; ++i) {
-            CrossChainCall memory call = calls[i];
-            if (call.chainId != 0 && call.target == address(this)) {
-                revert InconsistentSelfCallOnOtherChainException();
+        if (len == 0) revert InvalidBatchException();
+        for (uint256 i; i < len; ++i) {
+            if (calls[i].target == address(this)) {
+                if (calls[i].chainId != 0) revert InvalidBatchException();
+                if (bytes4(calls[i].callData) == ICrossChainMultisig.disableRecoveryMode.selector && len != 1) {
+                    revert InvalidBatchException();
+                }
             }
         }
     }
 
+    /// @dev Executes a batch of calls skipping local calls from other chains, updates the last executed batch hash
+    /// @dev In recovery mode, only self-calls are executed
+    function _executeBatch(CrossChainCall[] memory calls, bytes32 batchHash) internal {
+        uint256 len = calls.length;
+        for (uint256 i; i < len; ++i) {
+            if (isRecoveryModeEnabled && calls[i].target != address(this)) continue;
+            uint256 chainId = calls[i].chainId;
+            if (chainId == 0 || chainId == block.chainid) {
+                calls[i].target.functionCall(calls[i].callData, "Call execution failed");
+            }
+        }
+        _executedBatchHashes.push(batchHash);
+        emit ExecuteBatch(batchHash);
+    }
+
+    // ------------------ //
+    // SIGNERS MANAGEMENT //
+    // ------------------ //
+
+    /// @notice Returns whether `account` is an approved signer
+    function isSigner(address account) external view override returns (bool) {
+        return _signersSet.contains(account);
+    }
+
+    /// @notice Returns list of approved signers
+    function getSigners() external view override returns (address[] memory) {
+        return _signersSet.values();
+    }
+
+    /// @notice Adds `signer` to the list of approved signers
+    /// @dev Can only be called by the contract itself
+    /// @dev Reverts if signer is zero address or is already approved
+    function addSigner(address signer) external override onlySelf {
+        _addSigner(signer);
+    }
+
+    /// @notice Removes `signer` from the list of approved signers
+    /// @dev Can only be called by the contract itself
+    /// @dev Reverts if signer is not approved
+    /// @dev Reverts if removing the signer makes multisig have less than `confirmationThreshold` signers
+    function removeSigner(address signer) external override onlySelf {
+        if (!_signersSet.remove(signer)) revert SignerIsNotApprovedException(signer);
+        if (_signersSet.length() < confirmationThreshold) revert InvalidConfirmationThresholdException();
+        emit RemoveSigner(signer);
+    }
+
+    /// @notice Sets the minimum number of signatures required to execute a batch to `newConfirmationThreshold`
+    /// @dev Can only be called by the contract itself
+    /// @dev Reverts if the new confirmation threshold is 0 or greater than the number of signers
+    function setConfirmationThreshold(uint8 newConfirmationThreshold) external override onlySelf {
+        _setConfirmationThreshold(newConfirmationThreshold);
+    }
+
+    /// @dev `addSigner` implementation
+    function _addSigner(address signer) internal {
+        if (signer == address(0)) revert InvalidSignerAddressException();
+        if (!_signersSet.add(signer)) revert SignerIsAlreadyApprovedException(signer);
+        emit AddSigner(signer);
+    }
+
+    /// @dev `setConfirmationThreshold` implementation
+    function _setConfirmationThreshold(uint8 newConfirmationThreshold) internal {
+        if (newConfirmationThreshold == 0 || newConfirmationThreshold > _signersSet.length()) {
+            revert InvalidConfirmationThresholdException();
+        }
+        if (newConfirmationThreshold == confirmationThreshold) return;
+        confirmationThreshold = newConfirmationThreshold;
+        emit SetConfirmationThreshold(newConfirmationThreshold);
+    }
+
+    /// @dev Ensures that the list of signatures has no duplicates and returns the number of valid signatures
     function _verifySignatures(bytes[] memory signatures, bytes32 digest)
         internal
         view
         returns (uint256 validSignatures)
     {
-        address[] memory proposalSigners = new address[](signatures.length);
-        // Check for duplicate signatures
         uint256 len = signatures.length;
-
-        for (uint256 i = 0; i < len; ++i) {
+        address[] memory signers = new address[](len);
+        for (uint256 i; i < len; ++i) {
             address signer = ECDSA.recover(digest, signatures[i]);
-
-            // It's not reverted to avoid the case, when 2 proposals are submitted
-            // and the first one is about removing a signer. The signer could add his signature
-            // to the second proposal (it's still possible) and lock the system forever
-            if (_signers.contains(signer)) {
-                validSignatures++;
+            if (_signersSet.contains(signer)) validSignatures++;
+            for (uint256 j; j < i; ++j) {
+                if (signers[j] == signer) revert DuplicateSignatureException(signer);
             }
-            for (uint256 j = 0; j < i; ++j) {
-                if (proposalSigners[j] == signer) {
-                    revert AlreadySignedException();
-                }
-            }
-            proposalSigners[i] = signer;
+            signers[i] = signer;
         }
     }
 
-    // @dev: Execute proposal calls and update state
-    // @param: calls - Array of cross-chain calls to execute
-    // @param: proposalHash - Hash of the proposal being executed
-    function _executeProposal(CrossChainCall[] memory calls, bytes32 proposalHash) internal {
-        // Execute each call in the proposal
-        uint256 len = calls.length;
-        for (uint256 i = 0; i < len; ++i) {
-            CrossChainCall memory call = calls[i];
-            uint256 chainId = call.chainId;
+    // ------------- //
+    // RECOVERY MODE //
+    // ------------- //
 
-            if (chainId == 0 || chainId == block.chainid) {
-                // QUESTION: add try{} catch{} to achieve 100% execution
-                Address.functionCall(call.target, call.callData, "Call execution failed");
-            }
-        }
-
-        _executedProposalHashes.push(proposalHash);
-        lastProposalHash = proposalHash;
-
-        emit ExecuteProposal(proposalHash);
-    }
-
-    //
-    // MULTISIG CONFIGURATION FUNCTIONS
-    //
-
-    // @notice: Add a new signer to the multisig
-    // @param: newSigner - Address of the new signer
-    function addSigner(address newSigner) external onlySelf {
-        _addSigner(newSigner);
-    }
-
-    function _addSigner(address newSigner) internal {
-        if (!_signers.add(newSigner)) revert SignerAlreadyExistsException();
-        emit AddSigner(newSigner);
-    }
-
-    // @notice: Remove a signer from the multisig
-    // @param: signer - Address of the signer to remove
-    function removeSigner(address signer) external onlySelf {
-        if (!_signers.remove(signer)) revert SignerDoesNotExistException();
-        emit RemoveSigner(signer);
-    }
-
-    // @notice: Set the confirmation threshold for the multisig
-    // @param: newConfirmationThreshold - New confirmation threshold
-    function setConfirmationThreshold(uint8 newConfirmationThreshold) external onlySelf {
-        _setConfirmationThreshold(newConfirmationThreshold);
-    }
-
-    function _setConfirmationThreshold(uint8 newConfirmationThreshold) internal {
-        if (newConfirmationThreshold == 0 || newConfirmationThreshold > _signers.length()) {
-            revert InvalidConfirmationThresholdValueException();
-        }
-        confirmationThreshold = newConfirmationThreshold; // U:[SM-1]
-        emit SetConfirmationThreshold(newConfirmationThreshold); // U:[SM-1]
-    }
-
-    //
-    // HELPERS
-    //
-    function hashProposal(string calldata name, CrossChainCall[] calldata calls, bytes32 prevHash)
-        public
-        pure
-        returns (bytes32)
+    /// @notice If `message.chainId` matches current chain, enables recovery mode, in which only self-calls are executed
+    /// @dev Can only be executed outside Ethereum Mainnet
+    /// @dev Reverts if starting batch of recovery mode is not the last executed batch
+    /// @dev Reverts if the number of signatures is insufficient
+    function enableRecoveryMode(SignedRecoveryModeMessage calldata message)
+        external
+        override
+        onlyNotOnMainnet
+        nonReentrant
     {
-        bytes32[] memory callsHash = new bytes32[](calls.length);
-        uint256 len = calls.length;
-        for (uint256 i = 0; i < len; ++i) {
-            CrossChainCall memory call = calls[i];
-            callsHash[i] = keccak256(abi.encode(CROSS_CHAIN_CALL_TYPEHASH, call.chainId, call.target, call.callData));
-        }
+        if (isRecoveryModeEnabled || message.chainId != block.chainid) return;
+        if (message.startingBatchHash != lastBatchHash()) revert InvalidRecoveryModeMessageException();
 
-        return keccak256(abi.encode(keccak256(bytes(name)), keccak256(abi.encodePacked(callsHash)), prevHash));
+        bytes32 digest = _hashTypedDataV4(computeRecoveryModeHash(message.chainId, message.startingBatchHash));
+        uint256 validSignatures = _verifySignatures(message.signatures, digest);
+        if (validSignatures < confirmationThreshold) revert InsufficientNumberOfSignaturesException();
+
+        isRecoveryModeEnabled = true;
+        emit EnableRecoveryMode(message.startingBatchHash);
     }
 
-    function computeSignProposalHash(string memory name, bytes32 proposalHash, bytes32 prevHash)
-        public
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(PROPOSAL_TYPEHASH, keccak256(bytes(name)), proposalHash, prevHash));
-    }
-
-    //
-    // GETTERS
-    //
-    function getCurrentProposalHashes() external view returns (bytes32[] memory) {
-        return _connectedProposalHashes[lastProposalHash].values();
-    }
-
-    function getCurrentProposals() external view returns (SignedProposal[] memory result) {
-        uint256 len = _connectedProposalHashes[lastProposalHash].length();
-        result = new SignedProposal[](len);
-        for (uint256 i = 0; i < len; ++i) {
-            result[i] = _signedProposals[_connectedProposalHashes[lastProposalHash].at(i)];
-        }
-    }
-
-    function getSigners() external view returns (address[] memory) {
-        return _signers.values();
-    }
-
-    function getExecutedProposals() external view returns (SignedProposal[] memory result) {
-        uint256 len = _executedProposalHashes.length;
-        result = new SignedProposal[](len);
-        for (uint256 i = 0; i < len; ++i) {
-            result[i] = _signedProposals[_executedProposalHashes[i]];
-        }
-    }
-
-    function getProposal(bytes32 proposalHash) external view returns (SignedProposal memory result) {
-        return _signedProposals[proposalHash];
-    }
-
-    function getExecutedProposalHashes() external view returns (bytes32[] memory) {
-        return _executedProposalHashes;
-    }
-
-    function isSigner(address account) external view returns (bool) {
-        return _signers.contains(account);
-    }
-
-    function getSignedProposal(bytes32 proposalHash) external view returns (SignedProposal memory) {
-        return _signedProposals[proposalHash];
-    }
-
-    function domainSeparatorV4() external view returns (bytes32) {
-        return _domainSeparatorV4();
+    /// @notice If `chainId` matches current chain, disables recovery mode
+    /// @dev Can only be executed by the contract itself
+    function disableRecoveryMode(uint256 chainId) external override onlySelf {
+        if (!isRecoveryModeEnabled || chainId != block.chainid) return;
+        isRecoveryModeEnabled = false;
+        emit DisableRecoveryMode();
     }
 }

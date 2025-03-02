@@ -10,7 +10,7 @@ import {PriceFeedStore} from "../../instance/PriceFeedStore.sol";
 import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
 import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
 import {IInstanceManager} from "../../interfaces/IInstanceManager.sol";
-import {IConfigureActions} from "../../factories/CreditFactory.sol";
+import {CreditManagerParams, CreditFacadeParams, ICreditConfigureActions} from "../../factories/CreditFactory.sol";
 
 import {IWETH} from "@gearbox-protocol/core-v3/contracts/interfaces/external/IWETH.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
@@ -40,7 +40,7 @@ import {
     AP_CREDIT_CONFIGURATOR,
     NO_VERSION_CONTROL
 } from "../../libraries/ContractLiterals.sol";
-import {SignedProposal, Bytecode} from "../../interfaces/Types.sol";
+import {SignedBatch, Bytecode} from "../../interfaces/Types.sol";
 
 import {CreditFactory} from "../../factories/CreditFactory.sol";
 import {InterestRateModelFactory} from "../../factories/InterestRateModelFactory.sol";
@@ -67,9 +67,9 @@ import {CreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditF
 import {CreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditConfiguratorV3.sol";
 
 import {DeployParams} from "../../interfaces/Types.sol";
-import {CreditFacadeParams, CreditManagerParams} from "../../factories/CreditFactory.sol";
 
 import {GlobalSetup} from "../../test/helpers/GlobalSetup.sol";
+import {MockLossPolicy} from "../../test/mocks/MockLossPolicy.sol";
 
 contract NewChainDeploySuite is Test, GlobalSetup {
     address internal riskCurator;
@@ -95,16 +95,28 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         // activate instance
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateActivateCall(1, instanceOwner, TREASURY, WETH, GEAR);
-        _submitProposalAndSign("Activate instance", calls);
+        _submitBatchAndSign("Activate instance", calls);
 
         // Configure instance
         _setupPriceFeedStore();
         riskCurator = vm.addr(_generatePrivateKey("RISK_CURATOR"));
+
+        _addMockLossPolicy();
+    }
+
+    function _addMockLossPolicy() internal {
+        CrossChainCall[] memory calls = new CrossChainCall[](1);
+
+        bytes32 bytecodeHash = _uploadByteCodeAndSign(type(MockLossPolicy).creationCode, "LOSS_POLICY::MOCK", 3_10);
+
+        calls[0] = _generateAllowPublicContractCall(bytecodeHash);
+
+        _submitBatchAndSign("Allow public contracts", calls);
     }
 
     function _setupPriceFeedStore() internal {
-        _addPriceFeed(CHAINLINK_ETH_USD, 1 days);
-        _addPriceFeed(CHAINLINK_USDC_USD, 1 days);
+        _addPriceFeed(CHAINLINK_ETH_USD, 1 days, "ETH/USD");
+        _addPriceFeed(CHAINLINK_USDC_USD, 1 days, "USDC/USD");
 
         _allowPriceFeed(WETH, CHAINLINK_ETH_USD);
         _allowPriceFeed(USDC, CHAINLINK_USDC_USD);
@@ -115,22 +127,18 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         address mcf = IAddressProvider(ap).getAddressOrRevert(AP_MARKET_CONFIGURATOR_FACTORY, NO_VERSION_CONTROL);
 
-        address poolFactory = IAddressProvider(ap).getAddressOrRevert(AP_POOL_FACTORY, 3_10);
-
-        IWETH(WETH).deposit{value: 1e18}();
-        IERC20(WETH).transfer(poolFactory, 1e18);
-
         uint256 gasBefore = gasleft();
 
         vm.startPrank(riskCurator);
         address mc = MarketConfiguratorFactory(mcf).createMarketConfigurator(
-            riskCurator, riskCurator, riskCurator, "Test Risk Curator", false
+            riskCurator, riskCurator, "Test Risk Curator", false
         );
 
         uint256 gasAfter = gasleft();
         uint256 used = gasBefore - gasAfter;
         console.log("createMarketConfigurator gasUsed", used);
 
+        deal(WETH, mc, 1e5);
         address pool = MarketConfigurator(mc).previewCreateMarket(3_10, WETH, name, symbol);
 
         DeployParams memory interestRateModelParams = DeployParams({
@@ -141,7 +149,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         DeployParams memory rateKeeperParams =
             DeployParams({postfix: "TUMBLER", salt: 0, constructorParams: abi.encode(pool, 7 days)});
         DeployParams memory lossPolicyParams =
-            DeployParams({postfix: "DEFAULT", salt: 0, constructorParams: abi.encode(pool, ap)});
+            DeployParams({postfix: "MOCK", salt: 0, constructorParams: abi.encode(pool, ap)});
 
         gasBefore = gasleft();
 
@@ -182,14 +190,19 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         bytes memory creditSuiteParams = abi.encode(creditManagerParams, facadeParams);
 
+        address cmExpected =
+            MarketConfigurator(mc).previewCreateCreditSuite(3_10, 3_10, WETH, name, symbol, creditSuiteParams);
+
         address cm = MarketConfigurator(mc).createCreditSuite(3_10, pool, creditSuiteParams);
+
+        assertEq(cm, cmExpected);
 
         address balancerVault = 0xBA12222222228d8Ba445958a75a0704d566BF2C8;
 
         MarketConfigurator(mc).configureCreditSuite(
             cm,
             abi.encodeCall(
-                IConfigureActions.allowAdapter, (DeployParams("BALANCER_VAULT", 0, abi.encode(cm, balancerVault)))
+                ICreditConfigureActions.allowAdapter, (DeployParams("BALANCER_VAULT", 0, abi.encode(cm, balancerVault)))
             )
         );
 

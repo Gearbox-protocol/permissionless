@@ -38,8 +38,6 @@ abstract contract EIP712Mainnet is IERC5267 {
     bytes32 private constant _TYPE_HASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
-    // Cache the domain separator as an immutable value, but also store the chain id that it corresponds to, in order to
-    // invalidate the cached domain separator if the chain id changes.
     bytes32 private immutable _cachedDomainSeparator;
     uint256 private constant _HARDCODED_CHAIN_ID = 1;
     address private immutable _cachedThis;
@@ -75,7 +73,7 @@ abstract contract EIP712Mainnet is IERC5267 {
     }
 
     /**
-     * @dev Returns the domain separator for the current chain.
+     * @dev Returns the domain separator.
      */
     function _domainSeparatorV4() internal view returns (bytes32) {
         if (address(this) == _cachedThis) {

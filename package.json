@@ -2,6 +2,7 @@
     "name": "@gearbox-protocol/governance",
     "version": "1.0.0",
     "description": "Gearbox Protocol governance contracts",
+    "type": "module",
     "files": [
         "contracts"
     ],
@@ -15,6 +16,8 @@
         "@wagmi/cli": "^2.1.22"
     },
     "dependencies": {
-        "@redstone-finance/evm-connector": "^0.2.5"
-    }
+        "@redstone-finance/evm-connector": "^0.2.5",
+        "tsx": "^4.19.2"
+    },
+    "packageManager": "pnpm@9.15.4"
 }

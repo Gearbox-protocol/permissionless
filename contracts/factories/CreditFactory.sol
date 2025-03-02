@@ -4,12 +4,19 @@
 pragma solidity ^0.8.23;
 
 import {IAccountFactory} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IAccountFactory.sol";
+import {IAdapter} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IAdapter.sol";
 import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
 
 import {ICreditFactory} from "../interfaces/factories/ICreditFactory.sol";
+import {
+    CreditFacadeParams,
+    CreditManagerParams,
+    ICreditConfigureActions
+} from "../interfaces/factories/ICreditConfigureActions.sol";
+import {ICreditEmergencyConfigureActions} from "../interfaces/factories/ICreditEmergencyConfigureActions.sol";
 import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
@@ -32,81 +39,17 @@ import {
 
 import {AbstractFactory} from "./AbstractFactory.sol";
 
-struct CreditManagerParams {
-    uint8 maxEnabledTokens;
-    uint16 feeInterest;
-    uint16 feeLiquidation;
-    uint16 liquidationPremium;
-    uint16 feeLiquidationExpired;
-    uint16 liquidationPremiumExpired;
-    uint128 minDebt;
-    uint128 maxDebt;
-    string name;
-    DeployParams accountFactoryParams;
-}
-
-struct CreditFacadeParams {
-    address degenNFT;
-    bool expirable;
-    bool migrateBotList;
-}
-
-interface IConfigureActions {
-    function upgradeCreditConfigurator() external;
-    function upgradeCreditFacade(CreditFacadeParams calldata params) external;
-    function allowAdapter(DeployParams calldata params) external;
-    function forbidAdapter(address adapter) external;
-    function configureAdapterFor(address targetContract, bytes calldata data) external;
-    function setFees(
-        uint16 feeLiquidation,
-        uint16 liquidationPremium,
-        uint16 feeLiquidationExpired,
-        uint16 liquidationPremiumExpired
-    ) external;
-    function setMaxDebtPerBlockMultiplier(uint8 newMaxDebtLimitPerBlockMultiplier) external;
-    function addCollateralToken(address token, uint16 liquidationThreshold) external;
-    function rampLiquidationThreshold(
-        address token,
-        uint16 liquidationThresholdFinal,
-        uint40 rampStart,
-        uint24 rampDuration
-    ) external;
-    function forbidToken(address token) external;
-    function allowToken(address token) external;
-    function setExpirationDate(uint40 newExpirationDate) external;
-    function pause() external;
-    function unpause() external;
-}
-
-interface IEmergencyConfigureActions {
-    function forbidAdapter(address adapter) external;
-    function forbidToken(address token) external;
-    function forbidBorrowing() external;
-    function pause() external;
-}
-
 contract CreditFactory is AbstractFactory, ICreditFactory {
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_CREDIT_FACTORY;
 
-    /// @notice Address of the bot list contract
     address public immutable botList;
 
-    /// @notice Address of the WETH token
-    address public immutable weth;
-
     error DegenNFTIsNotRegisteredException(address degenNFT);
-
     error TargetContractIsNotAllowedException(address targetCotnract);
 
-    /// @notice Constructor
-    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         botList = _getAddressOrRevert(AP_BOT_LIST, NO_VERSION_CONTROL);
-        weth = _tryGetAddress(AP_WETH_TOKEN, NO_VERSION_CONTROL);
     }
 
     // ---------- //
@@ -141,14 +84,15 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         });
     }
 
-    function computeCreditManagerAddress(address marketConfigurator, address pool, bytes calldata encodedParams)
-        external
-        view
-        override
-        returns (address)
-    {
+    function computeCreditManagerAddress(
+        address marketConfigurator,
+        address pool,
+        address underlying,
+        address priceOracle,
+        bytes calldata encodedParams
+    ) external view override returns (address) {
         (CreditManagerParams memory params,) = abi.decode(encodedParams, (CreditManagerParams, CreditFacadeParams));
-        return _computeCreditManagerAddress(marketConfigurator, pool, params);
+        return _computeCreditManagerAddress(marketConfigurator, pool, underlying, priceOracle, params);
     }
 
     // ------------ //
@@ -184,15 +128,16 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         returns (Call[] memory)
     {
         bytes4 selector = bytes4(callData);
-        if (selector == IConfigureActions.upgradeCreditConfigurator.selector) {
+        if (selector == ICreditConfigureActions.upgradeCreditConfigurator.selector) {
             address creditConfigurator = _creditConfigurator(creditManager);
             address newCreditConfigurator = _deployCreditConfigurator(msg.sender, creditManager);
             return CallBuilder.build(
                 _upgradeCreditConfigurator(creditConfigurator, newCreditConfigurator),
                 _unauthorizeFactory(msg.sender, creditManager, creditConfigurator),
-                _authorizeFactory(msg.sender, creditManager, newCreditConfigurator)
+                _authorizeFactory(msg.sender, creditManager, newCreditConfigurator),
+                _makeAllTokensQuoted(newCreditConfigurator)
             );
-        } else if (selector == IConfigureActions.upgradeCreditFacade.selector) {
+        } else if (selector == ICreditConfigureActions.upgradeCreditFacade.selector) {
             CreditFacadeParams memory params = abi.decode(callData[4:], (CreditFacadeParams));
             address creditFacade = _creditFacade(creditManager);
             address newCreditFacade = _deployCreditFacade(msg.sender, creditManager, params);
@@ -201,34 +146,40 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
                 _unauthorizeFactory(msg.sender, creditManager, creditFacade),
                 _authorizeFactory(msg.sender, creditManager, newCreditFacade)
             );
-        } else if (selector == IConfigureActions.allowAdapter.selector) {
+        } else if (selector == ICreditConfigureActions.allowAdapter.selector) {
             DeployParams memory params = abi.decode(callData[4:], (DeployParams));
             address adapter = _deployAdapter(msg.sender, creditManager, params);
-            return CallBuilder.build(
-                _authorizeFactory(msg.sender, creditManager, adapter),
-                _allowAdapter(_creditConfigurator(creditManager), adapter)
-            );
-        } else if (selector == IConfigureActions.forbidAdapter.selector) {
+            address oldAdapter = ICreditManagerV3(creditManager).contractToAdapter(IAdapter(adapter).targetContract());
+            Call memory unauthorizeCall = _unauthorizeFactory(msg.sender, creditManager, oldAdapter);
+            Call memory authorizeCall = _authorizeFactory(msg.sender, creditManager, adapter);
+            Call memory allowCall = _allowAdapter(_creditConfigurator(creditManager), adapter);
+            return oldAdapter != address(0)
+                ? CallBuilder.build(unauthorizeCall, authorizeCall, allowCall)
+                : CallBuilder.build(authorizeCall, allowCall);
+        } else if (selector == ICreditConfigureActions.forbidAdapter.selector) {
             address adapter = abi.decode(callData[4:], (address));
             return CallBuilder.build(
-                _authorizeFactory(msg.sender, creditManager, adapter),
+                _unauthorizeFactory(msg.sender, creditManager, adapter),
                 _forbidAdapter(_creditConfigurator(creditManager), adapter)
             );
-        } else if (selector == IConfigureActions.configureAdapterFor.selector) {
+        } else if (selector == ICreditConfigureActions.configureAdapterFor.selector) {
             (address targetContract, bytes memory data) = abi.decode(callData[4:], (address, bytes));
             address adapter = ICreditManagerV3(creditManager).contractToAdapter(targetContract);
             if (adapter == address(0)) revert TargetContractIsNotAllowedException(targetContract);
             return CallBuilder.build(Call(adapter, data));
         } else if (
-            selector == IConfigureActions.setFees.selector
-                || selector == IConfigureActions.setMaxDebtPerBlockMultiplier.selector
-                || selector == IConfigureActions.addCollateralToken.selector
-                || selector == IConfigureActions.rampLiquidationThreshold.selector
-                || selector == IConfigureActions.forbidToken.selector || selector == IConfigureActions.allowToken.selector
-                || selector == IConfigureActions.setExpirationDate.selector
+            selector == ICreditConfigureActions.setFees.selector
+                || selector == ICreditConfigureActions.setMaxDebtPerBlockMultiplier.selector
+                || selector == ICreditConfigureActions.addCollateralToken.selector
+                || selector == ICreditConfigureActions.rampLiquidationThreshold.selector
+                || selector == ICreditConfigureActions.forbidToken.selector
+                || selector == ICreditConfigureActions.allowToken.selector
+                || selector == ICreditConfigureActions.setExpirationDate.selector
         ) {
             return CallBuilder.build(Call(_creditConfigurator(creditManager), callData));
-        } else if (selector == IConfigureActions.pause.selector || selector == IConfigureActions.unpause.selector) {
+        } else if (
+            selector == ICreditConfigureActions.pause.selector || selector == ICreditConfigureActions.unpause.selector
+        ) {
             return CallBuilder.build(Call(_creditFacade(creditManager), callData));
         } else {
             revert ForbiddenConfigurationCallException(selector);
@@ -242,18 +193,18 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         returns (Call[] memory)
     {
         bytes4 selector = bytes4(callData);
-        if (selector == IEmergencyConfigureActions.forbidAdapter.selector) {
+        if (selector == ICreditEmergencyConfigureActions.forbidAdapter.selector) {
             address adapter = abi.decode(callData[4:], (address));
             return CallBuilder.build(
                 _unauthorizeFactory(msg.sender, creditManager, adapter),
                 _forbidAdapter(_creditConfigurator(creditManager), adapter)
             );
         } else if (
-            selector == IEmergencyConfigureActions.forbidBorrowing.selector
-                || selector == IEmergencyConfigureActions.forbidToken.selector
+            selector == ICreditEmergencyConfigureActions.forbidBorrowing.selector
+                || selector == ICreditEmergencyConfigureActions.forbidToken.selector
         ) {
             return CallBuilder.build(Call(_creditConfigurator(creditManager), callData));
-        } else if (selector == IEmergencyConfigureActions.pause.selector) {
+        } else if (selector == ICreditEmergencyConfigureActions.pause.selector) {
             return CallBuilder.build(Call(_creditFacade(creditManager), callData));
         } else {
             revert ForbiddenEmergencyConfigurationCallException(selector);
@@ -297,8 +248,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         CreditManagerParams memory params
     ) internal returns (address) {
         bytes32 postfix = _getTokenSpecificPostfix(IPoolV3(pool).asset());
-        bytes memory constructorParams =
-            _buildCreditManagerConstructorParams(marketConfigurator, pool, accountFactory, params);
+        address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
+        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
+        bytes memory constructorParams = _buildCreditManagerConstructorParams(pool, accountFactory, priceOracle, params);
         return _deployLatestPatch({
             contractType: _getContractType(DOMAIN_CREDIT_MANAGER, postfix),
             minorVersion: version,
@@ -307,15 +259,16 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         });
     }
 
-    function _computeCreditManagerAddress(address marketConfigurator, address pool, CreditManagerParams memory params)
-        internal
-        view
-        returns (address)
-    {
+    function _computeCreditManagerAddress(
+        address marketConfigurator,
+        address pool,
+        address underlying,
+        address priceOracle,
+        CreditManagerParams memory params
+    ) internal view returns (address) {
         address accountFactory = _computeAccountFactoryAddress(marketConfigurator, params.accountFactoryParams);
-        bytes32 postfix = _getTokenSpecificPostfix(IPoolV3(pool).asset());
-        bytes memory constructorParams =
-            _buildCreditManagerConstructorParams(marketConfigurator, pool, accountFactory, params);
+        bytes32 postfix = _getTokenSpecificPostfix(underlying);
+        bytes memory constructorParams = _buildCreditManagerConstructorParams(pool, accountFactory, priceOracle, params);
         return _computeAddressLatestPatch({
             contractType: _getContractType(DOMAIN_CREDIT_MANAGER, postfix),
             minorVersion: version,
@@ -326,14 +279,11 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     }
 
     function _buildCreditManagerConstructorParams(
-        address marketConfigurator,
         address pool,
         address accountFactory,
+        address priceOracle,
         CreditManagerParams memory params
-    ) internal view returns (bytes memory) {
-        address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
-        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
-
+    ) internal pure returns (bytes memory) {
         return abi.encode(
             pool,
             accountFactory,
@@ -349,8 +299,7 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
     }
 
     function _deployCreditConfigurator(address marketConfigurator, address creditManager) internal returns (address) {
-        address acl = IMarketConfigurator(marketConfigurator).acl();
-        bytes memory constructorParams = abi.encode(acl, creditManager);
+        bytes memory constructorParams = abi.encode(creditManager);
 
         return _deployLatestPatch({
             contractType: AP_CREDIT_CONFIGURATOR,
@@ -364,7 +313,6 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         internal
         returns (address)
     {
-        address acl = IMarketConfigurator(marketConfigurator).acl();
         address contractsRegister = IMarketConfigurator(marketConfigurator).contractsRegister();
         address lossPolicy = IContractsRegister(contractsRegister).getLossPolicy(ICreditManagerV3(creditManager).pool());
 
@@ -381,8 +329,10 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
             botList_ = ICreditFacadeV3(prevCreditFacade).botList();
         }
 
+        address weth = _getAddress(AP_WETH_TOKEN, NO_VERSION_CONTROL);
+
         bytes memory constructorParams =
-            abi.encode(acl, creditManager, lossPolicy, botList_, weth, params.degenNFT, params.expirable);
+            abi.encode(addressProvider, creditManager, lossPolicy, botList_, weth, params.degenNFT, params.expirable);
 
         return _deployLatestPatch({
             contractType: AP_CREDIT_FACADE,
@@ -457,5 +407,9 @@ contract CreditFactory is AbstractFactory, ICreditFactory {
         returns (Call memory)
     {
         return Call(creditConfigurator, abi.encodeCall(ICreditConfiguratorV3.setDebtLimits, (minDebt, maxDebt)));
+    }
+
+    function _makeAllTokensQuoted(address creditConfigurator) internal pure returns (Call memory) {
+        return Call(creditConfigurator, abi.encodeCall(ICreditConfiguratorV3.makeAllTokensQuoted, ()));
     }
 }

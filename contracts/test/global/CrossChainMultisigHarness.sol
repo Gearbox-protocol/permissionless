@@ -18,20 +18,20 @@ contract CrossChainMultisigHarness is CrossChainMultisig {
         _setConfirmationThreshold(newConfirmationThreshold);
     }
 
-    function exposed_verifyProposal(CrossChainCall[] memory calls, bytes32 prevHash) external view {
-        _verifyProposal(calls, prevHash);
+    function exposed_verifyBatch(CrossChainCall[] memory calls, bytes32 prevHash) external view {
+        _verifyBatch(calls, prevHash);
     }
 
     function exposed_verifySignatures(bytes[] memory signatures, bytes32 structHash) external view returns (uint256) {
         return _verifySignatures(signatures, structHash);
     }
 
-    function exposed_executeProposal(CrossChainCall[] memory calls, bytes32 proposalHash) external {
-        _executeProposal(calls, proposalHash);
+    function exposed_executeBatch(CrossChainCall[] memory calls, bytes32 batchHash) external {
+        _executeBatch(calls, batchHash);
     }
 
-    // Add setter for lastProposalHash
-    function setLastProposalHash(bytes32 newHash) external {
-        lastProposalHash = newHash;
+    // Add setter for lastBatchHash
+    function setLastBatchHash(bytes32 newHash) external {
+        _executedBatchHashes.push(newHash);
     }
 }

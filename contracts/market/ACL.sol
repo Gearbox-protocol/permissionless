@@ -3,14 +3,14 @@
 // (c) Gearbox Holdings, 2024
 pragma solidity ^0.8.23;
 
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {IACL} from "../interfaces/IACL.sol";
 import {AP_ACL} from "../libraries/ContractLiterals.sol";
+import {ImmutableOwnableTrait} from "../traits/ImmutableOwnableTrait.sol";
 
 /// @title Access control list
-contract ACL is IACL, Ownable2Step {
+contract ACL is IACL, ImmutableOwnableTrait {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
@@ -27,19 +27,17 @@ contract ACL is IACL, Ownable2Step {
     mapping(bytes32 role => EnumerableSet.AddressSet) internal _roleHolders;
 
     /// @notice Constructor
-    /// @param owner_ Initial owner
-    constructor(address owner_) {
-        _transferOwnership(owner_);
-    }
+    /// @param owner_ Owner of the ACL
+    constructor(address owner_) ImmutableOwnableTrait(owner_) {}
 
     /// @notice Returns configurator
     function getConfigurator() external view override returns (address) {
-        return owner();
+        return owner;
     }
 
     /// @notice Whether `account` is configurator
     function isConfigurator(address account) external view override returns (bool) {
-        return account == owner();
+        return account == owner;
     }
 
     /// @notice Returns the list of all existing roles

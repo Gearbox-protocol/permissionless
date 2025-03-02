@@ -215,6 +215,11 @@ contract Governor is Ownable2Step, IGovernor {
         }
     }
 
+    /// @dev Forbids renouncing ownership
+    function renounceOwnership() public pure override {
+        revert CannotRenounceOwnershipException();
+    }
+
     // --------- //
     // INTERNALS //
     // --------- //

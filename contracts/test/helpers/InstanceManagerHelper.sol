@@ -18,25 +18,61 @@ import {CrossChainCall} from "../../../contracts/interfaces/ICrossChainMultisig.
 import {IBytecodeRepository} from "../../../contracts/interfaces/IBytecodeRepository.sol";
 import {IPriceFeedStore} from "../../../contracts/interfaces/IPriceFeedStore.sol";
 import {IAddressProvider} from "../../../contracts/interfaces/IAddressProvider.sol";
+import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
+import {console} from "forge-std/console.sol";
+import {LibString} from "@solady/utils/LibString.sol";
 
 contract InstanceManagerHelper is BCRHelpers, CCGHelper {
+    using LibString for bytes32;
+    using LibString for uint256;
     // Core contracts
-    address internal instanceOwner;
+
+    uint256 instanceOwnerKey;
+    address instanceOwner;
     InstanceManager internal instanceManager;
 
     constructor() {
-        instanceOwner = vm.rememberKey(_generatePrivateKey("INSTANCE_OWNER"));
+        instanceOwnerKey = _generatePrivateKey("INSTANCE_OWNER");
+        instanceOwner = vm.rememberKey(instanceOwnerKey);
+
+        if (!_isTestMode()) {
+            console.log("Instance owner setup:");
+            console.log("Instance owner:", instanceOwner, "Key:", instanceOwnerKey.toHexString());
+        }
+    }
+
+    function _isTestMode() internal pure virtual override(CCGHelper, BCRHelpers) returns (bool) {
+        return false;
     }
 
     function _setUpInstanceManager() internal {
         _setUpCCG();
-        _setUpBCR();
 
         // Generate random private keys and derive addresses
 
         // Deploy InstanceManager owned by multisig
-        instanceManager = new InstanceManager(address(multisig));
+        instanceManager = new InstanceManager{salt: bytes32("SALT")}(address(multisig));
         bytecodeRepository = instanceManager.bytecodeRepository();
+    }
+
+    function _attachInstanceManager() internal {
+        _attachCCG();
+        address instanceManagerAddress = computeInstanceManagerAddress();
+
+        if (instanceManagerAddress.code.length == 0) {
+            revert("InstanceManager not deployed");
+        }
+
+        instanceManager = InstanceManager(instanceManagerAddress);
+        bytecodeRepository = instanceManager.bytecodeRepository();
+    }
+
+    function computeInstanceManagerAddress() internal view returns (address) {
+        bytes memory creationCode = abi.encodePacked(type(InstanceManager).creationCode, abi.encode(multisig));
+
+        return Create2.computeAddress(
+            bytes32("SALT"), keccak256(creationCode), address(0x4e59b44847b379578588920cA78FbF26c0B4956C)
+        );
     }
 
     function _generateAddAuditorCall(address _auditor, string memory _name)
@@ -55,6 +91,12 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
         );
     }
 
+    function _generateAllowPublicContractCall(bytes32 _bytecodeHash) internal view returns (CrossChainCall memory) {
+        return _buildCrossChainCallDAO(
+            bytecodeRepository, abi.encodeCall(IBytecodeRepository.allowPublicContract, (_bytecodeHash))
+        );
+    }
+
     function _generateDeploySystemContractCall(bytes32 _contractName, uint256 _version, bool _saveVersion)
         internal
         view
@@ -65,6 +107,11 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
             target: address(instanceManager),
             callData: abi.encodeCall(InstanceManager.deploySystemContract, (_contractName, _version, _saveVersion))
         });
+    }
+
+    function _generateAddPublicDomainCall(bytes32 domain) internal view returns (CrossChainCall memory) {
+        return
+            _buildCrossChainCallDAO(bytecodeRepository, abi.encodeCall(IBytecodeRepository.addPublicDomain, (domain)));
     }
 
     function _generateActivateCall(
@@ -103,12 +150,12 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
         _stopPrankOrBroadcast();
     }
 
-    function _addPriceFeed(address _priceFeed, uint32 _stalenessPeriod) internal {
+    function _addPriceFeed(address _priceFeed, uint32 _stalenessPeriod, string memory _name) internal {
         address ap = instanceManager.addressProvider();
         address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
         _startPrankOrBroadcast(instanceOwner);
         instanceManager.configureLocal(
-            priceFeedStore, abi.encodeCall(IPriceFeedStore.addPriceFeed, (_priceFeed, _stalenessPeriod))
+            priceFeedStore, abi.encodeCall(IPriceFeedStore.addPriceFeed, (_priceFeed, _stalenessPeriod, _name))
         );
         _stopPrankOrBroadcast();
     }

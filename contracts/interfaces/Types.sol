@@ -3,22 +3,50 @@
 // (c) Gearbox Foundation, 2024.
 pragma solidity ^0.8.23;
 
+struct AddressProviderEntry {
+    bytes32 key;
+    uint256 ver;
+    address value;
+}
+
+struct AuditReport {
+    address auditor;
+    string reportUrl;
+    bytes signature;
+}
+
+struct Bytecode {
+    bytes32 contractType;
+    uint256 version;
+    bytes initCode;
+    address author;
+    string source;
+    bytes authorSignature;
+}
+
+struct BytecodePointer {
+    bytes32 contractType;
+    uint256 version;
+    address initCodePointer;
+    address author;
+    string source;
+    bytes authorSignature;
+}
+
 struct Call {
     address target;
     bytes callData;
+}
+
+struct ConnectedPriceFeed {
+    address token;
+    address[] priceFeeds;
 }
 
 struct CrossChainCall {
     uint256 chainId; // 0 means to be executed on all chains
     address target;
     bytes callData;
-}
-
-struct SignedProposal {
-    string name;
-    bytes32 prevHash;
-    CrossChainCall[] calls;
-    bytes[] signatures;
 }
 
 struct DeployParams {
@@ -41,42 +69,23 @@ struct MarketFactories {
 }
 
 struct PriceFeedInfo {
-    address author;
+    string name;
     uint32 stalenessPeriod;
     bytes32 priceFeedType;
     uint256 version;
 }
 
-// The `BytecodeInfoMeta` struct holds metadata about a bytecode in BytecodeRepository
-//
-// - `author`: A person who first upload smart-contract to BCR
-// - `contractType`: A bytes32 identifier representing the type of the contract.
-// - `version`: A uint256 indicating the version of the contract.
-// - `sources`: An array of `Source` structs, each containing a comment and a link related to the contract's source.
-// - `auditors`: An array of addresses representing the auditors who have reviewed the contract.
-// - `reports`: An array of `SecurityReport` structs, each containing information about security audits conducted on the contract.
-struct Bytecode {
-    bytes32 contractType;
-    uint256 version;
-    bytes initCode;
-    address author;
-    string source;
-    bytes authorSignature;
+struct SignedBatch {
+    string name;
+    bytes32 prevHash;
+    CrossChainCall[] calls;
+    bytes[] signatures;
 }
 
-struct BytecodePointer {
-    bytes32 contractType;
-    uint256 version;
-    address initCodePointer;
-    address author;
-    string source;
-    bytes authorSignature;
-}
-
-struct AuditorSignature {
-    string reportUrl;
-    address auditor;
-    bytes signature;
+struct SignedRecoveryModeMessage {
+    uint256 chainId;
+    bytes32 startingBatchHash;
+    bytes[] signatures;
 }
 
 struct Split {

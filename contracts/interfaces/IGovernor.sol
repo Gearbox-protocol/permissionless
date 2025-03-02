@@ -102,6 +102,9 @@ interface IGovernor is IVersion {
     /// @notice Thrown when a queue admin tries to add transactions to the batch not initiated by themselves
     error CallerNotBatchInitiatorException();
 
+    /// @notice Thrown when trying to renounce ownership
+    error CannotRenounceOwnershipException();
+
     /// @notice Thrown when trying to queue a transaction that is already queued
     error TransactionAlreadyQueuedException();
 

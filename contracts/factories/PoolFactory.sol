@@ -16,6 +16,8 @@ import {DefaultIRM} from "../helpers/DefaultIRM.sol";
 import {IFactory} from "../interfaces/factories/IFactory.sol";
 import {IMarketFactory} from "../interfaces/factories/IMarketFactory.sol";
 import {IPoolFactory} from "../interfaces/factories/IPoolFactory.sol";
+import {IPoolConfigureActions} from "../interfaces/factories/IPoolConfigureActions.sol";
+import {IPoolEmergencyConfigureActions} from "../interfaces/factories/IPoolEmergencyConfigureActions.sol";
 import {IAddressProvider} from "../interfaces/IAddressProvider.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
 import {Call, DeployResult} from "../interfaces/Types.sol";
@@ -26,47 +28,19 @@ import {AP_POOL_FACTORY, AP_POOL_QUOTA_KEEPER, DOMAIN_POOL} from "../libraries/C
 import {AbstractFactory} from "./AbstractFactory.sol";
 import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
-interface IConfigureActions {
-    function setTotalDebtLimit(uint256 limit) external;
-    function setCreditManagerDebtLimit(address creditManager, uint256 limit) external;
-    function setTokenLimit(address token, uint96 limit) external;
-    function setTokenQuotaIncreaseFee(address token, uint16 fee) external;
-    function pause() external;
-    function unpause() external;
-}
-
-interface IEmergencyConfigureActions {
-    function setCreditManagerDebtLimitToZero(address creditManager) external;
-    function setTokenLimitToZero(address token) external;
-    function pause() external;
-}
-
 contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     using SafeERC20 for IERC20;
 
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_POOL_FACTORY;
 
-    /// @notice Address of the default IRM
     address public immutable defaultInterestRateModel;
 
-    /// @notice Thrown when trying to shutdown a credit suite with non-zero outstanding debt
     error CantShutdownCreditSuiteWithNonZeroDebtException(address creditManager);
-
-    /// @notice Thrown when trying to shutdown a market with non-zero outstanding debt
     error CantShutdownMarketWithNonZeroDebtException(address pool);
-
-    /// @notice Thrown when trying to deploy a pool without funding factory to mint dead shares
-    error InsufficientFundsForDeploymentException();
-
-    /// @notice Thrown when to set non-zero quota limit for a token with zero price feed
+    error InsufficientFundsForDeploymentException(address underlying);
     error ZeroPriceFeedException(address token);
 
-    /// @notice Constructor
-    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {
         defaultInterestRateModel = address(new DefaultIRM());
     }
@@ -84,8 +58,9 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         address pool = _deployPool(msg.sender, underlying, name, symbol);
         address quotaKeeper = _deployQuotaKeeper(msg.sender, pool);
 
-        // NOTE: should use batching to avoid getting frontrun
-        if (IERC20(underlying).balanceOf(address(this)) < 1e5) revert InsufficientFundsForDeploymentException();
+        // NOTE: mint dead shares to protect against inflation attack
+        if (IERC20(underlying).balanceOf(msg.sender) < 1e5) revert InsufficientFundsForDeploymentException(underlying);
+        IERC20(underlying).safeTransferFrom(msg.sender, address(this), 1e5);
         IERC20(underlying).forceApprove(pool, 1e5);
         IPoolV3(pool).deposit(1e5, address(0xdead));
 
@@ -194,18 +169,18 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
     {
         bytes4 selector = bytes4(callData);
         if (
-            selector == IConfigureActions.setTotalDebtLimit.selector
-                || selector == IConfigureActions.setCreditManagerDebtLimit.selector
-                || selector == IConfigureActions.pause.selector || selector == IConfigureActions.unpause.selector
+            selector == IPoolConfigureActions.setTotalDebtLimit.selector
+                || selector == IPoolConfigureActions.setCreditManagerDebtLimit.selector
+                || selector == IPoolConfigureActions.pause.selector || selector == IPoolConfigureActions.unpause.selector
         ) {
             return CallBuilder.build(Call(pool, callData));
-        } else if (selector == IConfigureActions.setTokenLimit.selector) {
+        } else if (selector == IPoolConfigureActions.setTokenLimit.selector) {
             (address token, uint96 limit) = abi.decode(callData[4:], (address, uint96));
             if (limit != 0 && IPriceOracleV3(_priceOracle(pool)).getPrice(token) == 0) {
                 revert ZeroPriceFeedException(token);
             }
             return CallBuilder.build(_setTokenLimit(_quotaKeeper(pool), token, limit));
-        } else if (selector == IConfigureActions.setTokenQuotaIncreaseFee.selector) {
+        } else if (selector == IPoolConfigureActions.setTokenQuotaIncreaseFee.selector) {
             return CallBuilder.build(Call(_quotaKeeper(pool), callData));
         } else {
             revert ForbiddenConfigurationCallException(selector);
@@ -219,13 +194,13 @@ contract PoolFactory is AbstractMarketFactory, IPoolFactory {
         returns (Call[] memory)
     {
         bytes4 selector = bytes4(callData);
-        if (selector == IEmergencyConfigureActions.setCreditManagerDebtLimitToZero.selector) {
+        if (selector == IPoolEmergencyConfigureActions.setCreditManagerDebtLimitToZero.selector) {
             address creditManager = abi.decode(callData[4:], (address));
             return CallBuilder.build(_setCreditManagerDebtLimit(pool, creditManager, 0));
-        } else if (selector == IEmergencyConfigureActions.setTokenLimitToZero.selector) {
+        } else if (selector == IPoolEmergencyConfigureActions.setTokenLimitToZero.selector) {
             address token = abi.decode(callData[4:], (address));
             return CallBuilder.build(_setTokenLimit(_quotaKeeper(pool), token, 0));
-        } else if (selector == IEmergencyConfigureActions.pause.selector) {
+        } else if (selector == IPoolEmergencyConfigureActions.pause.selector) {
             return CallBuilder.build(Call(pool, callData));
         } else {
             revert ForbiddenEmergencyConfigurationCallException(selector);

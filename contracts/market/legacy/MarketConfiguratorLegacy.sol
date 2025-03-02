@@ -4,10 +4,9 @@
 pragma solidity ^0.8.23;
 
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
-import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
-import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditManagerV3.sol";
 import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolQuotaKeeperV3.sol";
 import {IPoolV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPoolV3.sol";
@@ -21,6 +20,7 @@ import {Call, MarketFactories} from "../../interfaces/Types.sol";
 import {
     AP_MARKET_CONFIGURATOR_LEGACY,
     AP_CROSS_CHAIN_GOVERNANCE_PROXY,
+    DOMAIN_ZAPPER,
     NO_VERSION_CONTROL,
     ROLE_EMERGENCY_LIQUIDATOR,
     ROLE_PAUSABLE_ADMIN,
@@ -51,13 +51,32 @@ interface IContractsRegisterLegacy {
     function addCreditManager(address creditManager) external;
 }
 
+interface IZapperRegisterLegacy {
+    function zappers(address pool) external view returns (address[] memory);
+}
+
+struct PeripheryContract {
+    bytes32 domain;
+    address addr;
+}
+
+struct LegacyParams {
+    address acl;
+    address contractsRegister;
+    address gearStaking;
+    address priceOracle;
+    address zapperRegister;
+    address[] pausableAdmins;
+    address[] unpausableAdmins;
+    address[] emergencyLiquidators;
+    PeripheryContract[] peripheryContracts;
+}
+
 contract MarketConfiguratorLegacy is MarketConfigurator {
     using Address for address;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_MARKET_CONFIGURATOR_LEGACY;
 
     address public immutable crossChainGovernanceProxy;
@@ -66,56 +85,60 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     address public immutable contractsRegisterLegacy;
     address public immutable gearStakingLegacy;
 
+    error ACLOwnershipNotTransferredException();
     error AddressIsNotPausableAdminException(address admin);
     error AddressIsNotUnpausableAdminException(address admin);
     error CallerIsNotCrossChainGovernanceProxyException(address caller);
     error CallsToLegacyContractsAreForbiddenException();
     error CollateralTokenIsNotQuotedException(address creditManager, address token);
-    error CreditManagerIsMisconfiguredException(address creditManager);
+    error CreditSuiteAlreadyInitializedException(address creditManager);
+    error CreditSuiteIsNotInitializedException(address creditManager);
+    error InconsistentPriceOracleException(address creditManager);
+    error MarketAlreadyInitializedException(address pool);
+    error MarketIsNotInitializedException(address pool);
 
     modifier onlyCrossChainGovernanceProxy() {
-        if (msg.sender != crossChainGovernanceProxy) revert CallerIsNotCrossChainGovernanceProxyException(msg.sender);
+        _ensureCallerIsCrossChainGovernanceProxy();
         _;
     }
 
-    /// @dev There's no way to validate that `pausableAdmins_` and `unpausableAdmins_` are exhaustive
-    ///      because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
     constructor(
         address addressProvider_,
         address admin_,
         address emergencyAdmin_,
         string memory curatorName_,
         bool deployGovernor_,
-        address aclLegacy_,
-        address contractsRegisterLegacy_,
-        address gearStakingLegacy_,
-        address[] memory pausableAdmins_,
-        address[] memory unpausableAdmins_,
-        address[] memory emergencyLiquidators_
+        LegacyParams memory legacyParams_
     ) MarketConfigurator(addressProvider_, admin_, emergencyAdmin_, address(0), curatorName_, deployGovernor_) {
         crossChainGovernanceProxy = _getAddressOrRevert(AP_CROSS_CHAIN_GOVERNANCE_PROXY, NO_VERSION_CONTROL);
 
-        aclLegacy = aclLegacy_;
-        contractsRegisterLegacy = contractsRegisterLegacy_;
-        gearStakingLegacy = gearStakingLegacy_;
+        aclLegacy = legacyParams_.acl;
+        contractsRegisterLegacy = legacyParams_.contractsRegister;
+        gearStakingLegacy = legacyParams_.gearStaking;
 
-        uint256 num = pausableAdmins_.length;
+        // NOTE: there's no way to validate that `legacyParams_.pausableAdmins` and `legacyParams_.unpausableAdmins`
+        // are exhaustive because the legacy ACL contract doesn't provide needed getters, so don't screw up :)
+        uint256 num = legacyParams_.pausableAdmins.length;
         for (uint256 i; i < num; ++i) {
-            address admin = pausableAdmins_[i];
-            if (!IACLLegacy(aclLegacy).isPausableAdmin(admin)) revert AddressIsNotPausableAdminException(admin);
-            IACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, admin);
-            emit GrantRole(ROLE_PAUSABLE_ADMIN, admin);
+            address pausableAdmin = legacyParams_.pausableAdmins[i];
+            if (!IACLLegacy(aclLegacy).isPausableAdmin(pausableAdmin)) {
+                revert AddressIsNotPausableAdminException(pausableAdmin);
+            }
+            IACL(acl).grantRole(ROLE_PAUSABLE_ADMIN, pausableAdmin);
+            emit GrantRole(ROLE_PAUSABLE_ADMIN, pausableAdmin);
         }
-        num = unpausableAdmins_.length;
+        num = legacyParams_.unpausableAdmins.length;
         for (uint256 i; i < num; ++i) {
-            address admin = unpausableAdmins_[i];
-            if (!IACLLegacy(aclLegacy).isUnpausableAdmin(admin)) revert AddressIsNotUnpausableAdminException(admin);
-            IACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, admin);
-            emit GrantRole(ROLE_UNPAUSABLE_ADMIN, admin);
+            address unpausableAdmin = legacyParams_.unpausableAdmins[i];
+            if (!IACLLegacy(aclLegacy).isUnpausableAdmin(unpausableAdmin)) {
+                revert AddressIsNotUnpausableAdminException(unpausableAdmin);
+            }
+            IACL(acl).grantRole(ROLE_UNPAUSABLE_ADMIN, unpausableAdmin);
+            emit GrantRole(ROLE_UNPAUSABLE_ADMIN, unpausableAdmin);
         }
-        num = emergencyLiquidators_.length;
+        num = legacyParams_.emergencyLiquidators.length;
         for (uint256 i; i < num; ++i) {
-            address liquidator = emergencyLiquidators_[i];
+            address liquidator = legacyParams_.emergencyLiquidators[i];
             IACL(acl).grantRole(ROLE_EMERGENCY_LIQUIDATOR, liquidator);
             emit GrantRole(ROLE_EMERGENCY_LIQUIDATOR, liquidator);
         }
@@ -131,66 +154,78 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
             if (numCreditManagers == 0) continue;
 
             address quotaKeeper = _quotaKeeper(pool);
-            address priceOracle = _priceOracle(creditManagers[0]);
-            address interestRateModel = _interestRateModel(pool);
-            address rateKeeper = _rateKeeper(quotaKeeper);
             address lossPolicy = address(new DefaultLossPolicy(acl));
-
-            _createMarket(pool, quotaKeeper, priceOracle, interestRateModel, rateKeeper, lossPolicy);
+            IContractsRegister(contractsRegister).registerMarket(pool, legacyParams_.priceOracle, lossPolicy);
 
             for (uint256 j; j < numCreditManagers; ++j) {
                 address creditManager = creditManagers[j];
-                if (!_isV3Contract(creditManager) || _priceOracle(creditManager) != priceOracle) {
-                    revert CreditManagerIsMisconfiguredException(creditManager);
+                if (!_isV3Contract(creditManager)) continue;
+
+                if (ICreditManagerV3(creditManager).priceOracle() != legacyParams_.priceOracle) {
+                    revert InconsistentPriceOracleException(creditManager);
                 }
 
                 uint256 numTokens = ICreditManagerV3(creditManager).collateralTokensCount();
+                uint256 quotedTokensMask = ICreditManagerV3(creditManager).quotedTokensMask();
                 for (uint256 k = 1; k < numTokens; ++k) {
-                    address token = ICreditManagerV3(creditManager).getTokenByMask(1 << k);
-                    if (!IPoolQuotaKeeperV3(quotaKeeper).isQuotedToken(token)) {
+                    uint256 tokenMask = 1 << k;
+                    address token = ICreditManagerV3(creditManager).getTokenByMask(tokenMask);
+                    if (!IPoolQuotaKeeperV3(quotaKeeper).isQuotedToken(token) || quotedTokensMask & tokenMask == 0) {
                         revert CollateralTokenIsNotQuotedException(creditManager, token);
                     }
                 }
 
-                _createCreditSuite(creditManager);
+                IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
             }
+
+            address[] memory zappers = IZapperRegisterLegacy(legacyParams_.zapperRegister).zappers(pool);
+            uint256 numZappers = zappers.length;
+            for (uint256 j; j < numZappers; ++j) {
+                _peripheryContracts[DOMAIN_ZAPPER].add(zappers[j]);
+                emit AddPeripheryContract(DOMAIN_ZAPPER, zappers[j]);
+            }
+        }
+
+        uint256 numPeripheryContracts = legacyParams_.peripheryContracts.length;
+        for (uint256 i; i < numPeripheryContracts; ++i) {
+            PeripheryContract memory pc = legacyParams_.peripheryContracts[i];
+            _peripheryContracts[pc.domain].add(pc.addr);
+            emit AddPeripheryContract(pc.domain, pc.addr);
         }
     }
 
-    function _createMarket(
-        address pool,
-        address quotaKeeper,
-        address priceOracle,
-        address interestRateModel,
-        address rateKeeper,
-        address lossPolicy
-    ) internal {
-        IContractsRegister(contractsRegister).registerMarket(pool, priceOracle, lossPolicy);
-        MarketFactories memory factories = _getLatestMarketFactories(version);
+    function initializeMarket(address pool) external {
+        _ensureRegisteredMarket(pool);
+        if (_marketFactories[pool].poolFactory != address(0)) revert MarketAlreadyInitializedException(pool);
+
+        MarketFactories memory factories = _getLatestMarketFactories(3_10);
         _marketFactories[pool] = factories;
+        address quotaKeeper = _quotaKeeper(pool);
+        address priceOracle = IContractsRegister(contractsRegister).getPriceOracle(pool);
+        address interestRateModel = _interestRateModel(pool);
+        address rateKeeper = _rateKeeper(quotaKeeper);
+        address lossPolicy = IContractsRegister(contractsRegister).getLossPolicy(pool);
+
+        // NOTE: authorize factories for contracts that might still be used after the migration; legacy price oracle
+        // is left unauthorized since it's not gonna be used, IRM is unauthorized since it's not configurable
         _authorizeFactory(factories.poolFactory, pool, pool);
         _authorizeFactory(factories.poolFactory, pool, quotaKeeper);
-        _authorizeFactory(factories.priceOracleFactory, pool, priceOracle);
-        _authorizeFactory(factories.interestRateModelFactory, pool, interestRateModel);
         _authorizeFactory(factories.rateKeeperFactory, pool, rateKeeper);
         _authorizeFactory(factories.lossPolicyFactory, pool, lossPolicy);
 
         emit CreateMarket(pool, priceOracle, interestRateModel, rateKeeper, lossPolicy, factories);
     }
 
-    function _createCreditSuite(address creditManager) internal {
-        IContractsRegister(contractsRegister).registerCreditSuite(creditManager);
+    function initializeCreditSuite(address creditManager) external {
+        _ensureRegisteredCreditSuite(creditManager);
+        if (_creditFactories[creditManager] != address(0)) revert CreditSuiteAlreadyInitializedException(creditManager);
 
-        address factory = _getLatestCreditFactory(version);
+        address factory = _getLatestCreditFactory(3_10);
         _creditFactories[creditManager] = factory;
-        address creditConfigurator = ICreditManagerV3(creditManager).creditConfigurator();
-        _authorizeFactory(factory, creditManager, creditConfigurator);
-        _authorizeFactory(factory, creditManager, ICreditManagerV3(creditManager).creditFacade());
-        address[] memory adapters = ICreditConfiguratorV3(creditConfigurator).allowedAdapters();
-        uint256 numAdapters = adapters.length;
-        for (uint256 k; k < numAdapters; ++k) {
-            _authorizeFactory(factory, creditManager, adapters[k]);
-        }
+
+        // NOTE: authorizing credit factory for legacy configurator is required since it's used to update to the new one;
+        // legacy facade and adapters are left unauthorized since they're not gonna be used after the migration
+        _authorizeFactory(factory, creditManager, ICreditManagerV3(creditManager).creditConfigurator());
 
         emit CreateCreditSuite(creditManager, factory);
     }
@@ -200,10 +235,28 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
     // ------------- //
 
     function finalizeMigration() external onlyCrossChainGovernanceProxy {
+        address[] memory pools = IContractsRegister(contractsRegister).getPools();
+        uint256 numPools = pools.length;
+        for (uint256 i; i < numPools; ++i) {
+            if (_marketFactories[pools[i]].poolFactory == address(0)) {
+                revert MarketIsNotInitializedException(pools[i]);
+            }
+        }
+        address[] memory creditManagers = IContractsRegister(contractsRegister).getCreditManagers();
+        uint256 numCreditManagers = creditManagers.length;
+        for (uint256 i; i < numCreditManagers; ++i) {
+            if (_creditFactories[creditManagers[i]] == address(0)) {
+                revert CreditSuiteIsNotInitializedException(creditManagers[i]);
+            }
+        }
+
         // NOTE: on some chains, legacy ACL implements a 2-step ownership transfer
-        try IACLLegacy(aclLegacy).pendingOwner() {
+        try IACLLegacy(aclLegacy).pendingOwner() returns (address pendingOwner) {
+            if (pendingOwner != address(this)) revert ACLOwnershipNotTransferredException();
             IACLLegacy(aclLegacy).claimOwnership();
-        } catch {}
+        } catch {
+            if (IACLLegacy(aclLegacy).owner() != address(this)) revert ACLOwnershipNotTransferredException();
+        }
 
         IACLLegacy(aclLegacy).addPausableAdmin(address(this));
         IACLLegacy(aclLegacy).addUnpausableAdmin(address(this));
@@ -213,9 +266,19 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         gearStakingLegacy.functionCall(data);
     }
 
+    function removeLegacyPeripheryContract(bytes32 domain, address peripheryContract) external onlyAdmin {
+        if (_peripheryContracts[domain].remove(peripheryContract)) {
+            emit RemovePeripheryContract(domain, peripheryContract);
+        }
+    }
+
     // --------- //
     // INTERNALS //
     // --------- //
+
+    function _ensureCallerIsCrossChainGovernanceProxy() internal view {
+        if (msg.sender != crossChainGovernanceProxy) revert CallerIsNotCrossChainGovernanceProxyException(msg.sender);
+    }
 
     function _grantRole(bytes32 role, address account) internal override {
         super._grantRole(role, account);
@@ -252,9 +315,5 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         } catch {
             return false;
         }
-    }
-
-    function _priceOracle(address creditManager) internal view returns (address) {
-        return ICreditManagerV3(creditManager).priceOracle();
     }
 }

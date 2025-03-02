@@ -17,14 +17,9 @@ import {AbstractFactory} from "./AbstractFactory.sol";
 import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 
 contract LossPolicyFactory is AbstractMarketFactory, ILossPolicyFactory {
-    /// @notice Contract version
     uint256 public constant override version = 3_10;
-
-    /// @notice Contract type
     bytes32 public constant override contractType = AP_LOSS_POLICY_FACTORY;
 
-    /// @notice Constructor
-    /// @param addressProvider_ Address provider contract address
     constructor(address addressProvider_) AbstractFactory(addressProvider_) {}
 
     // ---------- //
@@ -37,12 +32,7 @@ contract LossPolicyFactory is AbstractMarketFactory, ILossPolicyFactory {
         onlyMarketConfigurators
         returns (DeployResult memory)
     {
-        if (params.postfix == "ALIASED") {
-            address decodedPool = abi.decode(params.constructorParams, (address));
-            if (decodedPool != pool) revert InvalidConstructorParamsException();
-        } else {
-            _validateDefaultConstructorParams(pool, params.constructorParams);
-        }
+        _validateDefaultConstructorParams(pool, params.constructorParams);
 
         address lossPolicy = _deployLatestPatch({
             contractType: _getContractType(DOMAIN_LOSS_POLICY, params.postfix),
@@ -90,7 +80,7 @@ contract LossPolicyFactory is AbstractMarketFactory, ILossPolicyFactory {
         returns (Call[] memory)
     {
         bytes4 selector = bytes4(callData);
-        if (selector != ILossPolicy.enable.selector && selector != ILossPolicy.disable.selector) {
+        if (selector != ILossPolicy.setAccessMode.selector && selector != ILossPolicy.setChecksEnabled.selector) {
             revert ForbiddenEmergencyConfigurationCallException(selector);
         }
         return CallBuilder.build(Call(_lossPolicy(pool), callData));
