@@ -21,6 +21,7 @@ import {IAddressProvider} from "../../../contracts/interfaces/IAddressProvider.s
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {console} from "forge-std/console.sol";
 import {LibString} from "@solady/utils/LibString.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 
 contract InstanceManagerHelper is BCRHelpers, CCGHelper {
     using LibString for bytes32;
@@ -45,8 +46,8 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
         return false;
     }
 
-    function _setUpInstanceManager() internal {
-        _setUpCCG();
+    function _deployInstanceManager(VmSafe.Wallet[] memory _initialSigners, uint8 _threshold, address _dao) internal {
+        _deployCCG(_initialSigners, _threshold, _dao);
 
         // Generate random private keys and derive addresses
 
@@ -55,8 +56,8 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
         bytecodeRepository = instanceManager.bytecodeRepository();
     }
 
-    function _attachInstanceManager() internal {
-        _attachCCG();
+    function _attachInstanceManager(address[] memory _initialSigners, uint8 _threshold, address _dao) internal {
+        _attachCCG(_initialSigners, _threshold, _dao);
         address instanceManagerAddress = computeInstanceManagerAddress();
 
         if (instanceManagerAddress.code.length == 0) {

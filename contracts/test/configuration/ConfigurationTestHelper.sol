@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
+import {TestKeys} from "../helpers/TestKeys.sol";
 
 import {CrossChainMultisig, CrossChainCall} from "../../global/CrossChainMultisig.sol";
 import {InstanceManager} from "../../instance/InstanceManager.sol";
@@ -80,7 +81,10 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
     function setUp() public virtual {
         vm.chainId(1);
 
-        _setUpGlobalContracts();
+        TestKeys testKeys = new TestKeys();
+        _deployGlobalContracts(
+            testKeys.initialSigners(), testKeys.auditor(), "Initial Auditor", testKeys.threshold(), testKeys.dao().addr
+        );
         _deployMockTokens();
 
         CrossChainCall[] memory calls = new CrossChainCall[](1);

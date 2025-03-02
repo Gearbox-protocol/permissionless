@@ -13,64 +13,54 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 
 import {console2} from "forge-std/console2.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 
 contract CCGHelper is SignatureHelper {
     using LibString for bytes;
     using LibString for uint256;
     // Core contracts
 
+    VmSafe.Wallet[] internal initialSigners;
+
     bytes32 constant COMPACT_BATCH_TYPEHASH = keccak256("CompactBatch(string name,bytes32 batchHash,bytes32 prevHash)");
 
     CrossChainMultisig internal multisig;
 
-    uint256 internal signer1Key;
-    uint256 internal signer2Key;
+    bytes32 public constant SALT = "SALT";
 
-    address internal signer1;
-    address internal signer2;
+    // uint256 internal signer1Key;
+    // uint256 internal signer2Key;
+
+    // address internal signer1;
+    // address internal signer2;
 
     address internal dao;
 
     bytes32 prevBatchHash;
 
-    constructor() {
-        signer1Key = _generatePrivateKey("SIGNER_1");
-        signer2Key = _generatePrivateKey("SIGNER_2");
-        signer1 = vm.rememberKey(signer1Key);
-        signer2 = vm.rememberKey(signer2Key);
-        dao = vm.rememberKey(_generatePrivateKey("DAO"));
-
-        if (!_isTestMode()) {
-            // Print debug info
-            console.log("Cross chain multisig setup:");
-            console.log("Signer 1:", signer1, "Key:", signer1Key.toHexString());
-            console.log("Signer 2:", signer2, "Key:", signer2Key.toHexString());
-            console.log("DAO:", dao);
-        }
-    }
-
     function _isTestMode() internal pure virtual returns (bool) {
         return false;
     }
 
-    function _setUpCCG() internal {
-        // Deploy initial contracts
-        address[] memory initialSigners = new address[](2);
-        initialSigners[0] = signer1;
-        initialSigners[1] = signer2;
+    function _deployCCG(VmSafe.Wallet[] memory _initialSigners, uint8 _threshold, address _dao) internal {
+        dao = _dao;
 
-        // Deploy CrossChainMultisig with 2 signers and threshold of 2
-        multisig = new CrossChainMultisig{salt: "SALT"}(
-            initialSigners,
-            2, // threshold
-            dao
-        );
+        uint256 length = _initialSigners.length;
+        address[] memory initialSignerAddresses = new address[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            initialSigners.push(_initialSigners[i]);
+            initialSignerAddresses[i] = _initialSigners[i].addr;
+        }
+
+        multisig = new CrossChainMultisig{salt: SALT}(initialSignerAddresses, _threshold, _dao);
 
         prevBatchHash = 0;
     }
 
-    function _attachCCG() internal {
-        address ccg = computeCCGAddress();
+    function _attachCCG(address[] memory _initialSigners, uint8 _threshold, address _dao) internal {
+        address ccg = computeCCGAddress(_initialSigners, _threshold, _dao);
+        dao = _dao;
 
         if (ccg.code.length == 0) {
             revert("CCG not deployed");
@@ -80,17 +70,16 @@ contract CCGHelper is SignatureHelper {
         prevBatchHash = multisig.lastBatchHash();
     }
 
-    function computeCCGAddress() internal view returns (address) {
-        address[] memory initialSigners = new address[](2);
-        initialSigners[0] = signer1;
-        initialSigners[1] = signer2;
-
+    function computeCCGAddress(address[] memory _initialSigners, uint8 _threshold, address _dao)
+        internal
+        view
+        returns (address)
+    {
         bytes memory creationCode =
-            abi.encodePacked(type(CrossChainMultisig).creationCode, abi.encode(initialSigners, 2, dao));
+            abi.encodePacked(type(CrossChainMultisig).creationCode, abi.encode(_initialSigners, _threshold, _dao));
 
-        return Create2.computeAddress(
-            bytes32("SALT"), keccak256(creationCode), address(0x4e59b44847b379578588920cA78FbF26c0B4956C)
-        );
+        return
+            Create2.computeAddress(SALT, keccak256(creationCode), address(0x4e59b44847b379578588920cA78FbF26c0B4956C));
     }
 
     function _submitBatch(string memory name, CrossChainCall[] memory calls) internal {
@@ -100,6 +89,10 @@ contract CCGHelper is SignatureHelper {
     }
 
     function _signCurrentBatch() internal {
+        if (initialSigners.length == 0) {
+            revert("No initial signers");
+        }
+
         bytes32[] memory currentBatchHashes = multisig.getCurrentBatchHashes();
 
         SignedBatch memory currentBatch = multisig.getBatch(currentBatchHashes[0]);
@@ -109,30 +102,14 @@ contract CCGHelper is SignatureHelper {
         bytes32 structHash = multisig.computeCompactBatchHash(currentBatch.name, batchHash, currentBatch.prevHash);
 
         if (!_isTestMode()) {
-            console.log("tt");
             console.logBytes32(structHash);
         }
 
-        bytes memory signature1 = _sign(signer1Key, ECDSA.toTypedDataHash(_ccmDomainSeparator(), structHash));
+        uint256 threshold = multisig.confirmationThreshold();
 
-        multisig.signBatch(batchHash, signature1);
-        if (!_isTestMode()) {
-            console.log("== SIGNER 1 ==");
-            console.log("name", currentBatch.name);
-            console.log("batchHash");
-            console.logBytes32(batchHash);
-            console.log("prevHash");
-            console.logBytes32(currentBatch.prevHash);
-            console.log(signature1.toHexString());
-        }
-
-        bytes memory signature2 = _sign(signer2Key, ECDSA.toTypedDataHash(_ccmDomainSeparator(), structHash));
-        multisig.signBatch(batchHash, signature2);
-
-        if (!_isTestMode()) {
-            console.log("== SIGNER 2==");
-            console.log("name", currentBatch.name);
-            console.log(signature2.toHexString());
+        for (uint256 i = 0; i < threshold; i++) {
+            bytes memory signature = _sign(initialSigners[i], ECDSA.toTypedDataHash(_ccmDomainSeparator(), structHash));
+            multisig.signBatch(batchHash, signature);
         }
 
         prevBatchHash = batchHash;
