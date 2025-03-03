@@ -78,6 +78,8 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
     ICreditFacadeV3 public creditFacade;
     ICreditConfiguratorV3 public creditConfigurator;
 
+    address public instanceOwner;
+
     function setUp() public virtual {
         vm.chainId(1);
 
@@ -86,6 +88,8 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
             testKeys.initialSigners(), testKeys.auditor(), "Initial Auditor", testKeys.threshold(), testKeys.dao().addr
         );
         _deployMockTokens();
+
+        instanceOwner = testKeys.instanceOwner().addr;
 
         CrossChainCall[] memory calls = new CrossChainCall[](1);
         calls[0] = _generateActivateCall(1, instanceOwner, makeAddr("TREASURY"), WETH, GEAR);
@@ -138,11 +142,11 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
     }
 
     function _setupPriceFeedStore() internal {
-        _addPriceFeed(CHAINLINK_ETH_USD, 1 days, "ETH/USD");
-        _addPriceFeed(CHAINLINK_USDC_USD, 1 days, "USDC/USD");
+        _addPriceFeed(instanceOwner, CHAINLINK_ETH_USD, 1 days, "ETH/USD");
+        _addPriceFeed(instanceOwner, CHAINLINK_USDC_USD, 1 days, "USDC/USD");
 
-        _allowPriceFeed(WETH, CHAINLINK_ETH_USD);
-        _allowPriceFeed(USDC, CHAINLINK_USDC_USD);
+        _allowPriceFeed(instanceOwner, WETH, CHAINLINK_ETH_USD);
+        _allowPriceFeed(instanceOwner, USDC, CHAINLINK_USDC_USD);
     }
 
     function _addMockLossPolicy() internal {
