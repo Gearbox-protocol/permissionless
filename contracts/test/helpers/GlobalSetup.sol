@@ -631,13 +631,14 @@ contract GlobalSetup is Test, InstanceManagerHelper {
     }
 
     function _setPriceFeeds() internal {
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(BPTWeightedPriceFeed).creationCode,
-                contractType: "PRICE_FEED::BALANCER_WEIGHTED",
-                version: 3_10
-            })
-        );
+        // TODO: Add BPTWeightedPriceFeed later, now it doesn't fit in the bytecode limit
+        // contractsToUpload.push(
+        //     UploadableContract({
+        //         initCode: type(BPTWeightedPriceFeed).creationCode,
+        //         contractType: "PRICE_FEED::BALANCER_WEIGHTED",
+        //         version: 3_10
+        //     })
+        // );
 
         contractsToUpload.push(
             UploadableContract({
