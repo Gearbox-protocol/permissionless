@@ -130,6 +130,8 @@ import {CurveCryptoLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/ora
 import {CurveStableLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveStableLPPriceFeed.sol";
 import {ERC4626PriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/erc4626/ERC4626PriceFeed.sol";
 
+import {VmSafe} from "forge-std/Vm.sol";
+
 struct UploadableContract {
     bytes initCode;
     bytes32 contractType;
@@ -155,11 +157,17 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         _setRateKeepers();
     }
 
-    function _setUpGlobalContracts() internal {
-        _setUpInstanceManager();
+    function _deployGlobalContracts(
+        VmSafe.Wallet[] memory _initialSigners,
+        VmSafe.Wallet memory _auditor,
+        string memory auditorName,
+        uint8 _threshold,
+        address _dao
+    ) internal {
+        _deployInstanceManager(_initialSigners, _threshold, _dao);
 
         CrossChainCall[] memory calls = new CrossChainCall[](1);
-        calls[0] = _generateAddAuditorCall(auditor, "Initial Auditor");
+        calls[0] = _generateAddAuditorCall(_auditor.addr, auditorName);
         _submitBatchAndSign("Add auditor", calls);
 
         bytes32[8] memory publicDomains = [
@@ -217,14 +225,21 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         _submitBatchAndSign("Deploy system contracts", calls);
     }
 
-    function _attachGlobalContracts() internal {
-        _attachInstanceManager();
+    function _attachGlobalContracts(address[] memory _initialSigners, uint8 _threshold, address _dao) internal {
+        _attachInstanceManager(_initialSigners, _threshold, _dao);
     }
 
-    function _fundActors() internal {
-        address[6] memory actors = [instanceOwner, author, dao, auditor, signer1, signer2];
+    function _fundActors(address[] memory actors, uint256 amount) internal {
         for (uint256 i = 0; i < actors.length; ++i) {
-            payable(actors[i]).transfer(10 ether);
+            payable(actors[i]).transfer(amount);
+        }
+    }
+
+    function _getFundsBack(VmSafe.Wallet[] memory wallets, address to) internal {
+        for (uint256 i = 0; i < wallets.length; ++i) {
+            _startPrankOrBroadcast(wallets[i].addr);
+            payable(to).transfer(wallets[i].addr.balance);
+            _stopPrankOrBroadcast();
         }
     }
 

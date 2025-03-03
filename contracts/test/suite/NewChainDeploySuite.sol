@@ -70,6 +70,7 @@ import {DeployParams} from "../../interfaces/Types.sol";
 
 import {GlobalSetup} from "../../test/helpers/GlobalSetup.sol";
 import {MockLossPolicy} from "../../test/mocks/MockLossPolicy.sol";
+import {TestKeys} from "../../test/helpers/TestKeys.sol";
 
 contract NewChainDeploySuite is Test, GlobalSetup {
     address internal riskCurator;
@@ -90,7 +91,10 @@ contract NewChainDeploySuite is Test, GlobalSetup {
             vm.chainId(1);
         }
 
-        _setUpGlobalContracts();
+        TestKeys testKeys = new TestKeys();
+        _deployGlobalContracts(
+            testKeys.initialSigners(), testKeys.auditor(), "Initial Auditor", testKeys.threshold(), testKeys.dao().addr
+        );
 
         // activate instance
         CrossChainCall[] memory calls = new CrossChainCall[](1);
