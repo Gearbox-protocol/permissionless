@@ -74,7 +74,7 @@ import {TestKeys} from "../../test/helpers/TestKeys.sol";
 
 contract NewChainDeploySuite is Test, GlobalSetup {
     address internal riskCurator;
-
+    address internal instanceOwner;
     address constant TREASURY = 0x3E965117A51186e41c2BB58b729A1e518A715e5F;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant GEAR = 0xBa3335588D9403515223F109EdC4eB7269a9Ab5D;
@@ -95,6 +95,8 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         _deployGlobalContracts(
             testKeys.initialSigners(), testKeys.auditor(), "Initial Auditor", testKeys.threshold(), testKeys.dao().addr
         );
+
+        instanceOwner = testKeys.instanceOwner().addr;
 
         // activate instance
         CrossChainCall[] memory calls = new CrossChainCall[](1);
@@ -119,11 +121,11 @@ contract NewChainDeploySuite is Test, GlobalSetup {
     }
 
     function _setupPriceFeedStore() internal {
-        _addPriceFeed(CHAINLINK_ETH_USD, 1 days, "ETH/USD");
-        _addPriceFeed(CHAINLINK_USDC_USD, 1 days, "USDC/USD");
+        _addPriceFeed(instanceOwner, CHAINLINK_ETH_USD, 1 days, "ETH/USD");
+        _addPriceFeed(instanceOwner, CHAINLINK_USDC_USD, 1 days, "USDC/USD");
 
-        _allowPriceFeed(WETH, CHAINLINK_ETH_USD);
-        _allowPriceFeed(USDC, CHAINLINK_USDC_USD);
+        _allowPriceFeed(instanceOwner, WETH, CHAINLINK_ETH_USD);
+        _allowPriceFeed(instanceOwner, USDC, CHAINLINK_USDC_USD);
     }
 
     function test_NCD_01_createMarket() public {

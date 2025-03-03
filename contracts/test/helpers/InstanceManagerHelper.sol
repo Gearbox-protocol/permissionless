@@ -28,19 +28,9 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
     using LibString for uint256;
     // Core contracts
 
-    uint256 instanceOwnerKey;
-    address instanceOwner;
     InstanceManager internal instanceManager;
 
-    constructor() {
-        instanceOwnerKey = _generatePrivateKey("INSTANCE_OWNER");
-        instanceOwner = vm.rememberKey(instanceOwnerKey);
-
-        if (!_isTestMode()) {
-            console.log("Instance owner setup:");
-            console.log("Instance owner:", instanceOwner, "Key:", instanceOwnerKey.toHexString());
-        }
-    }
+    constructor() {}
 
     function _isTestMode() internal pure virtual override(CCGHelper, BCRHelpers) returns (bool) {
         return false;
@@ -141,20 +131,22 @@ contract InstanceManagerHelper is BCRHelpers, CCGHelper {
         });
     }
 
-    function _allowPriceFeed(address token, address _priceFeed) internal {
+    function _allowPriceFeed(address _instanceOwner, address token, address _priceFeed) internal {
         address ap = instanceManager.addressProvider();
         address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
-        _startPrankOrBroadcast(instanceOwner);
+        _startPrankOrBroadcast(_instanceOwner);
         instanceManager.configureLocal(
             priceFeedStore, abi.encodeCall(IPriceFeedStore.allowPriceFeed, (token, _priceFeed))
         );
         _stopPrankOrBroadcast();
     }
 
-    function _addPriceFeed(address _priceFeed, uint32 _stalenessPeriod, string memory _name) internal {
+    function _addPriceFeed(address _instanceOwner, address _priceFeed, uint32 _stalenessPeriod, string memory _name)
+        internal
+    {
         address ap = instanceManager.addressProvider();
         address priceFeedStore = IAddressProvider(ap).getAddressOrRevert(AP_PRICE_FEED_STORE, NO_VERSION_CONTROL);
-        _startPrankOrBroadcast(instanceOwner);
+        _startPrankOrBroadcast(_instanceOwner);
         instanceManager.configureLocal(
             priceFeedStore, abi.encodeCall(IPriceFeedStore.addPriceFeed, (_priceFeed, _stalenessPeriod, _name))
         );
