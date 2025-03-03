@@ -10,8 +10,6 @@ import {TestKeys} from "../contracts/test/helpers/TestKeys.sol";
 
 contract PermissionlessScript is Script, GlobalSetup {
     function run() public {
-        vm.startBroadcast(vm.envUint("DEPLOYER_PRIVATE_KEY"));
-
         // Setup test keys
         TestKeys testKeys = new TestKeys();
 
@@ -20,12 +18,14 @@ contract PermissionlessScript is Script, GlobalSetup {
             testKeys.printKeys();
         }
 
-        address[] memory addressesToFund = new address[](testKeys.initialSigners().length + 2);
-        for (uint256 i = 0; i < testKeys.initialSigners().length; i++) {
-            addressesToFund[i] = testKeys.initialSigners()[i].addr;
-        }
-        addressesToFund[testKeys.initialSigners().length] = testKeys.auditor().addr;
-        addressesToFund[testKeys.initialSigners().length + 1] = testKeys.dao().addr;
+        vm.startBroadcast(vm.envUint("DEPLOYER_PRIVATE_KEY"));
+
+        uint256 length = testKeys.initialSigners().length;
+
+        address[] memory addressesToFund = new address[](3);
+        addressesToFund[0] = testKeys.initialSigners()[length - 1].addr;
+        addressesToFund[1] = testKeys.bytecodeAuthor().addr;
+        addressesToFund[2] = testKeys.dao().addr;
 
         _fundActors(addressesToFund, 1 ether);
         _deployGlobalContracts(
