@@ -52,8 +52,9 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
     function _uploadCreditConfiguratorPatch() internal {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
 
-        bytes32 bytecodeHash =
-            _uploadByteCodeAndSign(type(MockCreditConfiguratorPatch).creationCode, AP_CREDIT_CONFIGURATOR, 3_11);
+        bytes32 bytecodeHash = _uploadByteCodeAndSign(
+            bytecodeAuthor, auditor, type(MockCreditConfiguratorPatch).creationCode, AP_CREDIT_CONFIGURATOR, 3_11
+        );
 
         calls[0] = _generateAllowSystemContractCall(bytecodeHash);
 

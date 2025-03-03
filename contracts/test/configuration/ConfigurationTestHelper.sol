@@ -23,6 +23,8 @@ import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/I
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {ICreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditConfiguratorV3.sol";
 
+import {VmSafe} from "forge-std/Vm.sol";
+
 import {
     AP_PRICE_FEED_STORE,
     AP_INSTANCE_MANAGER_PROXY,
@@ -79,13 +81,24 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
     ICreditConfiguratorV3 public creditConfigurator;
 
     address public instanceOwner;
+    VmSafe.Wallet internal bytecodeAuthor;
+    VmSafe.Wallet internal auditor;
 
     function setUp() public virtual {
         vm.chainId(1);
 
         TestKeys testKeys = new TestKeys();
+
+        bytecodeAuthor = testKeys.bytecodeAuthor();
+        auditor = testKeys.auditor();
+
         _deployGlobalContracts(
-            testKeys.initialSigners(), testKeys.auditor(), "Initial Auditor", testKeys.threshold(), testKeys.dao().addr
+            testKeys.initialSigners(),
+            bytecodeAuthor,
+            auditor,
+            "Initial Auditor",
+            testKeys.threshold(),
+            testKeys.dao().addr
         );
         _deployMockTokens();
 
@@ -152,7 +165,9 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
     function _addMockLossPolicy() internal {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
 
-        bytes32 bytecodeHash = _uploadByteCodeAndSign(type(MockLossPolicy).creationCode, "LOSS_POLICY::MOCK", 3_10);
+        bytes32 bytecodeHash = _uploadByteCodeAndSign(
+            bytecodeAuthor, auditor, type(MockLossPolicy).creationCode, "LOSS_POLICY::MOCK", 3_10
+        );
 
         calls[0] = _generateAllowPublicContractCall(bytecodeHash);
 

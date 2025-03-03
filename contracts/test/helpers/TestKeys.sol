@@ -16,6 +16,7 @@ contract TestKeys is Test {
     VmSafe.Wallet internal _dao;
     VmSafe.Wallet internal _instanceOwner;
     VmSafe.Wallet internal _auditor;
+    VmSafe.Wallet internal _bytecodeAuthor;
 
     uint8 public threshold = 2;
 
@@ -25,6 +26,7 @@ contract TestKeys is Test {
         _dao = vm.createWallet(_generatePrivateKey("DAO"));
         _instanceOwner = vm.createWallet(_generatePrivateKey("INSTANCE_OWNER"));
         _auditor = vm.createWallet(_generatePrivateKey("AUDITOR"));
+        _bytecodeAuthor = vm.createWallet(_generatePrivateKey("BYTECODE_AUTHOR"));
     }
 
     function initialSigners() external view returns (VmSafe.Wallet[] memory result) {
@@ -55,6 +57,10 @@ contract TestKeys is Test {
 
     function auditor() external view returns (VmSafe.Wallet memory) {
         return _auditor;
+    }
+
+    function bytecodeAuthor() external view returns (VmSafe.Wallet memory) {
+        return _bytecodeAuthor;
     }
 
     function printKeys() external view {
