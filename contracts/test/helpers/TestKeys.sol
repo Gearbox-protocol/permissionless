@@ -23,7 +23,9 @@ contract TestKeys is Test {
     constructor() {
         _signer1 = vm.createWallet(_generatePrivateKey("SIGNER_1"));
         _signer2 = vm.createWallet(_generatePrivateKey("SIGNER_2"));
-        _dao = vm.createWallet(_generatePrivateKey("DAO"));
+        uint256 daoPrivateKey = _generatePrivateKey("DAO");
+        vm.rememberKey(daoPrivateKey);
+        _dao = vm.createWallet(daoPrivateKey);
         _instanceOwner = vm.createWallet(_generatePrivateKey("INSTANCE_OWNER"));
         _auditor = vm.createWallet(_generatePrivateKey("AUDITOR"));
         _bytecodeAuthor = vm.createWallet(_generatePrivateKey("BYTECODE_AUTHOR"));
