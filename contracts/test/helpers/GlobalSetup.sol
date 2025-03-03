@@ -240,10 +240,10 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         }
     }
 
-    function _getFundsBack(VmSafe.Wallet[] memory wallets, address to) internal {
-        for (uint256 i = 0; i < wallets.length; ++i) {
-            _startPrankOrBroadcast(wallets[i].addr);
-            payable(to).transfer(wallets[i].addr.balance);
+    function _getFundsBack(address[] memory actors, address to) internal {
+        for (uint256 i = 0; i < actors.length; ++i) {
+            _startPrankOrBroadcast(actors[i]);
+            payable(to).transfer(actors[i].balance);
             _stopPrankOrBroadcast();
         }
     }
