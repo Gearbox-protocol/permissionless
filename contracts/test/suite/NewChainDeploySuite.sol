@@ -72,9 +72,15 @@ import {GlobalSetup} from "../../test/helpers/GlobalSetup.sol";
 import {MockLossPolicy} from "../../test/mocks/MockLossPolicy.sol";
 import {TestKeys} from "../../test/helpers/TestKeys.sol";
 
+import {VmSafe} from "forge-std/Vm.sol";
+
 contract NewChainDeploySuite is Test, GlobalSetup {
     address internal riskCurator;
     address internal instanceOwner;
+
+    VmSafe.Wallet internal bytecodeAuthor;
+    VmSafe.Wallet internal auditor;
+
     address constant TREASURY = 0x3E965117A51186e41c2BB58b729A1e518A715e5F;
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant GEAR = 0xBa3335588D9403515223F109EdC4eB7269a9Ab5D;
@@ -93,10 +99,17 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         TestKeys testKeys = new TestKeys();
         _deployGlobalContracts(
-            testKeys.initialSigners(), testKeys.auditor(), "Initial Auditor", testKeys.threshold(), testKeys.dao().addr
+            testKeys.initialSigners(),
+            testKeys.bytecodeAuthor(),
+            testKeys.auditor(),
+            "Initial Auditor",
+            testKeys.threshold(),
+            testKeys.dao().addr
         );
 
         instanceOwner = testKeys.instanceOwner().addr;
+        bytecodeAuthor = testKeys.bytecodeAuthor();
+        auditor = testKeys.auditor();
 
         // activate instance
         CrossChainCall[] memory calls = new CrossChainCall[](1);
@@ -113,7 +126,9 @@ contract NewChainDeploySuite is Test, GlobalSetup {
     function _addMockLossPolicy() internal {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
 
-        bytes32 bytecodeHash = _uploadByteCodeAndSign(type(MockLossPolicy).creationCode, "LOSS_POLICY::MOCK", 3_10);
+        bytes32 bytecodeHash = _uploadByteCodeAndSign(
+            bytecodeAuthor, auditor, type(MockLossPolicy).creationCode, "LOSS_POLICY::MOCK", 3_10
+        );
 
         calls[0] = _generateAllowPublicContractCall(bytecodeHash);
 

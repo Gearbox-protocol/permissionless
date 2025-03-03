@@ -19,7 +19,8 @@ contract InterestRateModelConfigurationUnitTest is ConfigurationTestHelper {
 
     function test_IRM_01_configure() public {
         CrossChainCall[] memory calls = new CrossChainCall[](1);
-        bytes32 bytecodeHash = _uploadByteCodeAndSign(type(MockIRM).creationCode, "IRM::MOCK", 3_10);
+        bytes32 bytecodeHash =
+            _uploadByteCodeAndSign(bytecodeAuthor, auditor, type(MockIRM).creationCode, "IRM::MOCK", 3_10);
         calls[0] = _generateAllowPublicContractCall(bytecodeHash);
         _submitBatchAndSign("Allow public contracts", calls);
 

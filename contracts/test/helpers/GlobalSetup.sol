@@ -159,6 +159,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
     function _deployGlobalContracts(
         VmSafe.Wallet[] memory _initialSigners,
+        VmSafe.Wallet memory _bytecodeAuthor,
         VmSafe.Wallet memory _auditor,
         string memory auditorName,
         uint8 _threshold,
@@ -190,7 +191,11 @@ contract GlobalSetup is Test, InstanceManagerHelper {
         calls = new CrossChainCall[](len);
         for (uint256 i = 0; i < len; ++i) {
             bytes32 bytecodeHash = _uploadByteCodeAndSign(
-                contractsToUpload[i].initCode, contractsToUpload[i].contractType, contractsToUpload[i].version
+                _bytecodeAuthor,
+                _auditor,
+                contractsToUpload[i].initCode,
+                contractsToUpload[i].contractType,
+                contractsToUpload[i].version
             );
 
             bool isPublicContract = IBytecodeRepository(bytecodeRepository).isPublicDomain(

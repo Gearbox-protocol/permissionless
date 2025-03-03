@@ -8,46 +8,49 @@ import {AuditReport, Bytecode} from "../../interfaces/Types.sol";
 import {IBytecodeRepository} from "../../interfaces/IBytecodeRepository.sol";
 import {console} from "forge-std/console.sol";
 import {LibString} from "@solady/utils/LibString.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 
 contract BCRHelpers is SignatureHelper {
     using LibString for bytes32;
     using LibString for uint256;
 
     address internal bytecodeRepository;
-    uint256 internal auditorKey;
-    address internal auditor;
+    // uint256 internal auditorKey;
+    // address internal auditor;
 
-    uint256 internal authorKey;
-    address internal author;
+    // uint256 internal authorKey;
+    // address internal author;
 
-    constructor() {
-        auditorKey = _generatePrivateKey("AUDITOR");
-        auditor = vm.rememberKey(auditorKey);
+    // constructor() {
+    //     auditorKey = _generatePrivateKey("AUDITOR");
+    //     auditor = vm.rememberKey(auditorKey);
 
-        authorKey = _generatePrivateKey("AUTHOR");
-        author = vm.rememberKey(authorKey);
-        // Print debug info
+    //     authorKey = _generatePrivateKey("AUTHOR");
+    //     author = vm.rememberKey(authorKey);
+    //     // Print debug info
 
-        if (!_isTestMode()) {
-            console.log("BCR setup:");
-            console.log("Auditor:", auditor, "Key:", auditorKey.toHexString());
-            console.log("Author:", author, "Key:", authorKey.toHexString());
-        }
-    }
+    //     if (!_isTestMode()) {
+    //         console.log("BCR setup:");
+    //         console.log("Auditor:", auditor, "Key:", auditorKey.toHexString());
+    //         console.log("Author:", author, "Key:", authorKey.toHexString());
+    //     }
+    // }
 
     function _isTestMode() internal pure virtual returns (bool) {
         return false;
     }
 
-    function _uploadByteCode(bytes memory _initCode, bytes32 _contractType, uint256 _version)
-        internal
-        returns (bytes32 bytecodeHash)
-    {
+    function _uploadByteCode(
+        VmSafe.Wallet memory _author,
+        bytes memory _initCode,
+        bytes32 _contractType,
+        uint256 _version
+    ) internal returns (bytes32 bytecodeHash) {
         Bytecode memory bytecode = Bytecode({
             contractType: _contractType,
             version: _version,
             initCode: _initCode,
-            author: author,
+            author: _author.addr,
             source: "github.com/gearbox-protocol/core-v3",
             authorSignature: ""
         });
@@ -67,19 +70,23 @@ contract BCRHelpers is SignatureHelper {
         );
 
         bytecode.authorSignature =
-            _sign(authorKey, keccak256(abi.encodePacked("\x19\x01", _bytecodeDomainSeparator(), bytecodeHash)));
+            _sign(_author, keccak256(abi.encodePacked("\x19\x01", _bytecodeDomainSeparator(), bytecodeHash)));
 
-        _startPrankOrBroadcast(author);
+        vm.rememberKey(_author.privateKey);
+        _startPrankOrBroadcast(_author.addr);
         IBytecodeRepository(bytecodeRepository).uploadBytecode(bytecode);
 
         _stopPrankOrBroadcast();
     }
 
-    function _uploadByteCodeAndSign(bytes memory _initCode, bytes32 _contractName, uint256 _version)
-        internal
-        returns (bytes32 bytecodeHash)
-    {
-        bytecodeHash = _uploadByteCode(_initCode, _contractName, _version);
+    function _uploadByteCodeAndSign(
+        VmSafe.Wallet memory _author,
+        VmSafe.Wallet memory _auditor,
+        bytes memory _initCode,
+        bytes32 _contractName,
+        uint256 _version
+    ) internal returns (bytes32 bytecodeHash) {
+        bytecodeHash = _uploadByteCode(_author, _initCode, _contractName, _version);
         string memory reportUrl = "https://github.com/gearbox-protocol/security-review";
 
         // Build auditor signature
@@ -87,16 +94,17 @@ contract BCRHelpers is SignatureHelper {
             abi.encode(
                 keccak256("AuditReport(bytes32 bytecodeHash,address auditor,string reportUrl)"),
                 bytecodeHash,
-                auditor,
+                _auditor.addr,
                 keccak256(bytes(reportUrl))
             )
         );
 
         // Sign the hash with auditor key
         bytes memory signature =
-            _sign(auditorKey, keccak256(abi.encodePacked("\x19\x01", _bytecodeDomainSeparator(), signatureHash)));
+            _sign(_auditor, keccak256(abi.encodePacked("\x19\x01", _bytecodeDomainSeparator(), signatureHash)));
 
-        AuditReport memory auditReport = AuditReport({auditor: auditor, reportUrl: reportUrl, signature: signature});
+        AuditReport memory auditReport =
+            AuditReport({auditor: _auditor.addr, reportUrl: reportUrl, signature: signature});
 
         // Call submitAuditReport with signature
         IBytecodeRepository(bytecodeRepository).submitAuditReport(bytecodeHash, auditReport);

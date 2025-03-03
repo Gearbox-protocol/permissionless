@@ -29,7 +29,12 @@ contract PermissionlessScript is Script, GlobalSetup {
 
         _fundActors(addressesToFund, 1 ether);
         _deployGlobalContracts(
-            testKeys.initialSigners(), testKeys.auditor(), "Initial Auditor", testKeys.threshold(), testKeys.dao().addr
+            testKeys.initialSigners(),
+            testKeys.bytecodeAuthor(),
+            testKeys.auditor(),
+            "Initial Auditor",
+            testKeys.threshold(),
+            testKeys.dao().addr
         );
 
         vm.stopBroadcast();
