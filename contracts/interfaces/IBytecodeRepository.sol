@@ -50,8 +50,8 @@ interface IBytecodeRepository is IVersion, IImmutableOwnableTrait {
     error CallerIsNotBytecodeAuthorException(address caller);
     error ContractIsAlreadyDeployedException(address deployedContract);
     error ContractTypeIsNotInPublicDomainException(bytes32 contractType);
-    error DomainIsAlreadyMarketAsPublicException(bytes32 domain);
-    error DomainIsAlreadyMarketAsSystemException(bytes32 domain);
+    error DomainIsAlreadyMarkedAsPublicException(bytes32 domain);
+    error DomainIsAlreadyMarkedAsSystemException(bytes32 domain);
     error InitCodeIsForbiddenException(bytes32 initCodeHash);
     error InvalidAuditorSignatureException(address auditor);
     error InvalidAuthorSignatureException(address author);
@@ -69,7 +69,7 @@ interface IBytecodeRepository is IVersion, IImmutableOwnableTrait {
     function AUDIT_REPORT_TYPEHASH() external view returns (bytes32);
     function domainSeparatorV4() external view returns (bytes32);
     function computeBytecodeHash(Bytecode calldata bytecode) external view returns (bytes32);
-    function computeAuditReportHash(bytes32 bytecodeHash, address auditor, string calldata reportUrl)
+    function computeAuditReportHash(bytes32 bytecodeHash, AuditReport calldata report)
         external
         view
         returns (bytes32);
