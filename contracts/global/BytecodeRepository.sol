@@ -104,6 +104,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     }
 
     /// @notice Computes bytecode's struct hash
+    /// @dev `authorSignature` field is ignored
     function computeBytecodeHash(Bytecode calldata bytecode) public pure override returns (bytes32) {
         return keccak256(
             abi.encode(
@@ -117,14 +118,17 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         );
     }
 
-    /// @notice Computes struct hash for auditor signature
-    function computeAuditReportHash(bytes32 bytecodeHash, address auditor, string calldata reportUrl)
+    /// @notice Computes audit report's struct hash
+    /// @dev `signature` field is ignored
+    function computeAuditReportHash(bytes32 bytecodeHash, AuditReport calldata report)
         public
         pure
         override
         returns (bytes32)
     {
-        return keccak256(abi.encode(AUDIT_REPORT_TYPEHASH, bytecodeHash, auditor, keccak256(bytes(reportUrl))));
+        return keccak256(
+            abi.encode(AUDIT_REPORT_TYPEHASH, bytecodeHash, report.auditor, keccak256(bytes(report.reportUrl)))
+        );
     }
 
     // ------------------- //
@@ -294,7 +298,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         if (!isBytecodeUploaded(bytecodeHash)) revert BytecodeIsNotUploadedException(bytecodeHash);
         if (!_auditorsSet.contains(auditReport.auditor)) revert AuditorIsNotApprovedException(auditReport.auditor);
 
-        bytes32 reportHash = computeAuditReportHash(bytecodeHash, auditReport.auditor, auditReport.reportUrl);
+        bytes32 reportHash = computeAuditReportHash(bytecodeHash, auditReport);
         address auditor = ECDSA.recover(_hashTypedDataV4(reportHash), auditReport.signature);
         if (auditor != auditReport.auditor) revert InvalidAuditorSignatureException(auditor);
 
@@ -438,14 +442,14 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     /// @dev Adds `domain` to the list of public domains
     /// @dev Reverts if `domain` is already in the list of system domains
     function _addPublicDomain(bytes32 domain) internal {
-        if (isSystemDomain(domain)) revert DomainIsAlreadyMarketAsSystemException(domain);
+        if (isSystemDomain(domain)) revert DomainIsAlreadyMarkedAsSystemException(domain);
         if (_publicDomainsSet.add(domain)) emit AddPublicDomain(domain);
     }
 
     /// @dev Adds `domain` to the list of system domains
     /// @dev Reverts if `domain` is already in the list of public domains
     function _addSystemDomain(bytes32 domain) internal {
-        if (isPublicDomain(domain)) revert DomainIsAlreadyMarketAsPublicException(domain);
+        if (isPublicDomain(domain)) revert DomainIsAlreadyMarkedAsPublicException(domain);
         if (_systemDomainsSet.add(domain)) emit AddSystemDomain(domain);
     }
 
