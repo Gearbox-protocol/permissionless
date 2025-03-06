@@ -20,8 +20,8 @@ contract BytecodeRepositoryUnitTest is Test {
     VmSafe.Wallet public author;
     VmSafe.Wallet public auditor;
 
-    bytes32 public testPublicBytecodeHash;
-    bytes32 public testSystemBytecodeHash;
+    bytes32 public publicBytecodeHash;
+    bytes32 public systemBytecodeHash;
 
     // ----- //
     // SETUP //
@@ -47,15 +47,15 @@ contract BytecodeRepositoryUnitTest is Test {
         vm.stopPrank();
 
         vm.startPrank(auditor.addr);
-        testPublicBytecodeHash = bcr.computeBytecodeHash(publicBytecode);
-        testSystemBytecodeHash = bcr.computeBytecodeHash(systemBytecode);
-        bcr.submitAuditReport(testPublicBytecodeHash, _getTestAuditReport(testPublicBytecodeHash));
-        bcr.submitAuditReport(testSystemBytecodeHash, _getTestAuditReport(testSystemBytecodeHash));
+        publicBytecodeHash = bcr.computeBytecodeHash(publicBytecode);
+        systemBytecodeHash = bcr.computeBytecodeHash(systemBytecode);
+        bcr.submitAuditReport(publicBytecodeHash, _getTestAuditReport(publicBytecodeHash));
+        bcr.submitAuditReport(systemBytecodeHash, _getTestAuditReport(systemBytecodeHash));
         vm.stopPrank();
 
         vm.startPrank(owner);
-        bcr.allowPublicContract(testPublicBytecodeHash);
-        bcr.allowSystemContract(testSystemBytecodeHash);
+        bcr.allowPublicContract(publicBytecodeHash);
+        bcr.allowSystemContract(systemBytecodeHash);
         vm.stopPrank();
     }
 
@@ -67,13 +67,13 @@ contract BytecodeRepositoryUnitTest is Test {
         assertTrue(bcr.isPublicDomain("PUBLIC"));
         assertTrue(bcr.isSystemDomain("SYSTEM"));
 
-        assertTrue(bcr.isBytecodeUploaded(testPublicBytecodeHash));
-        assertTrue(bcr.isBytecodeAudited(testPublicBytecodeHash));
-        assertEq(bcr.getAllowedBytecodeHash("PUBLIC::MOCK", 300), testPublicBytecodeHash);
+        assertTrue(bcr.isBytecodeUploaded(publicBytecodeHash));
+        assertTrue(bcr.isBytecodeAudited(publicBytecodeHash));
+        assertEq(bcr.getAllowedBytecodeHash("PUBLIC::MOCK", 300), publicBytecodeHash);
 
-        assertTrue(bcr.isBytecodeUploaded(testSystemBytecodeHash));
-        assertTrue(bcr.isBytecodeAudited(testSystemBytecodeHash));
-        assertEq(bcr.getAllowedBytecodeHash("SYSTEM::MOCK", 300), testSystemBytecodeHash);
+        assertTrue(bcr.isBytecodeUploaded(systemBytecodeHash));
+        assertTrue(bcr.isBytecodeAudited(systemBytecodeHash));
+        assertEq(bcr.getAllowedBytecodeHash("SYSTEM::MOCK", 300), systemBytecodeHash);
     }
 
     // ---------------- //
@@ -89,7 +89,7 @@ contract BytecodeRepositoryUnitTest is Test {
         assertFalse(bcr.isDeployedFromRepository(expectedAddr));
 
         vm.expectEmit(true, true, true, true);
-        emit IBytecodeRepository.DeployContract(testPublicBytecodeHash, bytes32("PUBLIC::MOCK"), 300, expectedAddr);
+        emit IBytecodeRepository.DeployContract(publicBytecodeHash, bytes32("PUBLIC::MOCK"), 300, expectedAddr);
 
         vm.expectCall(expectedAddr, abi.encodeWithSignature("transferOwnership(address)", address(this)));
 
@@ -101,7 +101,7 @@ contract BytecodeRepositoryUnitTest is Test {
 
         // Verify deployment was recorded
         assertTrue(bcr.isDeployedFromRepository(deployedAddr));
-        assertEq(bcr.getDeployedContractBytecodeHash(deployedAddr), testPublicBytecodeHash);
+        assertEq(bcr.getDeployedContractBytecodeHash(deployedAddr), publicBytecodeHash);
 
         // Reverts if trying to deploy again with same parameters
         vm.expectRevert(
@@ -144,14 +144,14 @@ contract BytecodeRepositoryUnitTest is Test {
         // Wrong version
         bytes memory constructorParams = abi.encode(bytes32("PUBLIC::MOCK"), uint256(301));
         vm.expectRevert(
-            abi.encodeWithSelector(IBytecodeRepository.InvalidBytecodeException.selector, testPublicBytecodeHash)
+            abi.encodeWithSelector(IBytecodeRepository.InvalidBytecodeException.selector, publicBytecodeHash)
         );
         bcr.deploy("PUBLIC::MOCK", 300, constructorParams, salt);
 
         // Wrong type
         constructorParams = abi.encode(bytes32("PUBLIC::MOCK2"), uint256(300));
         vm.expectRevert(
-            abi.encodeWithSelector(IBytecodeRepository.InvalidBytecodeException.selector, testPublicBytecodeHash)
+            abi.encodeWithSelector(IBytecodeRepository.InvalidBytecodeException.selector, publicBytecodeHash)
         );
         bcr.deploy("PUBLIC::MOCK", 300, constructorParams, salt);
     }
@@ -241,7 +241,7 @@ contract BytecodeRepositoryUnitTest is Test {
     function test_U_BCR_08_uploadBytecode_reverts_if_allowed_bytecode_exists_for_type_and_version() public {
         Bytecode memory bytecode = _getTestBytecode("PUBLIC::MOCK", 300);
         // change link to source and sign again
-        bytecode.source = "https://github.com/test-source-new";
+        bytecode.source = "https://github.com/Gearbox-protocol/even-more-permissionless";
         bytecode.authorSignature = _signBytecode(author, bytecode);
 
         vm.expectRevert(
@@ -650,7 +650,7 @@ contract BytecodeRepositoryUnitTest is Test {
         // Test with non-public domain (should be no-op)
         vm.prank(owner);
         bcr.removePublicContractType("SYSTEM::MOCK");
-        assertEq(bcr.getAllowedBytecodeHash("SYSTEM::MOCK", 300), testSystemBytecodeHash);
+        assertEq(bcr.getAllowedBytecodeHash("SYSTEM::MOCK", 300), systemBytecodeHash);
 
         // Add more versions to test cleanup
         bytes32[] memory hashes = new bytes32[](4);
@@ -671,7 +671,7 @@ contract BytecodeRepositoryUnitTest is Test {
         emit IBytecodeRepository.RemoveContractTypeOwner(bytes32("PUBLIC::MOCK"));
 
         vm.expectEmit(true, true, true, true);
-        emit IBytecodeRepository.ForbidContract(testPublicBytecodeHash, "PUBLIC::MOCK", 300);
+        emit IBytecodeRepository.ForbidContract(publicBytecodeHash, "PUBLIC::MOCK", 300);
         vm.expectEmit(true, true, true, true);
         emit IBytecodeRepository.ForbidContract(hashes[0], "PUBLIC::MOCK", 301);
         vm.expectEmit(true, true, true, true);
@@ -768,7 +768,7 @@ contract BytecodeRepositoryUnitTest is Test {
 
         assertFalse(bcr.isAuditor(auditor.addr));
         assertEq(bcr.getAuditorName(auditor.addr), "");
-        assertFalse(bcr.isBytecodeAudited(testPublicBytecodeHash));
+        assertFalse(bcr.isBytecodeAudited(publicBytecodeHash));
 
         // Second remove should be no-op
         vm.prank(owner);
@@ -869,7 +869,11 @@ contract BytecodeRepositoryUnitTest is Test {
     // --------- //
 
     function _getTestAuditReport(bytes32 bytecodeHash) internal returns (AuditReport memory auditReport) {
-        auditReport = AuditReport({auditor: auditor.addr, reportUrl: "https://test-audit-reports.com", signature: ""});
+        auditReport = AuditReport({
+            auditor: auditor.addr,
+            reportUrl: "https://github.com/Gearbox-protocol/security",
+            signature: ""
+        });
         auditReport.signature = _signAuditReport(auditor, bytecodeHash, auditReport);
     }
 
@@ -879,7 +883,7 @@ contract BytecodeRepositoryUnitTest is Test {
             version: version,
             initCode: type(MockContract).creationCode,
             author: author.addr,
-            source: "https://github.com/test-source",
+            source: "https://github.com/Gearbox-protocol/permissionless",
             authorSignature: ""
         });
         bytecode.authorSignature = _signBytecode(author, bytecode);
