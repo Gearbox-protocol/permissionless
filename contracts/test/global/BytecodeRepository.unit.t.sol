@@ -200,6 +200,25 @@ contract BytecodeRepositoryUnitTest is Test {
         // Second upload should not emit event or revert
         vm.prank(author.addr);
         bcr.uploadBytecode(bytecode);
+
+        // Test with large init code
+        bytecode.initCode = new bytes(30000);
+        for (uint256 i; i < 30000; ++i) {
+            bytecode.initCode[i] = bytes1(uint8((i % 256)));
+        }
+        bytecode.authorSignature = _signBytecode(author, bytecode);
+
+        vm.prank(author.addr);
+        bcr.uploadBytecode(bytecode);
+
+        bytecodeHash = bcr.computeBytecodeHash(bytecode);
+        storedBytecode = bcr.getBytecode(bytecodeHash);
+        assertEq(storedBytecode.contractType, bytecode.contractType);
+        assertEq(storedBytecode.version, bytecode.version);
+        assertEq(storedBytecode.initCode, bytecode.initCode);
+        assertEq(storedBytecode.author, bytecode.author);
+        assertEq(storedBytecode.source, bytecode.source);
+        assertEq(storedBytecode.authorSignature, bytecode.authorSignature);
     }
 
     /// @notice U:[BCR-7]: `uploadBytecode` reverts for invalid contract type or version
