@@ -27,7 +27,7 @@ struct Bytecode {
 struct BytecodePointer {
     bytes32 contractType;
     uint256 version;
-    address initCodePointer;
+    address[] initCodePointers;
     address author;
     string source;
     bytes authorSignature;

@@ -72,7 +72,7 @@ contract CCGHelper is SignatureHelper {
 
     function computeCCGAddress(address[] memory _initialSigners, uint8 _threshold, address _dao)
         internal
-        view
+        pure
         returns (address)
     {
         bytes memory creationCode =

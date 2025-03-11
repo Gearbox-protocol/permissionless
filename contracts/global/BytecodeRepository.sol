@@ -156,7 +156,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     {
         bytes32 bytecodeHash = _allowedBytecodeHashes[cType][ver];
         BytecodePointer storage bytecode = _bytecodeByHash[bytecodeHash];
-        bytes memory initCode = SSTORE2.read(bytecode.initCodePointer);
+        bytes memory initCode = _readInitCode(bytecode.initCodePointers);
 
         bytes32 uniqueSalt = keccak256(abi.encode(salt, deployer));
         bytes memory bytecodeWithParams = abi.encodePacked(initCode, constructorParams);
@@ -180,7 +180,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         if (bytecodeHash == 0) revert BytecodeIsNotAllowedException(cType, ver);
 
         BytecodePointer storage bytecode = _bytecodeByHash[bytecodeHash];
-        bytes memory initCode = SSTORE2.read(bytecode.initCodePointer);
+        bytes memory initCode = _readInitCode(bytecode.initCodePointers);
         _revertIfInitCodeIsForbidden(initCode);
 
         bytes32 uniqueSalt = keccak256(abi.encode(salt, msg.sender));
@@ -207,11 +207,11 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     /// @dev Reverts if bytecode is not uploaded
     function getBytecode(bytes32 bytecodeHash) external view override returns (Bytecode memory) {
         BytecodePointer memory bytecode = _bytecodeByHash[bytecodeHash];
-        if (bytecode.initCodePointer == address(0)) revert BytecodeIsNotUploadedException(bytecodeHash);
+        if (bytecode.initCodePointers.length == 0) revert BytecodeIsNotUploadedException(bytecodeHash);
         return Bytecode({
             contractType: bytecode.contractType,
             version: bytecode.version,
-            initCode: SSTORE2.read(bytecode.initCodePointer),
+            initCode: _readInitCode(bytecode.initCodePointers),
             author: bytecode.author,
             source: bytecode.source,
             authorSignature: bytecode.authorSignature
@@ -220,7 +220,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
 
     /// @notice Whether bytecode with `bytecodeHash` is uploaded
     function isBytecodeUploaded(bytes32 bytecodeHash) public view override returns (bool) {
-        return _bytecodeByHash[bytecodeHash].initCodePointer != address(0);
+        return _bytecodeByHash[bytecodeHash].initCodePointers.length != 0;
     }
 
     /// @notice Uploads new contract bytecode to the repository.
@@ -243,11 +243,11 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         address author = ECDSA.recover(_hashTypedDataV4(bytecodeHash), bytecode.authorSignature);
         if (author != bytecode.author) revert InvalidAuthorSignatureException(author);
 
-        address initCodePointer = SSTORE2.write(bytecode.initCode);
+        address[] memory initCodePointers = _writeInitCode(bytecode.initCode);
         _bytecodeByHash[bytecodeHash] = BytecodePointer({
             contractType: bytecode.contractType,
             version: bytecode.version,
-            initCodePointer: initCodePointer,
+            initCodePointers: initCodePointers,
             author: bytecode.author,
             source: bytecode.source,
             authorSignature: bytecode.authorSignature
@@ -260,6 +260,26 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
             bytecode.source,
             bytecode.authorSignature
         );
+    }
+
+    /// @dev Stores contract's init code using `SSTORE2`, splitting it into chunks if needed
+    function _writeInitCode(bytes calldata initCode) internal returns (address[] memory initCodePointers) {
+        uint256 chunkSize = 24576;
+        uint256 len = initCode.length / chunkSize + 1;
+        initCodePointers = new address[](len);
+        for (uint256 i; i < len; ++i) {
+            uint256 start = i * chunkSize;
+            uint256 end = start + chunkSize;
+            if (end > initCode.length) end = initCode.length;
+            initCodePointers[i] = SSTORE2.write(initCode[start:end]);
+        }
+    }
+
+    /// @dev Reads stored contract's init code using `SSTORE2`
+    function _readInitCode(address[] memory initCodePointers) internal view returns (bytes memory initCode) {
+        for (uint256 i; i < initCodePointers.length; ++i) {
+            initCode = bytes.concat(initCode, SSTORE2.read(initCodePointers[i]));
+        }
     }
 
     // ----------------- //

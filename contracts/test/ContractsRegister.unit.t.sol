@@ -40,7 +40,7 @@ contract ContractsRegisterUnitTest is Test {
     }
 
     /// @notice U:[CR-1]: Constructor works correctly
-    function test_U_CR_01_constructor_works_correctly() public {
+    function test_U_CR_01_constructor_works_correctly() public view {
         assertEq(address(register.acl()), address(acl));
         assertEq(register.getPools().length, 0);
         assertEq(register.getShutdownPools().length, 0);
