@@ -264,7 +264,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
 
     /// @dev Stores contract's init code using `SSTORE2`, splitting it into chunks if needed
     function _writeInitCode(bytes calldata initCode) internal returns (address[] memory initCodePointers) {
-        uint256 chunkSize = 24576;
+        uint256 chunkSize = 24000;
         uint256 len = initCode.length / chunkSize + 1;
         initCodePointers = new address[](len);
         for (uint256 i; i < len; ++i) {
