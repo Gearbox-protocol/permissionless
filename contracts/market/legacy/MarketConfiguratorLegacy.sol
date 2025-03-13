@@ -106,10 +106,11 @@ contract MarketConfiguratorLegacy is MarketConfigurator {
         address addressProvider_,
         address admin_,
         address emergencyAdmin_,
+        address feeSplitterAdmin_,
         string memory curatorName_,
         bool deployGovernor_,
         LegacyParams memory legacyParams_
-    ) MarketConfigurator(addressProvider_, admin_, emergencyAdmin_, address(0), curatorName_, deployGovernor_) {
+    ) MarketConfigurator(addressProvider_, admin_, emergencyAdmin_, feeSplitterAdmin_, curatorName_, deployGovernor_) {
         crossChainGovernanceProxy = _getAddressOrRevert(AP_CROSS_CHAIN_GOVERNANCE_PROXY, NO_VERSION_CONTROL);
 
         aclLegacy = legacyParams_.acl;
