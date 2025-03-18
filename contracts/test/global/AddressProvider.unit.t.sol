@@ -78,6 +78,12 @@ contract AddressProviderTest is Test {
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IAddressProvider.InvalidVersionException.selector, key, 99));
         provider.setAddress(key, invalidVersionValue, true);
+
+        // Test it reverts if version is greater than 999
+        vm.mockCall(invalidVersionValue, abi.encodeWithSignature("version()"), abi.encode(1000));
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IAddressProvider.InvalidVersionException.selector, key, 1000));
+        provider.setAddress(key, invalidVersionValue, true);
     }
 
     /// @notice Test version tracking functionality
@@ -126,8 +132,14 @@ contract AddressProviderTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IAddressProvider.InvalidVersionException.selector, key, 99));
         provider.getLatestMinorVersion(key, 99); // Version < 100
 
+        vm.expectRevert(abi.encodeWithSelector(IAddressProvider.InvalidVersionException.selector, key, 1000));
+        provider.getLatestMinorVersion(key, 1000); // Version > 999
+
         vm.expectRevert(abi.encodeWithSelector(IAddressProvider.InvalidVersionException.selector, key, 99));
         provider.getLatestPatchVersion(key, 99); // Version < 100
+
+        vm.expectRevert(abi.encodeWithSelector(IAddressProvider.InvalidVersionException.selector, key, 1000));
+        provider.getLatestPatchVersion(key, 1000); // Version > 999
     }
 
     /// @notice Test getters functionality

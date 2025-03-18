@@ -100,7 +100,7 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
     }
 
     /// @notice Returns the latest minor version for given `majorVersion`
-    /// @dev Reverts if `majorVersion` is less than `100`
+    /// @dev Reverts if `majorVersion` is less than `100` or greater than `999`
     /// @dev Reverts if `key` has no entries with matching `majorVersion`
     function getLatestMinorVersion(bytes32 key, uint256 majorVersion) external view override returns (uint256 ver) {
         _validateVersion(key, majorVersion);
@@ -109,7 +109,7 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
     }
 
     /// @notice Returns the latest patch version for given `minorVersion`
-    /// @dev Reverts if `minorVersion` is less than `100`
+    /// @dev Reverts if `minorVersion` is less than `100` or greater than `999`
     /// @dev Reverts if `key` has no entries with matching `minorVersion`
     function getLatestPatchVersion(bytes32 key, uint256 minorVersion) external view override returns (uint256 ver) {
         _validateVersion(key, minorVersion);
@@ -124,7 +124,7 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
     /// @notice Sets the address for given `key` to `value`, optionally saving contract's version
     /// @dev Reverts if caller is not the owner
     /// @dev Reverts if `value` is zero address
-    /// @dev If `saveVersion` is true, reverts if version is less than 100
+    /// @dev If `saveVersion` is true, reverts if version is less than `100` or greater than `999`
     function setAddress(bytes32 key, address value, bool saveVersion) external override onlyOwner {
         if (value == address(0)) revert ZeroAddressException(key);
         uint256 ver = NO_VERSION_CONTROL;
@@ -162,8 +162,8 @@ contract AddressProvider is ImmutableOwnableTrait, IAddressProvider {
         return ver - ver % 10;
     }
 
-    /// @dev Reverts if `ver` is less than `100`
+    /// @dev Reverts if `ver` is less than `100` or greater than `999`
     function _validateVersion(bytes32 key, uint256 ver) internal pure {
-        if (ver < 100) revert InvalidVersionException(key, ver);
+        if (ver < 100 || ver > 999) revert InvalidVersionException(key, ver);
     }
 }

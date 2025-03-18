@@ -201,6 +201,14 @@ contract BytecodeRepositoryUnitTest is Test {
         vm.prank(author.addr);
         bcr.uploadBytecode(bytecode);
 
+        // Test with empty init code
+        bytecode.initCode = new bytes(0);
+        bytecode.authorSignature = _signBytecode(author, bytecode);
+
+        vm.expectRevert(abi.encodeWithSelector(IBytecodeRepository.InitCodeIsEmptyException.selector));
+        vm.prank(author.addr);
+        bcr.uploadBytecode(bytecode);
+
         // Test with large init code
         bytecode.initCode = new bytes(30000);
         for (uint256 i; i < 30000; ++i) {
@@ -863,10 +871,12 @@ contract BytecodeRepositoryUnitTest is Test {
 
         assertEq(bcr.getTokenSpecificPostfix(token), postfix);
 
-        // Cannot set postfix containing "::"
+        // Cannot set invalid postfix
+        vm.expectRevert(
+            abi.encodeWithSelector(IBytecodeRepository.InvalidPostfixException.selector, bytes32("TEST:INVALID"))
+        );
         vm.prank(owner);
-        bcr.setTokenSpecificPostfix(token, "TEST::INVALID"); // Should be no-op
-        assertEq(bcr.getTokenSpecificPostfix(token), postfix);
+        bcr.setTokenSpecificPostfix(token, "TEST:INVALID");
 
         // Setting same postfix should be no-op
         vm.prank(owner);

@@ -228,6 +228,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     /// @dev Reverts if bytecode's contract type is invalid or version is less than `100` or greater than `999`
     /// @dev Reverts if bytecode for given contract type and version is already allowed
     /// @dev Reverts if author is zero address or if their signature is invalid
+    /// @dev Reverts if init code is empty
     /// @dev On mainnet, only author of the bytecode can upload it
     function uploadBytecode(Bytecode calldata bytecode) external override nonZeroAddress(bytecode.author) {
         bytes32 bytecodeHash = computeBytecodeHash(bytecode);
@@ -265,7 +266,8 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     /// @dev Stores contract's init code using `SSTORE2`, splitting it into chunks if needed
     function _writeInitCode(bytes calldata initCode) internal returns (address[] memory initCodePointers) {
         uint256 chunkSize = 24500; // small buffer to account for `SSTORE2` overhead
-        uint256 len = initCode.length / chunkSize + 1;
+        if (initCode.length == 0) revert InitCodeIsEmptyException();
+        uint256 len = (initCode.length - 1) / chunkSize + 1;
         initCodePointers = new address[](len);
         for (uint256 i; i < len; ++i) {
             uint256 start = i * chunkSize;
@@ -541,10 +543,12 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         return _tokenSpecificPostfixes[token];
     }
 
-    /// @notice Sets `token`'s specific `postfix` (does nothing if `postfix` contains "::")
+    /// @notice Sets `token`'s specific `postfix`
     /// @dev Can only be called by the owner
+    /// @dev Reverts if `postfix` is invalid
     function setTokenSpecificPostfix(address token, bytes32 postfix) external override onlyOwner {
-        if (_tokenSpecificPostfixes[token] == postfix || LibString.fromSmallString(postfix).contains("::")) return;
+        _validatePostfix(postfix);
+        if (_tokenSpecificPostfixes[token] == postfix) return;
         _tokenSpecificPostfixes[token] = postfix;
         emit SetTokenSpecificPostfix(token, postfix);
     }
@@ -612,6 +616,11 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
     /// @dev Reverts if `domain` is invalid
     function _validateDomain(bytes32 domain) internal pure {
         if (!domain.isValidDomain()) revert InvalidDomainException(domain);
+    }
+
+    /// @dev Reverts if `postfix` is invalid
+    function _validatePostfix(bytes32 postfix) internal pure {
+        if (!postfix.isValidPostfix()) revert InvalidPostfixException(postfix);
     }
 
     /// @dev Reverts if `ver` is less than `100` or greater than `999`
