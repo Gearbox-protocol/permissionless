@@ -52,12 +52,14 @@ interface IBytecodeRepository is IVersion, IImmutableOwnableTrait {
     error ContractTypeIsNotInPublicDomainException(bytes32 contractType);
     error DomainIsAlreadyMarkedAsPublicException(bytes32 domain);
     error DomainIsAlreadyMarkedAsSystemException(bytes32 domain);
+    error InitCodeIsEmptyException();
     error InitCodeIsForbiddenException(bytes32 initCodeHash);
     error InvalidAuditorSignatureException(address auditor);
     error InvalidAuthorSignatureException(address author);
     error InvalidBytecodeException(bytes32 bytecodeHash);
     error InvalidContractTypeException(bytes32 contractType);
     error InvalidDomainException(bytes32 domain);
+    error InvalidPostfixException(bytes32 postfix);
     error InvalidVersionException(bytes32 contractType, uint256 version);
     error VersionNotFoundException(bytes32 contractType);
 

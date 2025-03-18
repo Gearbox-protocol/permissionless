@@ -32,7 +32,6 @@ import {
     AP_CREDIT_CONFIGURATOR,
     AP_CREDIT_FACADE,
     AP_CREDIT_FACTORY,
-    AP_INSTANCE_MANAGER_PROXY,
     AP_WETH_TOKEN,
     NO_VERSION_CONTROL
 } from "../libraries/ContractLiterals.sol";
