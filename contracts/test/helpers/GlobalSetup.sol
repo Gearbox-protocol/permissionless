@@ -92,7 +92,6 @@ import {YearnV2Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapte
 import {ConvexV1BoosterAdapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/convex/ConvexV1_Booster.sol";
 import {ConvexV1BaseRewardPoolAdapter} from
     "@gearbox-protocol/integrations-v3/contracts/adapters/convex/ConvexV1_BaseRewardPool.sol";
-import {ZircuitPoolAdapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/zircuit/ZircuitPoolAdapter.sol";
 import {WstETHV1Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/lido/WstETHV1.sol";
 import {LidoV1Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/lido/LidoV1.sol";
 import {UniswapV3Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/uniswap/UniswapV3.sol";
@@ -461,14 +460,6 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             UploadableContract({
                 initCode: type(ConvexV1BaseRewardPoolAdapter).creationCode,
                 contractType: "ADAPTER::CVX_V1_BASE_REWARD_POOL",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(ZircuitPoolAdapter).creationCode,
-                contractType: "ADAPTER::ZIRCUIT_POOL",
                 version: 3_10
             })
         );
