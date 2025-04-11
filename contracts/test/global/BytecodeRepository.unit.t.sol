@@ -89,7 +89,9 @@ contract BytecodeRepositoryUnitTest is Test {
         assertFalse(bcr.isDeployedFromRepository(expectedAddr));
 
         vm.expectEmit(true, true, true, true);
-        emit IBytecodeRepository.DeployContract(publicBytecodeHash, bytes32("PUBLIC::MOCK"), 300, expectedAddr);
+        emit IBytecodeRepository.DeployContract(
+            publicBytecodeHash, bytes32("PUBLIC::MOCK"), 300, expectedAddr, constructorParams
+        );
 
         vm.expectCall(expectedAddr, abi.encodeWithSignature("transferOwnership(address)", address(this)));
 
