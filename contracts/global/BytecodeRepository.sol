@@ -194,7 +194,7 @@ contract BytecodeRepository is ImmutableOwnableTrait, SanityCheckTrait, IBytecod
         }
 
         _deployedContractBytecodeHashes[newContract] = bytecodeHash;
-        emit DeployContract(bytecodeHash, cType, ver, newContract);
+        emit DeployContract(bytecodeHash, cType, ver, newContract, constructorParams);
 
         try Ownable(newContract).transferOwnership(msg.sender) {} catch {}
     }

@@ -19,7 +19,11 @@ interface IBytecodeRepository is IVersion, IImmutableOwnableTrait {
     event AllowContract(bytes32 indexed bytecodeHash, bytes32 indexed contractType, uint256 indexed version);
     event AuditBytecode(bytes32 indexed bytecodeHash, address indexed auditor, string reportUrl, bytes signature);
     event DeployContract(
-        bytes32 indexed bytecodeHash, bytes32 indexed contractType, uint256 indexed version, address contractAddress
+        bytes32 indexed bytecodeHash,
+        bytes32 indexed contractType,
+        uint256 indexed version,
+        address contractAddress,
+        bytes constructorParams
     );
     event ForbidContract(bytes32 indexed bytecodeHash, bytes32 indexed contractType, uint256 indexed version);
     event ForbidInitCode(bytes32 indexed initCodeHash);
