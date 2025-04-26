@@ -114,6 +114,11 @@ contract InstanceManagerTest is Test {
         vm.prank(owner);
         newManager.activate(owner, newTreasury, weth, gear);
         assertEq(newAddressProvider.getAddressOrRevert(AP_TREASURY, NO_VERSION_CONTROL), treasury);
+
+        // Test successful activation without GEAR
+        newManager = new InstanceManager(crossChainGovernance);
+        vm.prank(crossChainGovernance);
+        newManager.activate(owner, treasury, weth, address(0));
     }
 
     /// @notice Test address setting functionality

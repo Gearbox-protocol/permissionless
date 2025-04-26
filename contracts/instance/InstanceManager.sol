@@ -110,6 +110,7 @@ contract InstanceManager is Ownable, IInstanceManager {
     // ------------- //
 
     /// @notice Activates the instance, setting the instance owner and saving the treasury, WETH and GEAR addresses
+    /// @dev GEAR can be zero in case it's not deployed on given chain yet. It can later be set using `setGlobalAddress`.
     /// @dev Can only be called once by the cross-chain governance
     function activate(address instanceOwner, address treasury, address weth, address gear)
         external
@@ -117,11 +118,11 @@ contract InstanceManager is Ownable, IInstanceManager {
         onlyOwner
     {
         if (isActivated) return;
-        _transferOwnership(instanceOwner);
+        transferOwnership(instanceOwner);
 
         _setAddress(AP_TREASURY, treasury, false);
         _setAddress(AP_WETH_TOKEN, weth, false);
-        _setAddress(AP_GEAR_TOKEN, gear, false);
+        if (gear != address(0)) _setAddress(AP_GEAR_TOKEN, gear, false);
         isActivated = true;
     }
 
