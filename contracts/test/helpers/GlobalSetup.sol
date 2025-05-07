@@ -125,7 +125,6 @@ import {WstETHPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/li
 import {CompositePriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/CompositePriceFeed.sol";
 import {MellowLRTPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/mellow/MellowLRTPriceFeed.sol";
 import {PendleTWAPPTPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/pendle/PendleTWAPPTPriceFeed.sol";
-import {CurveUSDPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveUSDPriceFeed.sol";
 import {CurveCryptoLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveCryptoLPPriceFeed.sol";
 import {CurveStableLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveStableLPPriceFeed.sol";
 import {ERC4626PriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/erc4626/ERC4626PriceFeed.sol";
@@ -716,14 +715,6 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             UploadableContract({
                 initCode: type(PendleTWAPPTPriceFeed).creationCode,
                 contractType: "PRICE_FEED::PENDLE_PT_TWAP",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveUSDPriceFeed).creationCode,
-                contractType: "PRICE_FEED::CURVE_USD",
                 version: 3_10
             })
         );
