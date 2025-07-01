@@ -216,7 +216,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             DeploySystemContractCall({contractType: AP_CREDIT_FACTORY, version: 3_10, saveVersion: true}),
             DeploySystemContractCall({contractType: AP_PRICE_ORACLE_FACTORY, version: 3_10, saveVersion: true}),
             DeploySystemContractCall({contractType: AP_INTEREST_RATE_MODEL_FACTORY, version: 3_10, saveVersion: true}),
-            DeploySystemContractCall({contractType: AP_RATE_KEEPER_FACTORY, version: 3_10, saveVersion: true}),
+            DeploySystemContractCall({contractType: AP_RATE_KEEPER_FACTORY, version: 3_11, saveVersion: true}),
             DeploySystemContractCall({contractType: AP_LOSS_POLICY_FACTORY, version: 3_10, saveVersion: true})
         ];
         len = deployCalls.length;
@@ -298,7 +298,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             UploadableContract({
                 initCode: type(RateKeeperFactory).creationCode,
                 contractType: AP_RATE_KEEPER_FACTORY,
-                version: 3_10
+                version: 3_11
             })
         );
 

@@ -79,7 +79,7 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
         priceOracleFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_PRICE_ORACLE_FACTORY, 3_10);
         interestRateModelFactory =
             IAddressProvider(addressProvider).getAddressOrRevert(AP_INTEREST_RATE_MODEL_FACTORY, 3_10);
-        rateKeeperFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_RATE_KEEPER_FACTORY, 3_10);
+        rateKeeperFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_RATE_KEEPER_FACTORY, 3_11);
         lossPolicyFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_LOSS_POLICY_FACTORY, 3_10);
         gearStaking = RateKeeperFactory(rateKeeperFactory).gearStaking();
         vm.mockCall(gearStaking, abi.encodeWithSignature("getCurrentEpoch()"), abi.encode(62));
