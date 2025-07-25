@@ -25,7 +25,7 @@ import {AbstractMarketFactory} from "./AbstractMarketFactory.sol";
 contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
     using CallBuilder for Call[];
 
-    uint256 public constant override version = 3_10;
+    uint256 public constant override version = 3_11;
     bytes32 public constant override contractType = AP_RATE_KEEPER_FACTORY;
 
     address public immutable gearStaking;
@@ -54,17 +54,23 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
             _validateDefaultConstructorParams(pool, params.constructorParams);
         }
 
+        bytes32 contractType_ = _getContractType(DOMAIN_RATE_KEEPER, params.postfix);
         address rateKeeper = _deployLatestPatch({
-            contractType: _getContractType(DOMAIN_RATE_KEEPER, params.postfix),
+            contractType: contractType_,
             minorVersion: version,
             constructorParams: params.constructorParams,
             salt: keccak256(abi.encode(params.salt, msg.sender))
         });
 
-        return DeployResult({
-            newContract: rateKeeper,
-            onInstallOps: CallBuilder.build(_authorizeFactory(msg.sender, pool, rateKeeper))
-        });
+        address[] memory tokens = _quotedTokens(_quotaKeeper(pool));
+        uint256 numTokens = tokens.length;
+        Call[] memory onInstallOps = new Call[](1 + numTokens);
+        onInstallOps[0] = _authorizeFactory(msg.sender, pool, rateKeeper);
+        for (uint256 i; i < numTokens; ++i) {
+            onInstallOps[i + 1] = _addToken(rateKeeper, tokens[i], contractType_);
+        }
+
+        return DeployResult({newContract: rateKeeper, onInstallOps: onInstallOps});
     }
 
     // ------------ //
@@ -102,17 +108,10 @@ contract RateKeeperFactory is AbstractMarketFactory, IRateKeeperFactory {
         override(AbstractMarketFactory, IMarketFactory)
         returns (Call[] memory calls)
     {
-        address[] memory tokens = _quotedTokens(_quotaKeeper(pool));
-        uint256 numTokens = tokens.length;
-        calls = new Call[](numTokens);
-        bytes32 type_ = _getRateKeeperType(newRateKeeper);
-        for (uint256 i; i < numTokens; ++i) {
-            calls[i] = _addToken(newRateKeeper, tokens[i], type_);
-        }
         if (_getRateKeeperType(oldRateKeeper) == "RATE_KEEPER::GAUGE") {
             calls = calls.append(_setFrozenEpoch(oldRateKeeper, true));
         }
-        if (type_ == "RATE_KEEPER::GAUGE") {
+        if (_getRateKeeperType(newRateKeeper) == "RATE_KEEPER::GAUGE") {
             calls = calls.append(_setFrozenEpoch(newRateKeeper, false));
         }
         calls = calls.append(_unauthorizeFactory(msg.sender, pool, oldRateKeeper));

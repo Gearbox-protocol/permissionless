@@ -218,15 +218,6 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         assertEq(cm, cmExpected);
 
-        address balancerVault = 0xBA12222222228d8Ba445958a75a0704d566BF2C8;
-
-        MarketConfigurator(mc).configureCreditSuite(
-            cm,
-            abi.encodeCall(
-                ICreditConfigureActions.allowAdapter, (DeployParams("BALANCER_VAULT", 0, abi.encode(cm, balancerVault)))
-            )
-        );
-
         vm.stopPrank();
     }
 }

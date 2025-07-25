@@ -16,7 +16,6 @@ import {IPoolQuotaKeeperV3} from "@gearbox-protocol/core-v3/contracts/interfaces
 import {IPriceOracleV3} from "@gearbox-protocol/core-v3/contracts/interfaces/IPriceOracleV3.sol";
 import {GeneralMock} from "@gearbox-protocol/core-v3/contracts/test/mocks/GeneralMock.sol";
 import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v3/contracts/libraries/Constants.sol";
-import {ZeroPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/ZeroPriceFeed.sol";
 
 contract PoolConfigurationUnitTest is ConfigurationTestHelper {
     address private _target;
