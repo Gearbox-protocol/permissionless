@@ -29,14 +29,10 @@ import {
 import {CreditFacadeParams} from "../../factories/CreditFactory.sol";
 import {CrossChainCall} from "../helpers/GlobalSetup.sol";
 
+import {AdapterMock} from "@gearbox-protocol/core-v3/contracts/test/mocks/core/AdapterMock.sol";
 import {GeneralMock} from "@gearbox-protocol/core-v3/contracts/test/mocks/GeneralMock.sol";
 import {PERCENTAGE_FACTOR} from "@gearbox-protocol/core-v3/contracts/libraries/Constants.sol";
 import {UploadableContract} from "../helpers/GlobalSetup.sol";
-
-import {
-    IUniswapV3Adapter,
-    UniswapV3PoolStatus
-} from "@gearbox-protocol/integrations-v3/contracts/interfaces/uniswap/IUniswapV3Adapter.sol";
 
 contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
     address target;
@@ -47,6 +43,10 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
 
         target = address(new GeneralMock());
         creditFactory = IAddressProvider(addressProvider).getAddressOrRevert(AP_CREDIT_FACTORY, 3_10);
+
+        bytes32 bytecodeHash =
+            _uploadByteCodeAndSign(bytecodeAuthor, auditor, type(AdapterMock).creationCode, "ADAPTER::MOCK", 3_10);
+        IBytecodeRepository(bytecodeRepository).allowPublicContract(bytecodeHash);
     }
 
     function _uploadCreditConfiguratorPatch() internal {
@@ -64,17 +64,14 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
     /// REGULAR CONFIGURATION TESTS ///
 
     function test_CS_01_allowAdapter() public {
-        DeployParams memory params = DeployParams({
-            postfix: "BALANCER_VAULT",
-            salt: 0,
-            constructorParams: abi.encode(address(creditManager), target)
-        });
+        DeployParams memory params =
+            DeployParams({postfix: "MOCK", salt: 0, constructorParams: abi.encode(address(creditManager), target)});
 
         address bytecodeRepository =
             IAddressProvider(addressProvider).getAddressOrRevert(AP_BYTECODE_REPOSITORY, NO_VERSION_CONTROL);
 
         address expectedAdapter = IBytecodeRepository(bytecodeRepository).computeAddress(
-            "ADAPTER::BALANCER_VAULT",
+            "ADAPTER::MOCK",
             3_10,
             params.constructorParams,
             keccak256(abi.encode(0, address(marketConfigurator))),
@@ -106,13 +103,13 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
 
         // Now deploy second adapter with different salt
         DeployParams memory params2 = DeployParams({
-            postfix: "BALANCER_VAULT",
+            postfix: "MOCK",
             salt: bytes32(uint256(1)),
             constructorParams: abi.encode(address(creditManager), target)
         });
 
         address expectedAdapter2 = IBytecodeRepository(bytecodeRepository).computeAddress(
-            "ADAPTER::BALANCER_VAULT",
+            "ADAPTER::MOCK",
             3_10,
             params2.constructorParams,
             keccak256(abi.encode(uint256(1), address(marketConfigurator))),
@@ -165,11 +162,8 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
     }
 
     function test_CS_02_forbidAdapter() public {
-        DeployParams memory params = DeployParams({
-            postfix: "BALANCER_VAULT",
-            salt: 0,
-            constructorParams: abi.encode(address(creditManager), target)
-        });
+        DeployParams memory params =
+            DeployParams({postfix: "MOCK", salt: 0, constructorParams: abi.encode(address(creditManager), target)});
 
         // First allow adapter
         vm.prank(admin);
@@ -443,12 +437,8 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             address(creditManager), abi.encodeCall(ICreditConfigureActions.addCollateralToken, (USDC, 8000))
         );
 
-        // First deploy Uniswap V3 adapter
-        DeployParams memory params = DeployParams({
-            postfix: "UNISWAP_V3_ROUTER",
-            salt: 0,
-            constructorParams: abi.encode(address(creditManager), target)
-        });
+        DeployParams memory params =
+            DeployParams({postfix: "MOCK", salt: 0, constructorParams: abi.encode(address(creditManager), target)});
 
         vm.prank(admin);
         marketConfigurator.configureCreditSuite(
@@ -457,23 +447,16 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
 
         address adapter = ICreditManagerV3(creditManager).contractToAdapter(target);
 
-        // Configure pool status
-        UniswapV3PoolStatus[] memory pools = new UniswapV3PoolStatus[](1);
-        pools[0] = UniswapV3PoolStatus({token0: WETH, token1: USDC, fee: 500, allowed: true});
-
-        vm.expectCall(adapter, abi.encodeCall(IUniswapV3Adapter.setPoolStatusBatch, (pools)));
+        vm.expectCall(adapter, abi.encodeWithSignature("configure(bytes)", "data"));
 
         vm.prank(admin);
         marketConfigurator.configureCreditSuite(
             address(creditManager),
             abi.encodeCall(
                 ICreditConfigureActions.configureAdapterFor,
-                (target, abi.encodeCall(IUniswapV3Adapter.setPoolStatusBatch, (pools)))
+                (target, abi.encodeWithSignature("configure(bytes)", "data"))
             )
         );
-
-        // Verify pool was allowed
-        assertTrue(IUniswapV3Adapter(adapter).isPoolAllowed(WETH, USDC, 500), "Pool must be allowed");
 
         // Verify it reverts when trying to configure non-existent adapter
         address nonExistentTarget = address(1);
@@ -485,7 +468,7 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
             address(creditManager),
             abi.encodeCall(
                 ICreditConfigureActions.configureAdapterFor,
-                (nonExistentTarget, abi.encodeCall(IUniswapV3Adapter.setPoolStatusBatch, (pools)))
+                (nonExistentTarget, abi.encodeWithSignature("configure(bytes)", "data"))
             )
         );
     }
@@ -515,11 +498,8 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
     /// EMERGENCY CONFIGURATION TESTS ///
 
     function test_CS_11_emergency_forbidAdapter() public {
-        DeployParams memory params = DeployParams({
-            postfix: "BALANCER_VAULT",
-            salt: 0,
-            constructorParams: abi.encode(address(creditManager), target)
-        });
+        DeployParams memory params =
+            DeployParams({postfix: "MOCK", salt: 0, constructorParams: abi.encode(address(creditManager), target)});
 
         vm.prank(admin);
         marketConfigurator.configureCreditSuite(

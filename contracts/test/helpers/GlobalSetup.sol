@@ -42,6 +42,7 @@ import {
     AP_CREDIT_MANAGER,
     AP_CREDIT_FACADE,
     AP_CREDIT_CONFIGURATOR,
+    AP_ZERO_PRICE_FEED,
     DOMAIN_ADAPTER,
     DOMAIN_BOT,
     DOMAIN_DEGEN_NFT,
@@ -82,52 +83,7 @@ import {CreditManagerV3} from "@gearbox-protocol/core-v3/contracts/credit/Credit
 import {CreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditFacadeV3.sol";
 import {CreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditConfiguratorV3.sol";
 
-// Adapters
-import {EqualizerRouterAdapter} from
-    "@gearbox-protocol/integrations-v3/contracts/adapters/equalizer/EqualizerRouterAdapter.sol";
-import {BalancerV2VaultAdapter} from
-    "@gearbox-protocol/integrations-v3/contracts/adapters/balancer/BalancerV2VaultAdapter.sol";
-import {CamelotV3Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/camelot/CamelotV3Adapter.sol";
-import {YearnV2Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/yearn/YearnV2.sol";
-import {ConvexV1BoosterAdapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/convex/ConvexV1_Booster.sol";
-import {ConvexV1BaseRewardPoolAdapter} from
-    "@gearbox-protocol/integrations-v3/contracts/adapters/convex/ConvexV1_BaseRewardPool.sol";
-import {WstETHV1Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/lido/WstETHV1.sol";
-import {LidoV1Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/lido/LidoV1.sol";
-import {UniswapV3Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/uniswap/UniswapV3.sol";
-import {UniswapV2Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/uniswap/UniswapV2.sol";
-import {MellowVaultAdapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/mellow/MellowVaultAdapter.sol";
-import {Mellow4626VaultAdapter} from
-    "@gearbox-protocol/integrations-v3/contracts/adapters/mellow/Mellow4626VaultAdapter.sol";
-import {PendleRouterAdapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/pendle/PendleRouterAdapter.sol";
-import {CurveV1Adapter2Assets} from "@gearbox-protocol/integrations-v3/contracts/adapters/curve/CurveV1_2.sol";
-import {CurveV1Adapter4Assets} from "@gearbox-protocol/integrations-v3/contracts/adapters/curve/CurveV1_4.sol";
-import {CurveV1AdapterStETH} from "@gearbox-protocol/integrations-v3/contracts/adapters/curve/CurveV1_stETH.sol";
-import {CurveV1AdapterStableNG} from "@gearbox-protocol/integrations-v3/contracts/adapters/curve/CurveV1_StableNG.sol";
-import {CurveV1AdapterDeposit} from "@gearbox-protocol/integrations-v3/contracts/adapters/curve/CurveV1_DepositZap.sol";
-import {CurveV1AdapterBase} from "@gearbox-protocol/integrations-v3/contracts/adapters/curve/CurveV1_Base.sol";
-import {CurveV1Adapter3Assets} from "@gearbox-protocol/integrations-v3/contracts/adapters/curve/CurveV1_3.sol";
-import {ERC4626Adapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/erc4626/ERC4626Adapter.sol";
-import {VelodromeV2RouterAdapter} from
-    "@gearbox-protocol/integrations-v3/contracts/adapters/velodrome/VelodromeV2RouterAdapter.sol";
-import {DaiUsdsAdapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/sky/DaiUsdsAdapter.sol";
-import {StakingRewardsAdapter} from "@gearbox-protocol/integrations-v3/contracts/adapters/sky/StakingRewardsAdapter.sol";
-
-import {BPTWeightedPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/balancer/BPTWeightedPriceFeed.sol";
-import {BPTStablePriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/balancer/BPTStablePriceFeed.sol";
-import {ZeroPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/ZeroPriceFeed.sol";
-import {YearnPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/yearn/YearnPriceFeed.sol";
-import {BoundedPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/BoundedPriceFeed.sol";
-import {PythPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/updatable/PythPriceFeed.sol";
-import {RedstonePriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/updatable/RedstonePriceFeed.sol";
-import {WstETHPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/lido/WstETHPriceFeed.sol";
-import {CompositePriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/CompositePriceFeed.sol";
-import {MellowLRTPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/mellow/MellowLRTPriceFeed.sol";
-import {PendleTWAPPTPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/pendle/PendleTWAPPTPriceFeed.sol";
-import {CurveUSDPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveUSDPriceFeed.sol";
-import {CurveCryptoLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveCryptoLPPriceFeed.sol";
-import {CurveStableLPPriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/curve/CurveStableLPPriceFeed.sol";
-import {ERC4626PriceFeed} from "@gearbox-protocol/oracles-v3/contracts/oracles/erc4626/ERC4626PriceFeed.sol";
+import {ZeroPriceFeed} from "../../helpers/ZeroPriceFeed.sol";
 
 import {VmSafe} from "forge-std/Vm.sol";
 
@@ -149,10 +105,8 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
     constructor() {
         _setCoreContracts();
-        _setAdapters();
         _setInterestRateModels();
         _setLossPolicies();
-        _setPriceFeeds();
         _setRateKeepers();
     }
 
@@ -413,189 +367,11 @@ contract GlobalSetup is Test, InstanceManagerHelper {
                 version: 3_10
             })
         );
-    }
-
-    function _setAdapters() internal {
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(EqualizerRouterAdapter).creationCode,
-                contractType: "ADAPTER::EQUALIZER_ROUTER",
-                version: 3_10
-            })
-        );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(BalancerV2VaultAdapter).creationCode,
-                contractType: "ADAPTER::BALANCER_VAULT",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CamelotV3Adapter).creationCode,
-                contractType: "ADAPTER::CAMELOT_V3_ROUTER",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(YearnV2Adapter).creationCode,
-                contractType: "ADAPTER::YEARN_V2",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(ConvexV1BoosterAdapter).creationCode,
-                contractType: "ADAPTER::CVX_V1_BOOSTER",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(ConvexV1BaseRewardPoolAdapter).creationCode,
-                contractType: "ADAPTER::CVX_V1_BASE_REWARD_POOL",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(WstETHV1Adapter).creationCode,
-                contractType: "ADAPTER::WSTETH_V1",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(LidoV1Adapter).creationCode,
-                contractType: "ADAPTER::LIDO_V1",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(UniswapV3Adapter).creationCode,
-                contractType: "ADAPTER::UNISWAP_V3_ROUTER",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(UniswapV2Adapter).creationCode,
-                contractType: "ADAPTER::UNISWAP_V2_ROUTER",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(MellowVaultAdapter).creationCode,
-                contractType: "ADAPTER::MELLOW_VAULT",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(Mellow4626VaultAdapter).creationCode,
-                contractType: "ADAPTER::MELLOW_4626_VAULT",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(PendleRouterAdapter).creationCode,
-                contractType: "ADAPTER::PENDLE_ROUTER",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveV1Adapter2Assets).creationCode,
-                contractType: "ADAPTER::CURVE_V1_2ASSETS",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveV1Adapter4Assets).creationCode,
-                contractType: "ADAPTER::CURVE_V1_4ASSETS",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveV1AdapterStETH).creationCode,
-                contractType: "ADAPTER::CURVE_V1_STECRV_POOL",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveV1AdapterStableNG).creationCode,
-                contractType: "ADAPTER::CURVE_STABLE_NG",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveV1AdapterDeposit).creationCode,
-                contractType: "ADAPTER::CURVE_V1_WRAPPER",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveV1Adapter3Assets).creationCode,
-                contractType: "ADAPTER::CURVE_V1_3ASSETS",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(ERC4626Adapter).creationCode,
-                contractType: "ADAPTER::ERC4626_VAULT",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(VelodromeV2RouterAdapter).creationCode,
-                contractType: "ADAPTER::VELODROME_V2_ROUTER",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(DaiUsdsAdapter).creationCode,
-                contractType: "ADAPTER::DAI_USDS_EXCHANGE",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(StakingRewardsAdapter).creationCode,
-                contractType: "ADAPTER::STAKING_REWARDS",
+                initCode: type(ZeroPriceFeed).creationCode,
+                contractType: AP_ZERO_PRICE_FEED,
                 version: 3_10
             })
         );
@@ -616,128 +392,6 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             UploadableContract({
                 initCode: type(AliasedLossPolicyV3).creationCode,
                 contractType: "LOSS_POLICY::ALIASED",
-                version: 3_10
-            })
-        );
-    }
-
-    function _setPriceFeeds() internal {
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(BPTWeightedPriceFeed).creationCode,
-                contractType: "PRICE_FEED::BALANCER_WEIGHTED",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(BPTStablePriceFeed).creationCode,
-                contractType: "PRICE_FEED::BALANCER_STABLE",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(ZeroPriceFeed).creationCode,
-                contractType: "PRICE_FEED::ZERO",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(YearnPriceFeed).creationCode,
-                contractType: "PRICE_FEED::YEARN",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(BoundedPriceFeed).creationCode,
-                contractType: "PRICE_FEED::BOUNDED",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(PythPriceFeed).creationCode,
-                contractType: "PRICE_FEED::PYTH",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(RedstonePriceFeed).creationCode,
-                contractType: "PRICE_FEED::REDSTONE",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(WstETHPriceFeed).creationCode,
-                contractType: "PRICE_FEED::WSTETH",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CompositePriceFeed).creationCode,
-                contractType: "PRICE_FEED::COMPOSITE",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(MellowLRTPriceFeed).creationCode,
-                contractType: "PRICE_FEED::MELLOW_LRT",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(PendleTWAPPTPriceFeed).creationCode,
-                contractType: "PRICE_FEED::PENDLE_PT_TWAP",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveUSDPriceFeed).creationCode,
-                contractType: "PRICE_FEED::CURVE_USD",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveCryptoLPPriceFeed).creationCode,
-                contractType: "PRICE_FEED::CURVE_CRYPTO",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(CurveStableLPPriceFeed).creationCode,
-                contractType: "PRICE_FEED::CURVE_STABLE",
-                version: 3_10
-            })
-        );
-
-        contractsToUpload.push(
-            UploadableContract({
-                initCode: type(ERC4626PriceFeed).creationCode,
-                contractType: "PRICE_FEED::ERC4626",
                 version: 3_10
             })
         );
