@@ -494,7 +494,7 @@ contract CrossChainMultisigTest is Test, SignatureHelper {
 
         address target = makeAddr("target");
         vm.etch(target, hex"ff"); // Put some code there to make call possible
-        vm.mockCall(target, hex"1234", "");
+        vm.mockCall(target, bytes(hex"1234"), "");
 
         // First execute a batch to have non-zero lastBatchHash
         CrossChainCall[] memory calls = new CrossChainCall[](1);
@@ -538,7 +538,7 @@ contract CrossChainMultisigTest is Test, SignatureHelper {
         assertTrue(multisig.isRecoveryModeEnabled());
 
         address target = makeAddr("target");
-        vm.mockCallRevert(target, hex"1234", ""); // This call should be skipped
+        vm.mockCallRevert(target, bytes(hex"1234"), ""); // This call should be skipped
 
         // Create batch with both self and external calls
         CrossChainCall[] memory calls = new CrossChainCall[](2);
@@ -645,7 +645,7 @@ contract CrossChainMultisigTest is Test, SignatureHelper {
     function _setupRecoveryMode() internal returns (bytes32) {
         address target = makeAddr("target");
         vm.etch(target, hex"ff"); // Put some code there to make call possible
-        vm.mockCall(target, hex"1234", "");
+        vm.mockCall(target, bytes(hex"1234"), "");
 
         // First execute a batch to have non-zero lastBatchHash
         CrossChainCall[] memory calls = new CrossChainCall[](1);
