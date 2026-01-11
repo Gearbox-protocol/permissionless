@@ -60,8 +60,13 @@ contract AttachTestBase is AttachBase, Test {
     }
 
     function _uploadContract(bytes32 contractType, uint256 version, bytes memory initCode) internal {
-        if (bytecodeRepository.getAllowedBytecodeHash(contractType, version) != 0) {
-            console.log(contractType.fromSmallString(), "version", version, "is already uploaded");
+        bytes32 allowedBytecodeHash = bytecodeRepository.getAllowedBytecodeHash(contractType, version);
+        if (allowedBytecodeHash != 0) {
+            bytes memory uploadedInitCode = bytecodeRepository.getBytecode(allowedBytecodeHash).initCode;
+            require(
+                keccak256(initCode) == keccak256(uploadedInitCode),
+                string.concat("Bytecode mismatch for ", contractType.fromSmallString(), " v", vm.toString(version))
+            );
             return;
         }
 

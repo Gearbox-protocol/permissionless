@@ -16,3 +16,6 @@ gas_limit = 9223372036854775807 # the gas limit in tests
 [fuzz]
 max_test_rejects = 1000000
 runs = 256
+
+[lint]
+lint_on_build = false
