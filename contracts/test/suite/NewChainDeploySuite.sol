@@ -34,7 +34,6 @@ import {
     AP_INTEREST_RATE_MODEL_LINEAR,
     AP_RATE_KEEPER_TUMBLER,
     AP_RATE_KEEPER_GAUGE,
-    AP_LOSS_POLICY_DEFAULT,
     AP_CREDIT_MANAGER,
     AP_CREDIT_FACADE,
     AP_CREDIT_CONFIGURATOR,
@@ -61,7 +60,6 @@ import {PriceOracleV3} from "@gearbox-protocol/core-v3/contracts/core/PriceOracl
 import {LinearInterestRateModelV3} from "@gearbox-protocol/core-v3/contracts/pool/LinearInterestRateModelV3.sol";
 import {TumblerV3} from "@gearbox-protocol/core-v3/contracts/pool/TumblerV3.sol";
 import {GaugeV3} from "@gearbox-protocol/core-v3/contracts/pool/GaugeV3.sol";
-import {DefaultLossPolicy} from "../../helpers/DefaultLossPolicy.sol";
 import {CreditManagerV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditManagerV3.sol";
 import {CreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditFacadeV3.sol";
 import {CreditConfiguratorV3} from "@gearbox-protocol/core-v3/contracts/credit/CreditConfiguratorV3.sol";
@@ -151,9 +149,8 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         uint256 gasBefore = gasleft();
 
         vm.startPrank(riskCurator);
-        address mc = MarketConfiguratorFactory(mcf).createMarketConfigurator(
-            riskCurator, riskCurator, "Test Risk Curator", false
-        );
+        address mc = MarketConfiguratorFactory(mcf)
+            .createMarketConfigurator(riskCurator, riskCurator, "Test Risk Curator", false);
 
         uint256 gasAfter = gasleft();
         uint256 used = gasBefore - gasAfter;
@@ -163,9 +160,7 @@ contract NewChainDeploySuite is Test, GlobalSetup {
         address pool = MarketConfigurator(mc).previewCreateMarket(3_10, WETH, name, symbol);
 
         DeployParams memory interestRateModelParams = DeployParams({
-            postfix: "LINEAR",
-            salt: 0,
-            constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
+            postfix: "LINEAR", salt: 0, constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
         });
         DeployParams memory rateKeeperParams =
             DeployParams({postfix: "TUMBLER", salt: 0, constructorParams: abi.encode(pool, 7 days)});
@@ -174,16 +169,17 @@ contract NewChainDeploySuite is Test, GlobalSetup {
 
         gasBefore = gasleft();
 
-        address poolFromMarket = MarketConfigurator(mc).createMarket({
-            minorVersion: 3_10,
-            underlying: WETH,
-            name: name,
-            symbol: symbol,
-            interestRateModelParams: interestRateModelParams,
-            rateKeeperParams: rateKeeperParams,
-            lossPolicyParams: lossPolicyParams,
-            underlyingPriceFeed: CHAINLINK_ETH_USD
-        });
+        address poolFromMarket = MarketConfigurator(mc)
+            .createMarket({
+                minorVersion: 3_10,
+                underlying: WETH,
+                name: name,
+                symbol: symbol,
+                interestRateModelParams: interestRateModelParams,
+                rateKeeperParams: rateKeeperParams,
+                lossPolicyParams: lossPolicyParams,
+                underlyingPriceFeed: CHAINLINK_ETH_USD
+            });
 
         gasAfter = gasleft();
         used = gasBefore - gasAfter;
