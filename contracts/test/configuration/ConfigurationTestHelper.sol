@@ -45,7 +45,6 @@ import {
     AP_INTEREST_RATE_MODEL_LINEAR,
     AP_RATE_KEEPER_TUMBLER,
     AP_RATE_KEEPER_GAUGE,
-    AP_LOSS_POLICY_DEFAULT,
     AP_CREDIT_MANAGER,
     AP_CREDIT_FACADE,
     AP_CREDIT_CONFIGURATOR,
@@ -180,9 +179,7 @@ contract ConfigurationTestHelper is Test, GlobalSetup {
         address _pool = marketConfigurator.previewCreateMarket(3_10, WETH, name, symbol);
 
         DeployParams memory interestRateModelParams = DeployParams({
-            postfix: "LINEAR",
-            salt: 0,
-            constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
+            postfix: "LINEAR", salt: 0, constructorParams: abi.encode(100, 200, 100, 100, 200, 300, false)
         });
         DeployParams memory rateKeeperParams =
             DeployParams({postfix: "TUMBLER", salt: 0, constructorParams: abi.encode(_pool, 7 days)});

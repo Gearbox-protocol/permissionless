@@ -38,7 +38,6 @@ import {
     AP_RATE_KEEPER_TUMBLER,
     AP_RATE_KEEPER_GAUGE,
     AP_LOSS_POLICY_ALIASED,
-    AP_LOSS_POLICY_DEFAULT,
     AP_CREDIT_MANAGER,
     AP_CREDIT_FACADE,
     AP_CREDIT_CONFIGURATOR,
@@ -151,9 +150,8 @@ contract GlobalSetup is Test, InstanceManagerHelper {
                 contractsToUpload[i].version
             );
 
-            bool isPublicContract = IBytecodeRepository(bytecodeRepository).isPublicDomain(
-                Domain.extractDomain(contractsToUpload[i].contractType)
-            );
+            bool isPublicContract = IBytecodeRepository(bytecodeRepository)
+                .isPublicDomain(Domain.extractDomain(contractsToUpload[i].contractType));
             // NOTE: allowing public contracts doesn't require CCG permissions but it's convenient to execute in batch
             calls[i] = isPublicContract
                 ? _generateAllowPublicContractCall(bytecodeHash)
@@ -218,9 +216,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(CreditFactory).creationCode,
-                contractType: AP_CREDIT_FACTORY,
-                version: 3_10
+                initCode: type(CreditFactory).creationCode, contractType: AP_CREDIT_FACTORY, version: 3_10
             })
         );
 
@@ -234,25 +230,19 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(PriceFeedStore).creationCode,
-                contractType: AP_PRICE_FEED_STORE,
-                version: 3_10
+                initCode: type(PriceFeedStore).creationCode, contractType: AP_PRICE_FEED_STORE, version: 3_10
             })
         );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(PriceOracleFactory).creationCode,
-                contractType: AP_PRICE_ORACLE_FACTORY,
-                version: 3_10
+                initCode: type(PriceOracleFactory).creationCode, contractType: AP_PRICE_ORACLE_FACTORY, version: 3_10
             })
         );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(RateKeeperFactory).creationCode,
-                contractType: AP_RATE_KEEPER_FACTORY,
-                version: 3_11
+                initCode: type(RateKeeperFactory).creationCode, contractType: AP_RATE_KEEPER_FACTORY, version: 3_11
             })
         );
 
@@ -270,9 +260,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(TreasurySplitter).creationCode,
-                contractType: AP_TREASURY_SPLITTER,
-                version: 3_10
+                initCode: type(TreasurySplitter).creationCode, contractType: AP_TREASURY_SPLITTER, version: 3_10
             })
         );
 
@@ -282,9 +270,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(PoolQuotaKeeperV3).creationCode,
-                contractType: AP_POOL_QUOTA_KEEPER,
-                version: 3_10
+                initCode: type(PoolQuotaKeeperV3).creationCode, contractType: AP_POOL_QUOTA_KEEPER, version: 3_10
             })
         );
 
@@ -294,9 +280,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(GearStakingV3).creationCode,
-                contractType: AP_GEAR_STAKING,
-                version: 3_10
+                initCode: type(GearStakingV3).creationCode, contractType: AP_GEAR_STAKING, version: 3_10
             })
         );
 
@@ -310,17 +294,13 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(PriceOracleV3).creationCode,
-                contractType: AP_PRICE_ORACLE,
-                version: 3_10
+                initCode: type(PriceOracleV3).creationCode, contractType: AP_PRICE_ORACLE, version: 3_10
             })
         );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(MarketConfigurator).creationCode,
-                contractType: AP_MARKET_CONFIGURATOR,
-                version: 3_10
+                initCode: type(MarketConfigurator).creationCode, contractType: AP_MARKET_CONFIGURATOR, version: 3_10
             })
         );
 
@@ -330,49 +310,37 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(ContractsRegister).creationCode,
-                contractType: AP_CONTRACTS_REGISTER,
-                version: 3_10
+                initCode: type(ContractsRegister).creationCode, contractType: AP_CONTRACTS_REGISTER, version: 3_10
             })
         );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(LossPolicyFactory).creationCode,
-                contractType: AP_LOSS_POLICY_FACTORY,
-                version: 3_10
+                initCode: type(LossPolicyFactory).creationCode, contractType: AP_LOSS_POLICY_FACTORY, version: 3_10
             })
         );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(CreditManagerV3).creationCode,
-                contractType: AP_CREDIT_MANAGER,
-                version: 3_10
+                initCode: type(CreditManagerV3).creationCode, contractType: AP_CREDIT_MANAGER, version: 3_10
             })
         );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(CreditFacadeV3).creationCode,
-                contractType: AP_CREDIT_FACADE,
-                version: 3_10
+                initCode: type(CreditFacadeV3).creationCode, contractType: AP_CREDIT_FACADE, version: 3_10
             })
         );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(CreditConfiguratorV3).creationCode,
-                contractType: AP_CREDIT_CONFIGURATOR,
-                version: 3_10
+                initCode: type(CreditConfiguratorV3).creationCode, contractType: AP_CREDIT_CONFIGURATOR, version: 3_10
             })
         );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(ZeroPriceFeed).creationCode,
-                contractType: AP_ZERO_PRICE_FEED,
-                version: 3_10
+                initCode: type(ZeroPriceFeed).creationCode, contractType: AP_ZERO_PRICE_FEED, version: 3_10
             })
         );
     }
@@ -380,9 +348,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
     function _setInterestRateModels() internal {
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(LinearInterestRateModelV3).creationCode,
-                contractType: "IRM::LINEAR",
-                version: 3_10
+                initCode: type(LinearInterestRateModelV3).creationCode, contractType: "IRM::LINEAR", version: 3_10
             })
         );
     }
@@ -390,23 +356,21 @@ contract GlobalSetup is Test, InstanceManagerHelper {
     function _setLossPolicies() internal {
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(AliasedLossPolicyV3).creationCode,
-                contractType: "LOSS_POLICY::ALIASED",
-                version: 3_10
+                initCode: type(AliasedLossPolicyV3).creationCode, contractType: "LOSS_POLICY::ALIASED", version: 3_10
             })
         );
     }
 
     function _setRateKeepers() internal {
         contractsToUpload.push(
-            UploadableContract({initCode: type(GaugeV3).creationCode, contractType: "RATE_KEEPER::GAUGE", version: 3_10})
+            UploadableContract({
+                initCode: type(GaugeV3).creationCode, contractType: "RATE_KEEPER::GAUGE", version: 3_10
+            })
         );
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(TumblerV3).creationCode,
-                contractType: "RATE_KEEPER::TUMBLER",
-                version: 3_10
+                initCode: type(TumblerV3).creationCode, contractType: "RATE_KEEPER::TUMBLER", version: 3_10
             })
         );
     }

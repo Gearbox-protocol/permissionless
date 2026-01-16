@@ -5,7 +5,6 @@ pragma solidity ^0.8.23;
 
 import {ConfigurationTestHelper} from "./ConfigurationTestHelper.sol";
 import {ILossPolicy} from "@gearbox-protocol/core-v3/contracts/interfaces/base/ILossPolicy.sol";
-import {DefaultLossPolicy} from "../../helpers/DefaultLossPolicy.sol";
 import {IContractsRegister} from "../../interfaces/IContractsRegister.sol";
 
 contract LossPolicyConfigurationUnitTest is ConfigurationTestHelper {
@@ -27,7 +26,7 @@ contract LossPolicyConfigurationUnitTest is ConfigurationTestHelper {
         );
 
         assertEq(
-            uint8(DefaultLossPolicy(_lossPolicy).accessMode()),
+            uint8(ILossPolicy(_lossPolicy).accessMode()),
             uint8(ILossPolicy.AccessMode.Permissioned),
             "Access mode must be PERMISSIONED"
         );
@@ -37,7 +36,7 @@ contract LossPolicyConfigurationUnitTest is ConfigurationTestHelper {
         vm.prank(admin);
         marketConfigurator.configureLossPolicy(address(pool), abi.encodeCall(ILossPolicy.setChecksEnabled, (true)));
 
-        assertTrue(DefaultLossPolicy(_lossPolicy).checksEnabled(), "Checks must be enabled");
+        assertTrue(ILossPolicy(_lossPolicy).checksEnabled(), "Checks must be enabled");
     }
 
     /// EMERGENCY CONFIGURATION TESTS ///
@@ -51,7 +50,7 @@ contract LossPolicyConfigurationUnitTest is ConfigurationTestHelper {
         );
 
         assertEq(
-            uint8(DefaultLossPolicy(_lossPolicy).accessMode()),
+            uint8(ILossPolicy(_lossPolicy).accessMode()),
             uint8(ILossPolicy.AccessMode.Forbidden),
             "Access mode must be FORBIDDEN"
         );
@@ -63,6 +62,6 @@ contract LossPolicyConfigurationUnitTest is ConfigurationTestHelper {
             address(pool), abi.encodeCall(ILossPolicy.setChecksEnabled, (false))
         );
 
-        assertFalse(DefaultLossPolicy(_lossPolicy).checksEnabled(), "Checks must be disabled");
+        assertFalse(ILossPolicy(_lossPolicy).checksEnabled(), "Checks must be disabled");
     }
 }
