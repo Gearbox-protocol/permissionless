@@ -29,11 +29,19 @@ contract RateKeeperFactoryPatchV311Test is AttachTestBase {
 
         _uploadContract("RATE_KEEPER_FACTORY", 3_11, type(RateKeeperFactory).creationCode);
 
-        _attachMarketConfigurator();
-        pool = _createMockMarket(WETH, WETH_PRICE_FEED);
+        _allowPriceFeed(WETH, WETH_PRICE_FEED);
+        _allowPriceFeed(USDC, USDC_PRICE_FEED);
 
-        vm.prank(riskCurator);
-        marketConfigurator.addToken({pool: pool, token: USDC, priceFeed: USDC_PRICE_FEED});
+        _attachMarketConfigurator();
+
+        deal({token: WETH, to: address(marketConfigurator), give: 1e5});
+        MarketParams memory marketParams = _getDefaultMarketParams(WETH);
+        marketParams.underlyingPriceFeed = WETH_PRICE_FEED;
+        pool = _createMockMarket(WETH, marketParams);
+
+        TokenParams memory tokenParams = _getDefaultTokenParams(USDC);
+        tokenParams.priceFeed = USDC_PRICE_FEED;
+        _addToken(pool, tokenParams);
     }
 
     function test_rate_keeper_update_fails_with_old_rate_keeper_factory() public {

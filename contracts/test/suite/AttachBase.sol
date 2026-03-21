@@ -6,6 +6,7 @@ pragma solidity ^0.8.23;
 import {CommonBase} from "forge-std/Base.sol";
 import {VmSafe} from "forge-std/Vm.sol";
 
+import {IERC5267} from "@openzeppelin/contracts/interfaces/IERC5267.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import {IAddressProvider} from "../../interfaces/IAddressProvider.sol";
@@ -84,7 +85,7 @@ abstract contract AttachBase is CommonBase {
     }
 
     /// @dev For script environments
-    function _signBytecode(address auditor, bytes32 bytecodeHash, AuditReport memory auditReport) internal view {
+    function _signAuditReport(address auditor, bytes32 bytecodeHash, AuditReport memory auditReport) internal view {
         auditReport.auditor = auditor;
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(auditor, _getAuditReportDigest(bytecodeHash, auditReport));
         auditReport.signature = abi.encodePacked(r, s, v);
@@ -98,5 +99,20 @@ abstract contract AttachBase is CommonBase {
         bytes32 domainSeparator = bytecodeRepository.domainSeparatorV4();
         bytes32 auditReportHash = bytecodeRepository.computeAuditReportHash(bytecodeHash, auditReport);
         return ECDSA.toTypedDataHash(domainSeparator, auditReportHash);
+    }
+
+    function _buildDomainSeparator(address eip712Contract) internal view returns (bytes32) {
+        (, string memory name, string memory version, uint256 chainId, address verifyingContract,,) =
+            IERC5267(eip712Contract).eip712Domain();
+        // TODO: use `fields` and `extensions` parameters to build the proper type hash
+        return keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes(name)),
+                keccak256(bytes(version)),
+                chainId,
+                verifyingContract
+            )
+        );
     }
 }

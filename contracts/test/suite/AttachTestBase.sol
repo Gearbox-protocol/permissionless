@@ -13,6 +13,8 @@ import {LibString} from "@solady/utils/LibString.sol";
 
 import {ITumblerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ITumblerV3.sol";
 
+import {ConstantPriceFeed} from "../../helpers/ConstantPriceFeed.sol";
+
 import {IMarketConfigurator} from "../../interfaces/IMarketConfigurator.sol";
 import {AuditReport, Bytecode, DeployParams} from "../../interfaces/Types.sol";
 import {
@@ -38,25 +40,34 @@ contract AttachTestBase is AttachBase, Test {
     VmSafe.Wallet public author;
     VmSafe.Wallet public auditor;
 
+    address zeroPriceFeed;
+    address onePriceFeed;
+
     function _attachCore() internal virtual override {
         super._attachCore();
 
         author = vm.createWallet("MockAuthor");
         auditor = vm.createWallet("MockAuditor");
 
-        vm.prank(crossChainGovernance);
-        instanceManager.configureGlobal(
+        _configureGlobal(
             address(bytecodeRepository), abi.encodeCall(bytecodeRepository.addAuditor, (auditor.addr, "MockAuditor"))
         );
+
+        zeroPriceFeed = priceFeedStore.zeroPriceFeed();
+        _addPriceFeed(zeroPriceFeed, 0, "$0 price feed");
+        if (bytecodeRepository.getAllowedBytecodeHash("PRICE_FEED::CONSTANT", 3_10) == 0) {
+            // NOTE: this would fail on deployment if we bump `ConstantPriceFeed` to v3.1.1,
+            // but we assume that in this case v3.1.0 is already uploaded to the repository
+            _uploadContract("PRICE_FEED::CONSTANT", 3_10, type(ConstantPriceFeed).creationCode);
+        }
+        onePriceFeed = _deploy("PRICE_FEED::CONSTANT", 3_10, abi.encode(1e8, "$1 price feed"));
+        _addPriceFeed(onePriceFeed, 0, "$1 price feed");
     }
 
     function _addPublicDomain(bytes32 domain) internal {
         if (bytecodeRepository.isPublicDomain(domain)) return;
 
-        vm.prank(crossChainGovernance);
-        instanceManager.configureGlobal(
-            address(bytecodeRepository), abi.encodeCall(bytecodeRepository.addPublicDomain, (domain))
-        );
+        _configureGlobal(address(bytecodeRepository), abi.encodeCall(bytecodeRepository.addPublicDomain, (domain)));
     }
 
     function _uploadContract(bytes32 contractType, uint256 version, bytes memory initCode) internal {
@@ -94,8 +105,7 @@ contract AttachTestBase is AttachBase, Test {
             }
             bytecodeRepository.allowPublicContract(bytecodeHash);
         } else {
-            vm.prank(crossChainGovernance);
-            instanceManager.configureGlobal(
+            _configureGlobal(
                 address(bytecodeRepository), abi.encodeCall(bytecodeRepository.allowSystemContract, (bytecodeHash))
             );
         }
@@ -107,11 +117,20 @@ contract AttachTestBase is AttachBase, Test {
         });
     }
 
+    function _configureGlobal(address target, bytes memory data) internal {
+        vm.prank(crossChainGovernance);
+        instanceManager.configureGlobal(target, data);
+    }
+
+    function _configureLocal(address target, bytes memory data) internal {
+        vm.prank(instanceOwner);
+        instanceManager.configureLocal(target, data);
+    }
+
     function _addPriceFeed(address priceFeed, uint32 stalenessPeriod, string memory name) internal {
         if (priceFeedStore.isKnownPriceFeed(priceFeed)) return;
 
-        vm.prank(instanceOwner);
-        instanceManager.configureLocal(
+        _configureLocal(
             address(priceFeedStore), abi.encodeCall(priceFeedStore.addPriceFeed, (priceFeed, stalenessPeriod, name))
         );
     }
@@ -119,10 +138,7 @@ contract AttachTestBase is AttachBase, Test {
     function _allowPriceFeed(address token, address priceFeed) internal {
         if (priceFeedStore.isAllowedPriceFeed(token, priceFeed)) return;
 
-        vm.prank(instanceOwner);
-        instanceManager.configureLocal(
-            address(priceFeedStore), abi.encodeCall(priceFeedStore.allowPriceFeed, (token, priceFeed))
-        );
+        _configureLocal(address(priceFeedStore), abi.encodeCall(priceFeedStore.allowPriceFeed, (token, priceFeed)));
     }
 
     // ------- //
@@ -158,74 +174,130 @@ contract AttachTestBase is AttachBase, Test {
         });
     }
 
-    function _createMockMarket(address underlying, address priceFeed) internal returns (address pool) {
+    struct MarketParams {
+        string name;
+        string symbol;
+        DeployParams interestRateModelParams;
+        DeployParams rateKeeperParams;
+        DeployParams lossPolicyParams;
+        address underlyingPriceFeed;
+    }
+
+    function _getDefaultMarketParams(address underlying) internal view returns (MarketParams memory) {
         string memory name = string.concat("Mock Diesel ", ERC20(underlying).name());
         string memory symbol = string.concat("md", ERC20(underlying).symbol());
-
-        deal({token: underlying, to: address(marketConfigurator), give: 1e5});
-
-        pool = marketConfigurator.previewCreateMarket({
+        address pool = marketConfigurator.previewCreateMarket({
             minorVersion: 3_10, underlying: underlying, name: name, symbol: symbol
         });
-
-        vm.prank(riskCurator);
-        marketConfigurator.createMarket({
-            minorVersion: 3_10,
-            underlying: underlying,
+        return MarketParams({
             name: name,
             symbol: symbol,
             interestRateModelParams: DeployParams({
-                postfix: "LINEAR", salt: "GEARBOX", constructorParams: abi.encode(5000, 9000, 0, 100, 200, 700, false)
+                postfix: "LINEAR", salt: "GEARBOX", constructorParams: abi.encode(5000, 9000, 10_00, 0, 0, 0, false)
             }),
             rateKeeperParams: DeployParams({
-                postfix: "TUMBLER", salt: "GEARBOX", constructorParams: abi.encode(pool, 1 days)
+                postfix: "TUMBLER", salt: "GEARBOX", constructorParams: abi.encode(pool, 0)
             }),
             lossPolicyParams: DeployParams({
                 postfix: "ALIASED", salt: "GEARBOX", constructorParams: abi.encode(pool, ADDRESS_PROVIDER)
             }),
-            underlyingPriceFeed: priceFeed
+            underlyingPriceFeed: onePriceFeed
         });
     }
 
-    function _createMockCreditSuite(address pool, uint128 minDebt, uint128 maxDebt, uint256 debtLimit)
+    function _createDefaultMockMarket(address underlying) internal returns (address) {
+        return _createMockMarket(underlying, _getDefaultMarketParams(underlying));
+    }
+
+    function _createMockMarket(address underlying, MarketParams memory params) internal returns (address pool) {
+        vm.prank(riskCurator);
+        pool = marketConfigurator.createMarket({
+            minorVersion: 3_10,
+            underlying: underlying,
+            name: params.name,
+            symbol: params.symbol,
+            interestRateModelParams: params.interestRateModelParams,
+            rateKeeperParams: params.rateKeeperParams,
+            lossPolicyParams: params.lossPolicyParams,
+            underlyingPriceFeed: params.underlyingPriceFeed
+        });
+    }
+
+    struct CreditSuiteParams {
+        uint128 minDebt;
+        uint128 maxDebt;
+        uint256 debtLimit;
+        uint8 maxEnabledTokens;
+        uint16 feeInterest;
+        uint16 feeLiquidation;
+        uint16 liquidationPremium;
+        uint16 feeLiquidationExpired;
+        uint16 liquidationPremiumExpired;
+        address degenNFT;
+        bool expirable;
+        bool migrateBotList;
+        DeployParams accountFactoryParams;
+    }
+
+    function _getDefaultCreditSuiteParams() internal pure returns (CreditSuiteParams memory) {
+        return CreditSuiteParams({
+            minDebt: 0,
+            maxDebt: 0,
+            debtLimit: 0,
+            maxEnabledTokens: 2,
+            feeInterest: 50_00,
+            feeLiquidation: 1_00,
+            liquidationPremium: 1_00,
+            feeLiquidationExpired: 1_00,
+            liquidationPremiumExpired: 1_00,
+            degenNFT: address(0),
+            expirable: false,
+            migrateBotList: false,
+            accountFactoryParams: DeployParams({
+                postfix: "DEFAULT", salt: "GEARBOX", constructorParams: abi.encode(ADDRESS_PROVIDER)
+            })
+        });
+    }
+
+    function _createDefaultMockCreditSuite(address pool) internal returns (address) {
+        return _createMockCreditSuite(pool, _getDefaultCreditSuiteParams());
+    }
+
+    function _createMockCreditSuite(address pool, CreditSuiteParams memory params)
         internal
         returns (address creditManager)
     {
-        address underlying = ERC4626(pool).asset();
-        string memory name = string.concat("Mock ", ERC20(underlying).symbol(), " Credit Suite");
+        CreditManagerParams memory cmParams = CreditManagerParams({
+            maxEnabledTokens: params.maxEnabledTokens,
+            feeInterest: params.feeInterest,
+            feeLiquidation: params.feeLiquidation,
+            liquidationPremium: params.liquidationPremium,
+            feeLiquidationExpired: params.feeLiquidationExpired,
+            liquidationPremiumExpired: params.liquidationPremiumExpired,
+            minDebt: params.minDebt,
+            maxDebt: params.maxDebt,
+            name: string.concat("Mock ", ERC20(ERC4626(pool).asset()).symbol(), " Credit Suite"),
+            accountFactoryParams: params.accountFactoryParams
+        });
+
+        CreditFacadeParams memory cfParams = CreditFacadeParams({
+            degenNFT: params.degenNFT, expirable: params.expirable, migrateBotList: params.migrateBotList
+        });
 
         vm.startPrank(riskCurator);
         creditManager = marketConfigurator.createCreditSuite({
-            minorVersion: 3_10,
-            pool: pool,
-            encdodedParams: abi.encode(
-                CreditManagerParams({
-                    maxEnabledTokens: 2,
-                    feeInterest: 50_00,
-                    feeLiquidation: 100,
-                    liquidationPremium: 100,
-                    feeLiquidationExpired: 100,
-                    liquidationPremiumExpired: 100,
-                    minDebt: minDebt,
-                    maxDebt: maxDebt,
-                    name: name,
-                    accountFactoryParams: DeployParams({
-                        postfix: "DEFAULT", salt: "GEARBOX", constructorParams: abi.encode(ADDRESS_PROVIDER)
-                    })
-                }),
-                CreditFacadeParams({degenNFT: address(0), expirable: false, migrateBotList: false})
-            )
+            minorVersion: 3_10, pool: pool, encdodedParams: abi.encode(cmParams, cfParams)
         });
 
-        if (debtLimit != 0) {
+        if (params.debtLimit != 0) {
             marketConfigurator.configurePool(
-                pool, abi.encodeCall(IPoolConfigureActions.setCreditManagerDebtLimit, (creditManager, debtLimit))
+                pool, abi.encodeCall(IPoolConfigureActions.setCreditManagerDebtLimit, (creditManager, params.debtLimit))
             );
         }
         vm.stopPrank();
     }
 
-    struct TokenConfig {
+    struct TokenParams {
         address token;
         address priceFeed;
         address reservePriceFeed;
@@ -233,27 +305,37 @@ contract AttachTestBase is AttachBase, Test {
         uint16 quotaRate;
     }
 
-    function _addToken(address pool, TokenConfig memory config) internal {
+    function _getDefaultTokenParams(address token) internal view returns (TokenParams memory) {
+        return TokenParams({
+            token: token, priceFeed: zeroPriceFeed, reservePriceFeed: address(0), quotaLimit: 0, quotaRate: 0
+        });
+    }
+
+    function _addDefaultToken(address pool, address token) internal {
+        _addToken(pool, _getDefaultTokenParams(token));
+    }
+
+    function _addToken(address pool, TokenParams memory params) internal {
         vm.startPrank(riskCurator);
 
-        marketConfigurator.addToken({pool: pool, token: config.token, priceFeed: config.priceFeed});
+        marketConfigurator.addToken({pool: pool, token: params.token, priceFeed: params.priceFeed});
 
-        if (config.reservePriceFeed != address(0)) {
+        if (params.reservePriceFeed != address(0)) {
             marketConfigurator.configurePriceOracle(
                 pool,
                 abi.encodeCall(
-                    IPriceOracleConfigureActions.setReservePriceFeed, (config.token, config.reservePriceFeed)
+                    IPriceOracleConfigureActions.setReservePriceFeed, (params.token, params.reservePriceFeed)
                 )
             );
         }
-        if (config.quotaLimit != 0) {
+        if (params.quotaLimit != 0) {
             marketConfigurator.configurePool(
-                pool, abi.encodeCall(IPoolConfigureActions.setTokenLimit, (config.token, config.quotaLimit))
+                pool, abi.encodeCall(IPoolConfigureActions.setTokenLimit, (params.token, params.quotaLimit))
             );
         }
-        if (config.quotaRate != 0) {
+        if (params.quotaRate != 0) {
             marketConfigurator.configureRateKeeper(
-                pool, abi.encodeCall(ITumblerV3.setRate, (config.token, config.quotaRate))
+                pool, abi.encodeCall(ITumblerV3.setRate, (params.token, params.quotaRate))
             );
         }
 
@@ -283,5 +365,15 @@ contract AttachTestBase is AttachBase, Test {
         marketConfigurator.configureCreditSuite(
             creditManager, abi.encodeCall(ICreditConfigureActions.configureAdapterFor, (targetContract, data))
         );
+    }
+
+    function _updateQuotaRates(address pool) internal {
+        vm.prank(riskCurator);
+        IMarketConfigurator(marketConfigurator).configureRateKeeper(pool, abi.encodeCall(ITumblerV3.updateRates, ()));
+    }
+
+    function _addPeripheryContract(address peripheryContract) internal {
+        vm.prank(riskCurator);
+        IMarketConfigurator(marketConfigurator).addPeripheryContract(peripheryContract);
     }
 }
