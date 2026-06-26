@@ -111,9 +111,22 @@ abstract contract AttachBase is CommonBase {
     }
 
     function _deploy(bytes32 contractType, uint256 version, bytes memory constructorParams) internal returns (address) {
+        return _deploy(contractType, version, constructorParams, SALT);
+    }
+
+    function _deploy(bytes32 contractType, uint256 version, bytes memory constructorParams, bytes32 salt)
+        internal
+        returns (address)
+    {
+        address precomputedAddress =
+            bytecodeRepository.computeAddress(contractType, version, constructorParams, salt, deployer.addr);
+        if (precomputedAddress.code.length != 0) {
+            return _deploy(contractType, version, constructorParams, keccak256(abi.encode(salt)));
+        }
+
         _omniPrank(deployer);
         return bytecodeRepository.deploy({
-            contractType: contractType, version: version, constructorParams: constructorParams, salt: SALT
+            contractType: contractType, version: version, constructorParams: constructorParams, salt: salt
         });
     }
 
@@ -267,15 +280,16 @@ abstract contract AttachBase is CommonBase {
         address pool = marketConfigurator.previewCreateMarket({
             minorVersion: 3_10, underlying: underlying, name: name, symbol: symbol
         });
+        bytes32 salt = keccak256(abi.encode(SALT, pool));
         return MarketParams({
             name: name,
             symbol: symbol,
             interestRateModelParams: DeployParams({
-                postfix: "LINEAR", salt: SALT, constructorParams: abi.encode(5000, 9000, 10_00, 0, 0, 0, false)
+                postfix: "LINEAR", salt: salt, constructorParams: abi.encode(5000, 9000, 10_00, 0, 0, 0, false)
             }),
-            rateKeeperParams: DeployParams({postfix: "TUMBLER", salt: SALT, constructorParams: abi.encode(pool, 0)}),
+            rateKeeperParams: DeployParams({postfix: "TUMBLER", salt: salt, constructorParams: abi.encode(pool, 0)}),
             lossPolicyParams: DeployParams({
-                postfix: "ALIASED", salt: SALT, constructorParams: abi.encode(pool, ADDRESS_PROVIDER)
+                postfix: "ALIASED", salt: salt, constructorParams: abi.encode(pool, ADDRESS_PROVIDER)
             }),
             underlyingPriceFeed: onePriceFeed
         });

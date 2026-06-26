@@ -2,13 +2,10 @@ name: Release
 
 on:
   push:
-    branches:
-      - "master"
-      - "next"
+    branches: [master, next]
 
-env:
-  HUSKY: 0
-  CI: true
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -16,6 +13,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Semantic Release
         uses: cycjimmy/semantic-release-action@v4
