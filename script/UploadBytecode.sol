@@ -6,24 +6,22 @@ import {Bytecode} from "../contracts/interfaces/Types.sol";
 import {AttachScriptBase} from "../contracts/test/suite/AttachScriptBase.sol";
 
 abstract contract UploadBytecode is AttachScriptBase {
-    address public author;
-
     function setUp() public virtual {
         _attachCore();
 
         address[] memory wallets = vm.getWallets();
         if (wallets.length == 0) revert("No unlocked wallets found");
-        author = wallets[0];
+        author.addr = wallets[0];
     }
 
     function run() public virtual {
-        vm.startBroadcast(author);
+        _startOmniPrank(author);
         Bytecode[] memory bytecodes = _getContracts();
         for (uint256 i; i < bytecodes.length; ++i) {
             _signBytecode(author, bytecodes[i]);
             bytecodeRepository.uploadBytecode(bytecodes[i]);
         }
-        vm.stopBroadcast();
+        _stopOmniPrank();
     }
 
     function _getContracts() internal view virtual returns (Bytecode[] memory bytecodes);

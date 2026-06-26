@@ -5,45 +5,24 @@ on:
     types: [opened, reopened, synchronize]
 
 env:
-  CI: true
-  FORK_RPC_URL: ${{ secrets.MAINNET_TESTS_FORK }}
+  FOUNDRY_ETH_RPC_URL: https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY_CI }}
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Use Latest Corepack
-        run: |
-          echo "Before: corepack version => $(corepack --version || echo 'not installed')"
-          npm install -g corepack@latest
-          echo "After : corepack version => $(corepack --version)"
-          corepack enable
-          pnpm --version
-
-      - name: Setup node.js
-        uses: actions/setup-node@v4
-        with:
-          cache: "pnpm"
-          node-version-file: ".nvmrc"
-
-      - name: Install node dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: stable
+          version: v1.5.1
 
       - name: Install forge dependencies
-        run: forge i
+        run: forge install
 
       - name: Build project
-        run: forge b
+        run: forge build
 
       - name: Run tests
-        run: forge test --fork-url ${{ secrets.MAINNET_TESTS_FORK }}
+        run: forge test
