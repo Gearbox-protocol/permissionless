@@ -7,8 +7,8 @@
   },
   "lib/@gearbox-protocol/core-v3": {
     "tag": {
-      "name": "v1.52.0",
-      "rev": "5144d61af7d117f86d3fa9b4e2aa05535e2e5433"
+      "name": "v1.53.0",
+      "rev": "510fc6541c3767ce825929b4c311826fe81d6fa5"
     }
   },
   "lib/@openzeppelin": {
@@ -25,8 +25,8 @@
   },
   "lib/forge-std": {
     "tag": {
-      "name": "v1.14.0",
-      "rev": "1801b0541f4fda118a10798fd3486bb7051c5dd6"
+      "name": "v1.16.1",
+      "rev": "620536fa5277db4e3fd46772d5cbc1ea0696fb43"
     }
   }
 }

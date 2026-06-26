@@ -19,9 +19,8 @@ contract RateKeeperFactoryPatchV311Test is AttachTestBase {
     address pool;
 
     function setUp() public {
-        _attachCore();
-
         vm.skip(block.chainid != 1, "Not Ethereum mainnet");
+        _setUp();
         vm.skip(
             bytecodeRepository.getLatestPatchVersion("RATE_KEEPER_FACTORY", 3_10) != 3_10,
             "RateKeeperFactory is already patched"
@@ -29,16 +28,22 @@ contract RateKeeperFactoryPatchV311Test is AttachTestBase {
 
         _uploadContract("RATE_KEEPER_FACTORY", 3_11, type(RateKeeperFactory).creationCode);
 
-        _attachMarketConfigurator();
-        pool = _createMockMarket(WETH, WETH_PRICE_FEED);
+        _allowPriceFeed(WETH, WETH_PRICE_FEED);
+        _allowPriceFeed(USDC, USDC_PRICE_FEED);
 
-        vm.prank(riskCurator);
-        marketConfigurator.addToken({pool: pool, token: USDC, priceFeed: USDC_PRICE_FEED});
+        deal({token: WETH, to: address(marketConfigurator), give: 1e5});
+        MarketParams memory marketParams = _getDefaultMarketParams(WETH);
+        marketParams.underlyingPriceFeed = WETH_PRICE_FEED;
+        pool = _createMockMarket(WETH, marketParams);
+
+        TokenParams memory tokenParams = _getDefaultTokenParams(USDC);
+        tokenParams.priceFeed = USDC_PRICE_FEED;
+        _addToken(pool, tokenParams);
     }
 
     function test_rate_keeper_update_fails_with_old_rate_keeper_factory() public {
         vm.expectRevert(TokenIsNotQuotedException.selector);
-        vm.prank(riskCurator);
+        _omniPrank(riskCurator);
         marketConfigurator.updateRateKeeper(
             pool, DeployParams({postfix: "TUMBLER", salt: "NEW SALT", constructorParams: abi.encode(pool, 1 days)})
         );
@@ -47,7 +52,7 @@ contract RateKeeperFactoryPatchV311Test is AttachTestBase {
     function test_rate_keeper_update_succeeds_with_patched_rate_keeper_factory() public {
         _upgradeRateKeeperFactory();
 
-        vm.prank(riskCurator);
+        _omniPrank(riskCurator);
         marketConfigurator.updateRateKeeper(
             pool, DeployParams({postfix: "TUMBLER", salt: "NEW SALT", constructorParams: abi.encode(pool, 1 days)})
         );
@@ -57,7 +62,7 @@ contract RateKeeperFactoryPatchV311Test is AttachTestBase {
         vm.prank(crossChainGovernance);
         instanceManager.deploySystemContract("RATE_KEEPER_FACTORY", 3_11, true);
 
-        vm.prank(riskCurator);
+        _omniPrank(riskCurator);
         marketConfigurator.upgradeRateKeeperFactory(pool);
     }
 }
