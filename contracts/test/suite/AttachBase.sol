@@ -160,10 +160,11 @@ abstract contract AttachBase is CommonBase {
         bytecodeRepository.submitAuditReport(bytecodeHash, auditReport);
 
         if (bytecodeRepository.isPublicDomain(Domain.extractDomain(contractType))) {
-            if (bytecodeRepository.getContractTypeOwner(contractType) != address(0)) {
-                // TODO: check if this works in script contexts, not sure about `checked_write`
-                stdstore.target(address(bytecodeRepository)).sig("getContractTypeOwner(bytes32)").with_key(contractType)
-                    .checked_write(author.addr);
+            address owner = bytecodeRepository.getContractTypeOwner(contractType);
+            if (owner != address(0) && owner != author.addr) {
+                uint256 slot = stdstore.target(address(bytecodeRepository)).sig("getContractTypeOwner(bytes32)")
+                    .with_key(contractType).find();
+                _omniStore(address(bytecodeRepository), bytes32(slot), bytes32(uint256(uint160(author.addr))));
             }
             _omniPrank(deployer);
             bytecodeRepository.allowPublicContract(bytecodeHash);
@@ -507,6 +508,20 @@ abstract contract AttachBase is CommonBase {
             vm.stopPrank();
         } else if (vm.isContext(VmSafe.ForgeContext.ScriptGroup)) {
             vm.stopBroadcast();
+        } else {
+            revert UnknownExecutionContext();
+        }
+    }
+
+    function _omniStore(address target, bytes32 slot, bytes32 value) internal {
+        if (vm.isContext(VmSafe.ForgeContext.TestGroup)) {
+            vm.store(target, slot, value);
+        } else if (vm.isContext(VmSafe.ForgeContext.ScriptGroup)) {
+            vm.store(target, slot, value);
+            vm.rpc(
+                "anvil_setStorageAt",
+                string.concat('["', vm.toString(target), '","', vm.toString(slot), '","', vm.toString(value), '"]')
+            );
         } else {
             revert UnknownExecutionContext();
         }
