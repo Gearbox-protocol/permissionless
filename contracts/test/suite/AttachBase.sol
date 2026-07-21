@@ -517,6 +517,7 @@ abstract contract AttachBase is CommonBase {
         if (vm.isContext(VmSafe.ForgeContext.TestGroup)) {
             vm.store(target, slot, value);
         } else if (vm.isContext(VmSafe.ForgeContext.ScriptGroup)) {
+            vm.store(target, slot, value);
             vm.rpc(
                 "anvil_setStorageAt",
                 string.concat('["', vm.toString(target), '","', vm.toString(slot), '","', vm.toString(value), '"]')
