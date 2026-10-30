@@ -7,11 +7,12 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ImmutableOwnableTrait} from "../traits/ImmutableOwnableTrait.sol";
 import {IVersion} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IVersion.sol";
 
-contract KillSwitchProxyCall is ImmutableOwnableTrait {
+contract KillSwitchProxyCall is ImmutableOwnableTrait, IVersion {
     using Address for address;
 
     error OnlyCallerException();
     error KilledException();
+    error OwnerSameAsCallerException();
 
     event Killed();
 
@@ -28,6 +29,7 @@ contract KillSwitchProxyCall is ImmutableOwnableTrait {
     }
 
     constructor(address _owner, address _caller) ImmutableOwnableTrait(_owner) {
+        if (_owner == _caller) revert OwnerSameAsCallerException();
         caller = _caller;
     }
 
