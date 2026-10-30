@@ -27,7 +27,7 @@ contract KillSwitchProxyCall is ImmutableOwnableTrait {
         _;
     }
 
-    constructor(address _caller) ImmutableOwnableTrait(msg.sender) {
+    constructor(address _owner, address _caller) ImmutableOwnableTrait(_owner) {
         caller = _caller;
     }
 
