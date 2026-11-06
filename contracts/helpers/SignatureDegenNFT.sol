@@ -19,7 +19,13 @@ struct OpeningSignature {
     address creditManager;
     address accountOwner;
     uint32 deadline;
+    uint32 nonce;
     bytes signature;
+}
+
+struct OpeningInfo {
+    uint32 deadline;
+    uint32 nonce;
 }
 
 /// @title Signature degen NFT
@@ -35,7 +41,7 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
 
     /// @notice EIP-712 typehash for mint / opening approvals
     bytes32 public constant MINT_TYPEHASH =
-        keccak256("Mint(address creditManager,address accountOwner,uint32 deadline)");
+        keccak256("Mint(address creditManager,address accountOwner,uint32 deadline,uint32 nonce)");
 
     /// @notice Market ACL contract
     address public immutable acl;
@@ -52,8 +58,8 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     /// @notice Next Degen NFT to burn (optional)
     address public immutable nextDegenNFT;
 
-    /// @notice Opening deadline for `accountOwner` on `creditManager`, or 0 if none / already consumed
-    mapping(address accountOwner => mapping(address creditManager => uint32 deadline)) public openingDeadlines;
+    /// @notice Opening deadline and nonce for `accountOwner` on `creditManager`
+    mapping(address accountOwner => mapping(address creditManager => OpeningInfo)) public openingDeadlines;
 
     /// @notice Emitted when an opening is approved for `accountOwner` on `creditManager` until `deadline`
     event ApproveOpening(address indexed accountOwner, address indexed creditManager, uint32 deadline);
@@ -75,6 +81,12 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
 
     /// @notice Thrown when decoded signature params do not match the burn call context
     error InvalidSignatureParamsException();
+
+    /// @notice Thrown when the next signer in the array has an address no larger than the previous one
+    error IncorrectSignerSortingException();
+
+    /// @notice Thrown when an opening signature struct has an incorrect nonce
+    error IncorrectNonceException();
 
     /// @dev Ensures the caller is a registered credit facade or the market emergency admin
     modifier onlyCreditFacadeOrEmergencyAdmin() {
@@ -137,8 +149,8 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     /// @dev Consumes the opening approval for `accountOwner` on `creditManager`
     /// @dev Reverts if the approval is missing or expired
     function _burn(address accountOwner, address creditManager) internal {
-        if (block.timestamp > openingDeadlines[accountOwner][creditManager]) revert CannotOpenException();
-        openingDeadlines[accountOwner][creditManager] = 0;
+        if (block.timestamp > openingDeadlines[accountOwner][creditManager].deadline) revert CannotOpenException();
+        openingDeadlines[accountOwner][creditManager].deadline = 0;
 
         if (nextDegenNFT != address(0)) {
             IDegenNFT(nextDegenNFT).burn(accountOwner, 1);
@@ -152,30 +164,41 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
         address creditManager;
         address accountOwner;
         uint32 deadline;
+        uint32 nonce;
         bytes32 digest;
         uint16 nSignatures;
+        address prevSigner;
 
         for (uint256 i = 0; i < openingSignatures.length; i++) {
             if (i == 0) {
                 creditManager = openingSignatures[i].creditManager;
                 accountOwner = openingSignatures[i].accountOwner;
                 deadline = openingSignatures[i].deadline;
-                digest = _hashTypedDataV4(keccak256(abi.encode(MINT_TYPEHASH, creditManager, accountOwner, deadline)));
+                nonce = openingSignatures[i].nonce;
+                digest = _hashTypedDataV4(
+                    keccak256(abi.encode(MINT_TYPEHASH, creditManager, accountOwner, deadline, nonce))
+                );
+
+                if (nonce != openingDeadlines[accountOwner][creditManager].nonce + 1) revert IncorrectNonceException();
             } else {
                 if (
                     openingSignatures[i].creditManager != creditManager
                         || openingSignatures[i].accountOwner != accountOwner
-                        || openingSignatures[i].deadline != deadline
+                        || openingSignatures[i].deadline != deadline || openingSignatures[i].nonce != nonce
                 ) revert OpeningParamsMismatchException();
             }
 
             address signer = ECDSA.recover(digest, openingSignatures[i].signature);
+            if (uint160(signer) <= uint160(prevSigner)) revert IncorrectSignerSortingException();
+            prevSigner = signer;
+
             if (IACL(acl).hasRole(ROLE_OPENING_SIGNER, signer)) nSignatures++;
         }
 
         if (nSignatures < minSignaturesRequired) revert NotEnoughSignersException();
 
-        openingDeadlines[accountOwner][creditManager] = deadline;
+        openingDeadlines[accountOwner][creditManager].deadline = deadline;
+        openingDeadlines[accountOwner][creditManager].nonce = nonce;
 
         emit ApproveOpening(accountOwner, creditManager, deadline);
     }
