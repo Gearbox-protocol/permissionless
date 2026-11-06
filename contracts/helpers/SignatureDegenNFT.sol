@@ -7,11 +7,20 @@ import {ICreditManagerV3} from "@gearbox-protocol/core-v3/contracts/interfaces/I
 import {ICreditFacadeV3} from "@gearbox-protocol/core-v3/contracts/interfaces/ICreditFacadeV3.sol";
 import {IDegenNFT} from "@gearbox-protocol/core-v3/contracts/interfaces/base/IDegenNFT.sol";
 
+import {IACL} from "../interfaces/IACL.sol";
 import {IContractsRegister} from "../interfaces/IContractsRegister.sol";
 import {IMarketConfigurator} from "../interfaces/IMarketConfigurator.sol";
+import {ROLE_OPENING_SIGNER} from "../libraries/ContractLiterals.sol";
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+
+struct OpeningSignature {
+    address creditManager;
+    address accountOwner;
+    uint32 deadline;
+    bytes signature;
+}
 
 /// @title Signature degen NFT
 /// @notice Degen NFT that gates credit account opening via EIP-712 approvals from Gearbox and curator signers
@@ -28,17 +37,20 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     bytes32 public constant MINT_TYPEHASH =
         keccak256("Mint(address creditManager,address accountOwner,uint32 deadline)");
 
+    /// @notice Market ACL contract
+    address public immutable acl;
+
     /// @notice Market configurator this degen NFT is bound to
     address public immutable marketConfigurator;
 
     /// @notice Contracts register of the market configurator
     address public immutable contractsRegister;
 
-    /// @notice Authorized Gearbox signer for opening approvals
-    address public immutable gearboxSigner;
+    /// @notice Minimum number of signatures required to approve an opening
+    uint16 public immutable minSignaturesRequired;
 
-    /// @notice Authorized curator signer for opening approvals
-    address public immutable curatorSigner;
+    /// @notice Next Degen NFT to burn (optional)
+    address public immutable nextDegenNFT;
 
     /// @notice Opening deadline for `accountOwner` on `creditManager`, or 0 if none / already consumed
     mapping(address accountOwner => mapping(address creditManager => uint32 deadline)) public openingDeadlines;
@@ -49,11 +61,11 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     /// @notice Emitted when an opening approval for `accountOwner` on `creditManager` is consumed
     event Burn(address indexed accountOwner, address indexed creditManager);
 
-    /// @notice Thrown when the Gearbox signature does not recover to `gearboxSigner`
-    error InvalidGearboxSignatureException();
+    /// @notice Thrown when the number of signers is less than the `minSignaturesRequired`
+    error NotEnoughSignersException();
 
-    /// @notice Thrown when the curator signature does not recover to `curatorSigner`
-    error InvalidCuratorSignatureException();
+    /// @notice Thrown when one of the opening parameter structs does not match the others
+    error OpeningParamsMismatchException();
 
     /// @notice Thrown when the caller is neither a valid credit facade nor the emergency admin
     error CallerIsNotCreditFacadeOrEmergencyAdminException(address caller);
@@ -72,20 +84,19 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
 
     /// @notice Constructor
     /// @param marketConfigurator_ Market configurator address
-    /// @param gearboxSigner_ Authorized Gearbox signer
-    /// @param curatorSigner_ Authorized curator signer
-    constructor(address marketConfigurator_, address gearboxSigner_, address curatorSigner_)
-        EIP712("SignatureDegenNFT", "1")
+    constructor(address marketConfigurator_, uint16 _minSignaturesRequired, address _nextDegenNFT)
+        EIP712("SignatureDegenNFT", "3_10")
     {
         marketConfigurator = marketConfigurator_;
         contractsRegister = IMarketConfigurator(marketConfigurator_).contractsRegister();
-        gearboxSigner = gearboxSigner_;
-        curatorSigner = curatorSigner_;
+        acl = IMarketConfigurator(marketConfigurator_).acl();
+        minSignaturesRequired = _minSignaturesRequired;
+        nextDegenNFT = _nextDegenNFT;
     }
 
     /// @notice Serialized contract state
     function serialize() external view override returns (bytes memory) {
-        return abi.encode(marketConfigurator, contractsRegister, gearboxSigner, curatorSigner);
+        return abi.encode(marketConfigurator, contractsRegister, minSignaturesRequired, nextDegenNFT);
     }
 
     /// @notice Consumes a previously recorded opening approval for `onBehalfOf`
@@ -97,43 +108,30 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     }
 
     /// @notice Approves and immediately consumes an opening using EIP-712 signatures
-    /// @dev Credit manager in `signatureData` must match the calling credit facade's credit manager
-    /// @param onBehalfOf Account owner; must match `accountOwner` in `signatureData`
-    /// @param signatureData ABI-encoded `(creditManager, accountOwner, deadline, gearboxSignature, curatorSignature)`
-    function burn(address onBehalfOf, uint256, bytes calldata signatureData)
+    /// @dev The first credit manager in `openingSignaturesEncoded` must match the calling credit facade's credit manager
+    /// @param onBehalfOf Account owner; must match the first `accountOwner` in `openingSignaturesEncoded`
+    /// @param openingSignaturesEncoded ABI-encoded array of OpeningSignature structs
+    function burn(address onBehalfOf, uint256, bytes calldata openingSignaturesEncoded)
         external
         onlyCreditFacadeOrEmergencyAdmin
     {
-        (
-            address creditManager,
-            address accountOwner,
-            uint32 deadline,
-            bytes memory gearboxSignature,
-            bytes memory curatorSignature
-        ) = abi.decode(signatureData, (address, address, uint32, bytes, bytes));
+        OpeningSignature[] memory openingSignatures = abi.decode(openingSignaturesEncoded, (OpeningSignature[]));
 
-        if (accountOwner != onBehalfOf || creditManager != ICreditFacadeV3(msg.sender).creditManager()) {
+        if (
+            openingSignatures[0].accountOwner != onBehalfOf
+                || openingSignatures[0].creditManager != ICreditFacadeV3(msg.sender).creditManager()
+        ) {
             revert InvalidSignatureParamsException();
         }
 
-        _approveOpening(accountOwner, creditManager, deadline, gearboxSignature, curatorSignature);
-        _burn(accountOwner, creditManager);
+        _approveOpening(openingSignatures);
+        _burn(onBehalfOf, openingSignatures[0].creditManager);
     }
 
     /// @notice Records an opening approval if both EIP-712 signatures are valid
-    /// @param creditManager Credit manager the approval is for
-    /// @param accountOwner Account owner the approval is for
-    /// @param deadline Timestamp until which the approval is valid
-    /// @param gearboxSignature EIP-712 signature from `gearboxSigner`
-    /// @param curatorSignature EIP-712 signature from `curatorSigner`
-    function approveOpening(
-        address creditManager,
-        address accountOwner,
-        uint32 deadline,
-        bytes calldata gearboxSignature,
-        bytes calldata curatorSignature
-    ) external {
-        _approveOpening(accountOwner, creditManager, deadline, gearboxSignature, curatorSignature);
+    /// @param openingSignatures Array of opening signature structs
+    function approveOpening(OpeningSignature[] memory openingSignatures) external {
+        _approveOpening(openingSignatures);
     }
 
     /// @dev Consumes the opening approval for `accountOwner` on `creditManager`
@@ -142,21 +140,40 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
         if (block.timestamp > openingDeadlines[accountOwner][creditManager]) revert CannotOpenException();
         openingDeadlines[accountOwner][creditManager] = 0;
 
+        if (nextDegenNFT != address(0)) {
+            IDegenNFT(nextDegenNFT).burn(accountOwner, 1);
+        }
+
         emit Burn(accountOwner, creditManager);
     }
 
-    /// @dev Validates both signatures and stores the opening deadline
-    function _approveOpening(
-        address accountOwner,
-        address creditManager,
-        uint32 deadline,
-        bytes memory gearboxSignature,
-        bytes memory curatorSignature
-    ) internal {
-        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(MINT_TYPEHASH, creditManager, accountOwner, deadline)));
+    /// @dev Validates all signatures and stores the opening deadline if the signer count satisfies `minSignaturesRequired`
+    function _approveOpening(OpeningSignature[] memory openingSignatures) internal {
+        address creditManager;
+        address accountOwner;
+        uint32 deadline;
+        bytes32 digest;
+        uint16 nSignatures;
 
-        if (ECDSA.recover(digest, gearboxSignature) != gearboxSigner) revert InvalidGearboxSignatureException();
-        if (ECDSA.recover(digest, curatorSignature) != curatorSigner) revert InvalidCuratorSignatureException();
+        for (uint256 i = 0; i < openingSignatures.length; i++) {
+            if (i == 0) {
+                creditManager = openingSignatures[i].creditManager;
+                accountOwner = openingSignatures[i].accountOwner;
+                deadline = openingSignatures[i].deadline;
+                digest = _hashTypedDataV4(keccak256(abi.encode(MINT_TYPEHASH, creditManager, accountOwner, deadline)));
+            } else {
+                if (
+                    openingSignatures[i].creditManager != creditManager
+                        || openingSignatures[i].accountOwner != accountOwner
+                        || openingSignatures[i].deadline != deadline
+                ) revert OpeningParamsMismatchException();
+            }
+
+            address signer = ECDSA.recover(digest, openingSignatures[i].signature);
+            if (IACL(acl).hasRole(ROLE_OPENING_SIGNER, signer)) nSignatures++;
+        }
+
+        if (nSignatures < minSignaturesRequired) revert NotEnoughSignersException();
 
         openingDeadlines[accountOwner][creditManager] = deadline;
 
