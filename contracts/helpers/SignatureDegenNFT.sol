@@ -37,7 +37,7 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     uint256 public constant override version = 3_10;
 
     /// @notice Contract type
-    bytes32 public constant override contractType = "DEGEN_NFT::DEFAULT";
+    bytes32 public constant override contractType = "DEGEN_NFT::SIGNATURE";
 
     /// @notice EIP-712 typehash for mint / opening approvals
     bytes32 public constant MINT_TYPEHASH =
