@@ -67,14 +67,20 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     /// @notice Emitted when an opening approval for `accountOwner` on `creditManager` is consumed
     event Burn(address indexed accountOwner, address indexed creditManager);
 
+    /// @notice Emitted when an opening approval for `accountOwner` on `creditManager` is revoked
+    event RevokeOpening(address indexed accountOwner, address indexed creditManager);
+
     /// @notice Thrown when the number of signers is less than the `minSignaturesRequired`
     error NotEnoughSignersException();
 
     /// @notice Thrown when one of the opening parameter structs does not match the others
     error OpeningParamsMismatchException();
 
-    /// @notice Thrown when the caller is neither a valid credit facade nor the emergency admin
-    error CallerIsNotCreditFacadeOrEmergencyAdminException(address caller);
+    /// @notice Thrown when the caller is not a valid credit facade
+    error CallerIsNotCreditFacadeException(address caller);
+
+    /// @notice Thrown when the caller is not the emergency admin
+    error CallerIsNotEmergencyAdminException(address caller);
 
     /// @notice Thrown when there is no valid (non-expired) opening approval to consume
     error CannotOpenException();
@@ -88,9 +94,21 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     /// @notice Thrown when an opening signature struct has an incorrect nonce
     error IncorrectNonceException();
 
-    /// @dev Ensures the caller is a registered credit facade or the market emergency admin
-    modifier onlyCreditFacadeOrEmergencyAdmin() {
-        _ensureCallerIsCreditFacadeOrEmergencyAdmin();
+    /// @notice Thrown when `minSignaturesRequired` is zero
+    error ZeroSignaturesRequiredException();
+
+    /// @notice Thrown when an opening approval deadline is already in the past
+    error StaleOpeningException();
+
+    /// @dev Ensures the caller is a registered credit facade
+    modifier onlyCreditFacade() {
+        _ensureCallerIsCreditFacade();
+        _;
+    }
+
+    /// @dev Ensures the caller is the market emergency admin
+    modifier onlyEmergencyAdmin() {
+        _ensureCallerIsEmergencyAdmin();
         _;
     }
 
@@ -102,6 +120,9 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
         marketConfigurator = marketConfigurator_;
         contractsRegister = IMarketConfigurator(marketConfigurator_).contractsRegister();
         acl = IMarketConfigurator(marketConfigurator_).acl();
+
+        if (_minSignaturesRequired == 0) revert ZeroSignaturesRequiredException();
+
         minSignaturesRequired = _minSignaturesRequired;
         nextDegenNFT = _nextDegenNFT;
     }
@@ -114,7 +135,7 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     /// @notice Consumes a previously recorded opening approval for `onBehalfOf`
     /// @dev Credit manager is inferred from the calling credit facade
     /// @param onBehalfOf Account owner whose approval is consumed
-    function burn(address onBehalfOf, uint256) external onlyCreditFacadeOrEmergencyAdmin {
+    function burn(address onBehalfOf, uint256) external onlyCreditFacade {
         address creditManager = ICreditFacadeV3(msg.sender).creditManager();
         _burn(onBehalfOf, creditManager);
     }
@@ -123,10 +144,7 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     /// @dev The first credit manager in `openingSignaturesEncoded` must match the calling credit facade's credit manager
     /// @param onBehalfOf Account owner; must match the first `accountOwner` in `openingSignaturesEncoded`
     /// @param openingSignaturesEncoded ABI-encoded array of OpeningSignature structs
-    function burn(address onBehalfOf, uint256, bytes calldata openingSignaturesEncoded)
-        external
-        onlyCreditFacadeOrEmergencyAdmin
-    {
+    function burn(address onBehalfOf, uint256, bytes calldata openingSignaturesEncoded) external onlyCreditFacade {
         OpeningSignature[] memory openingSignatures = abi.decode(openingSignaturesEncoded, (OpeningSignature[]));
 
         if (
@@ -144,6 +162,15 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     /// @param openingSignatures Array of opening signature structs
     function approveOpening(OpeningSignature[] memory openingSignatures) external {
         _approveOpening(openingSignatures);
+    }
+
+    /// @notice Revokes an opening approval for `accountOwner` on `creditManager`
+    /// @param accountOwner Account owner whose approval is revoked
+    /// @param creditManager Credit manager whose approval is revoked
+    function revokeOpening(address accountOwner, address creditManager) external onlyEmergencyAdmin {
+        openingDeadlines[accountOwner][creditManager].deadline = 0;
+
+        emit RevokeOpening(accountOwner, creditManager);
     }
 
     /// @dev Consumes the opening approval for `accountOwner` on `creditManager`
@@ -178,8 +205,6 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
                 digest = _hashTypedDataV4(
                     keccak256(abi.encode(MINT_TYPEHASH, creditManager, accountOwner, deadline, nonce))
                 );
-
-                if (nonce != openingDeadlines[accountOwner][creditManager].nonce + 1) revert IncorrectNonceException();
             } else {
                 if (
                     openingSignatures[i].creditManager != creditManager
@@ -197,27 +222,33 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
 
         if (nSignatures < minSignaturesRequired) revert NotEnoughSignersException();
 
+        if (nonce == openingDeadlines[accountOwner][creditManager].nonce) {
+            return;
+        } else if (nonce != openingDeadlines[accountOwner][creditManager].nonce + 1) {
+            revert IncorrectNonceException();
+        }
+
+        if (block.timestamp > deadline) revert StaleOpeningException();
+
         openingDeadlines[accountOwner][creditManager].deadline = deadline;
         openingDeadlines[accountOwner][creditManager].nonce = nonce;
 
         emit ApproveOpening(accountOwner, creditManager, deadline);
     }
 
-    /// @dev Reverts unless caller is the emergency admin or a credit facade of a registered credit manager
-    function _ensureCallerIsCreditFacadeOrEmergencyAdmin() internal view {
-        if (msg.sender != IMarketConfigurator(marketConfigurator).emergencyAdmin() && !_callerIsCreditFacade()) {
-            revert CallerIsNotCreditFacadeOrEmergencyAdminException(msg.sender);
+    /// @dev Reverts unless caller is the emergency admin
+    function _ensureCallerIsEmergencyAdmin() internal view {
+        if (msg.sender != IMarketConfigurator(marketConfigurator).emergencyAdmin()) {
+            revert CallerIsNotEmergencyAdminException(msg.sender);
         }
     }
 
-    /// @dev Returns whether `msg.sender` is the credit facade of a registered credit manager
-    function _callerIsCreditFacade() internal view returns (bool) {
+    /// @dev Reverts unless caller is the credit facade of a registered credit manager
+    function _ensureCallerIsCreditFacade() internal view {
         address creditManager = ICreditFacadeV3(msg.sender).creditManager();
         if (
             ICreditManagerV3(creditManager).creditFacade() != msg.sender
                 || !IContractsRegister(contractsRegister).isCreditManager(creditManager)
-        ) return false;
-
-        return true;
+        ) revert CallerIsNotCreditFacadeException(msg.sender);
     }
 }

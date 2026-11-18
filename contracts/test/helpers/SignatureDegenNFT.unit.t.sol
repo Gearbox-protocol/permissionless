@@ -72,6 +72,15 @@ contract SignatureDegenNFTTest is ConfigurationTestHelper {
         deadline = uint32(block.timestamp + 1 days);
     }
 
+    // ----------- //
+    // CONSTRUCTOR //
+    // ----------- //
+
+    function test_SD_00_constructor_revertsIfZeroSignaturesRequired() public {
+        vm.expectRevert(SignatureDegenNFT.ZeroSignaturesRequiredException.selector);
+        new SignatureDegenNFT(address(marketConfigurator), 0, address(0));
+    }
+
     // --------------- //
     // APPROVE OPENING //
     // --------------- //
@@ -160,6 +169,26 @@ contract SignatureDegenNFTTest is ConfigurationTestHelper {
         assertEq(storedNonce, 2, "Nonce not incremented");
     }
 
+    function test_SD_08A_approveOpening_sameNonceIsNoOp() public {
+        degenNFT.approveOpening(_signedOpenings(address(creditManager), user1, deadline, 1, 2));
+
+        uint32 laterDeadline = uint32(block.timestamp + 2 days);
+        // Same nonce with a different deadline must not overwrite the stored approval
+        degenNFT.approveOpening(_signedOpenings(address(creditManager), user1, laterDeadline, 1, 2));
+
+        (uint32 storedDeadline, uint32 storedNonce) = degenNFT.openingDeadlines(user1, address(creditManager));
+        assertEq(storedDeadline, deadline, "Deadline must not change on same-nonce replay");
+        assertEq(storedNonce, 1, "Nonce must not change on same-nonce replay");
+    }
+
+    function test_SD_08B_approveOpening_revertsIfStale() public {
+        uint32 staleDeadline = uint32(block.timestamp - 1);
+        OpeningSignature[] memory sigs = _signedOpenings(address(creditManager), user1, staleDeadline, 1, 2);
+
+        vm.expectRevert(SignatureDegenNFT.StaleOpeningException.selector);
+        degenNFT.approveOpening(sigs);
+    }
+
     // ---- //
     // BURN //
     // ---- //
@@ -202,10 +231,17 @@ contract SignatureDegenNFTTest is ConfigurationTestHelper {
 
         vm.prank(invalidCreditFacade);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                SignatureDegenNFT.CallerIsNotCreditFacadeOrEmergencyAdminException.selector, invalidCreditFacade
-            )
+            abi.encodeWithSelector(SignatureDegenNFT.CallerIsNotCreditFacadeException.selector, invalidCreditFacade)
         );
+        degenNFT.burn(user1, 1);
+    }
+
+    function test_SD_12A_burn_revertsIfEmergencyAdmin() public {
+        degenNFT.approveOpening(_signedOpenings(address(creditManager), user1, deadline, 1, 2));
+
+        // emergencyAdmin is an EOA, so creditManager() call fails before the custom error
+        vm.prank(emergencyAdmin);
+        vm.expectRevert();
         degenNFT.burn(user1, 1);
     }
 
@@ -267,11 +303,42 @@ contract SignatureDegenNFTTest is ConfigurationTestHelper {
         degenNFT.burn(user1, 1, encoded);
     }
 
+    // --------------- //
+    // REVOKE OPENING //
+    // --------------- //
+
+    function test_SD_18_revokeOpening_byEmergencyAdmin() public {
+        degenNFT.approveOpening(_signedOpenings(address(creditManager), user1, deadline, 1, 2));
+
+        vm.expectEmit(true, true, true, true);
+        emit SignatureDegenNFT.RevokeOpening(user1, address(creditManager));
+
+        vm.prank(emergencyAdmin);
+        degenNFT.revokeOpening(user1, address(creditManager));
+
+        (uint32 storedDeadline, uint32 storedNonce) = degenNFT.openingDeadlines(user1, address(creditManager));
+        assertEq(storedDeadline, 0, "Deadline not cleared");
+        assertEq(storedNonce, 1, "Nonce should be preserved");
+
+        vm.prank(address(creditFacade));
+        vm.expectRevert(SignatureDegenNFT.CannotOpenException.selector);
+        degenNFT.burn(user1, 1);
+    }
+
+    function test_SD_19_revokeOpening_revertsIfUnauthorized() public {
+        degenNFT.approveOpening(_signedOpenings(address(creditManager), user1, deadline, 1, 2));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(SignatureDegenNFT.CallerIsNotEmergencyAdminException.selector, address(this))
+        );
+        degenNFT.revokeOpening(user1, address(creditManager));
+    }
+
     // --------- //
     // SERIALIZE //
     // --------- //
 
-    function test_SD_18_serialize() public view {
+    function test_SD_20_serialize() public view {
         bytes memory expected = abi.encode(
             address(marketConfigurator),
             address(marketConfigurator.contractsRegister()),
