@@ -169,6 +169,7 @@ contract SignatureDegenNFT is EIP712, IDegenNFT {
     /// @param creditManager Credit manager whose approval is revoked
     function revokeOpening(address accountOwner, address creditManager) external onlyEmergencyAdmin {
         openingDeadlines[accountOwner][creditManager].deadline = 0;
+        openingDeadlines[accountOwner][creditManager].nonce += 1;
 
         emit RevokeOpening(accountOwner, creditManager);
     }
