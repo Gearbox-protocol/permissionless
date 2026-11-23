@@ -374,7 +374,7 @@ contract CreditSuiteConfigurationUnitTest is ConfigurationTestHelper {
         // Compute expected new facade address
         address expectedNewFacade = IBytecodeRepository(bytecodeRepository).computeAddress(
             "CREDIT_FACADE",
-            3_10,
+            3_11,
             abi.encode(
                 addressProvider,
                 address(creditManager),

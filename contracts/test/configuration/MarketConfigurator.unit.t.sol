@@ -1284,7 +1284,7 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
 
         expectedAccountFactory = IBytecodeRepository(bytecodeRepository).computeAddress(
             "ACCOUNT_FACTORY::DEFAULT",
-            3_10,
+            3_11,
             abi.encode(addressProvider),
             keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator)),
             creditFactory
@@ -1320,7 +1320,7 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
 
         expectedCreditFacade = IBytecodeRepository(bytecodeRepository).computeAddress(
             "CREDIT_FACADE",
-            3_10,
+            3_11,
             abi.encode(
                 addressProvider,
                 expectedCreditManager,
@@ -1378,7 +1378,7 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
                 IBytecodeRepository.deploy,
                 (
                     "CREDIT_FACADE",
-                    3_10,
+                    3_11,
                     abi.encode(
                         addressProvider,
                         expectedCreditManager,
@@ -1399,7 +1399,7 @@ contract MarketConfiguratorUnitTest is ConfigurationTestHelper {
                 IBytecodeRepository.deploy,
                 (
                     "ACCOUNT_FACTORY::DEFAULT",
-                    3_10,
+                    3_11,
                     abi.encode(addressProvider),
                     keccak256(abi.encode(bytes32(uint256(1)), marketConfigurator))
                 )
