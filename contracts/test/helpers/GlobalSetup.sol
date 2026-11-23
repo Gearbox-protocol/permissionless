@@ -288,7 +288,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
             UploadableContract({
                 initCode: type(DefaultAccountFactoryV3).creationCode,
                 contractType: AP_ACCOUNT_FACTORY_DEFAULT,
-                version: 3_10
+                version: 3_11
             })
         );
 
@@ -328,7 +328,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
 
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(CreditFacadeV3).creationCode, contractType: AP_CREDIT_FACADE, version: 3_10
+                initCode: type(CreditFacadeV3).creationCode, contractType: AP_CREDIT_FACADE, version: 3_11
             })
         );
 
@@ -356,7 +356,7 @@ contract GlobalSetup is Test, InstanceManagerHelper {
     function _setLossPolicies() internal {
         contractsToUpload.push(
             UploadableContract({
-                initCode: type(AliasedLossPolicyV3).creationCode, contractType: "LOSS_POLICY::ALIASED", version: 3_10
+                initCode: type(AliasedLossPolicyV3).creationCode, contractType: "LOSS_POLICY::ALIASED", version: 3_11
             })
         );
     }

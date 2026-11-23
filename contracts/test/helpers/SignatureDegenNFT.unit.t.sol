@@ -318,11 +318,22 @@ contract SignatureDegenNFTTest is ConfigurationTestHelper {
 
         (uint32 storedDeadline, uint32 storedNonce) = degenNFT.openingDeadlines(user1, address(creditManager));
         assertEq(storedDeadline, 0, "Deadline not cleared");
-        assertEq(storedNonce, 1, "Nonce should be preserved");
+        assertEq(storedNonce, 2, "Nonce should be incremented on revocation");
 
         vm.prank(address(creditFacade));
         vm.expectRevert(SignatureDegenNFT.CannotOpenException.selector);
         degenNFT.burn(user1, 1);
+
+        // Prior nonce is invalid after revocation; next approval must use nonce + 1
+        OpeningSignature[] memory staleSigs = _signedOpenings(address(creditManager), user1, deadline, 1, 2);
+        vm.expectRevert(SignatureDegenNFT.IncorrectNonceException.selector);
+        degenNFT.approveOpening(staleSigs);
+
+        uint32 nextDeadline = uint32(block.timestamp + 2 days);
+        degenNFT.approveOpening(_signedOpenings(address(creditManager), user1, nextDeadline, 3, 2));
+        (storedDeadline, storedNonce) = degenNFT.openingDeadlines(user1, address(creditManager));
+        assertEq(storedDeadline, nextDeadline, "Re-approval after revoke failed");
+        assertEq(storedNonce, 3, "Nonce not set on re-approval");
     }
 
     function test_SD_19_revokeOpening_revertsIfUnauthorized() public {
